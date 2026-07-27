@@ -24,8 +24,18 @@ Layer 1 is the one that survives a careless refactor, which is why it exists.
 | `id` | Identity. Must equal `auth.uid()`. | Nobody — set at signup from the session |
 | `role` | **Privilege escalation.** A driver flipping to shipper (or vice versa) crosses a tenant boundary and changes every RLS outcome. | Set once at signup insert; never updatable |
 | `created_at` | Audit integrity | Nobody |
+| `suspended_at` | **The account kill switch.** A user who can lift their own suspension is not suspended. | Ops only, via `ops_suspend_account` |
+| `suspended_by` | Names the dispatcher who made the call. Internal — not readable by the suspended user either, which is why 0017 replaced the table-wide SELECT grant with a column list. | Ops only |
+| `suspended_reason` | Shown to the suspended user by `private.require_active`, so a user who could edit it could rewrite the record of their own suspension. | Ops only |
 
 Client may write: `full_name`, `phone`, `language`.
+Client may read (own row only): everything above **except `suspended_by`**.
+
+> A column-level `revoke` does **not** cut a hole in a table-level `grant` —
+> Postgres keeps honouring the table grant for every column and the revoke
+> silently achieves nothing. 0017 therefore revoked `select` on `profiles`
+> outright and granted the columns back by name. Every future column on this
+> table is now deny-by-default, as INSERT and UPDATE always were.
 
 > `role` is deliberately grantable on **INSERT** only — both roles are
 > self-selected at signup. There is no UPDATE grant, so it cannot be changed

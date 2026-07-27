@@ -159,13 +159,24 @@ live list of what is unverified, deferred, or temporarily weakened — read it
 before assuming a feature is finished. Notably: **nothing has been seen running on
 a real device**, and email confirmation is currently switched off.
 
-Two lessons already paid for, both in `OPEN_ISSUES`:
+Lessons already paid for:
 
 - A definer function is the first reader of a column often enough that "nothing
   errored" means "nothing looked". `trips.truck_id` was NULL for every trip ever
   created and no test or user noticed until one function selected it.
+- **Nothing errored because nothing ran.** `advance_trip` pinned
+  `search_path = ''` and then cast to a bare `'delivered'::load_status`, so every
+  call by every driver since 0004 raised `type "load_status" does not exist` —
+  the whole delivery flow, dead, for months. It surfaced only when 0017's tests
+  called it for the first time. **Qualify types too, not just tables:
+  `public.load_status`.** `supabase/tests/ops_console.sql` §8 now checks the
+  whole class statically, over every definer function, called or not.
 - `force row level security` applies to the table owner too, so there is no
   observable "ground truth" view of a table — a test can only ever ask an actor.
+  (Corollary: a test asserting on a table while impersonating a dispatcher reads
+  nothing, because ops holds no table privilege. Drop to superuser first.)
+- A column-level `revoke` does not cut a hole in a table-level `grant`. Revoke
+  the table grant and re-grant the columns by name.
 
 ## Practical
 

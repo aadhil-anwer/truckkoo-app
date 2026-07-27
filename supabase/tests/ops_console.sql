@@ -875,6 +875,312 @@ select assert_equals(
     where target_id = 'e2e2e2e2-0000-4000-8000-000000000004'),
   0, 'a driver acting for themselves is not an ops event and is not logged as one');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 7. Migration 0017 — account administration
+-- ════════════════════════════════════════════════════════════════════════════
+
+select assert_ops_only(
+  $$select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', true)$$,
+  'ops_verify_driver');
+select assert_ops_only(
+  $$select public.ops_verify_truck('c0c0c0c0-0000-4000-8000-000000000001', true)$$,
+  'ops_verify_truck');
+select assert_ops_only(
+  $$select public.ops_suspend_account('22222222-0000-4000-8000-00000000bbbb',
+                                      true, 'test')$$,
+  'ops_suspend_account');
+select assert_ops_only(
+  $$select public.ops_update_profile('22222222-0000-4000-8000-00000000bbbb',
+                                     'Renamed')$$,
+  'ops_update_profile');
+
+-- ─── 7a. the suspension columns are not client-writable ─────────────────────
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+
+select assert_raises(
+  $$update public.profiles set suspended_at = null
+     where id = '22222222-0000-4000-8000-00000000bbbb'$$,
+  'a user cannot lift their own suspension');
+select assert_raises(
+  $$update public.profiles set suspended_reason = 'nothing to see'
+     where id = '22222222-0000-4000-8000-00000000bbbb'$$,
+  'nor rewrite the reason');
+-- Which member of staff made the call is internal. Naming them to a suspended
+-- user invites the wrong kind of follow-up.
+select assert_raises(
+  $$select suspended_by from public.profiles
+     where id = '22222222-0000-4000-8000-00000000bbbb'$$,
+  'nor read which dispatcher suspended them');
+
+select act_as_reset();
+
+-- ─── 7b. verification is the public trust claim ─────────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_raises(
+  $$select public.ops_verify_driver('11111111-0000-4000-8000-00000000aaaa', true)$$,
+  'a shipper cannot be verified as a driver');
+-- Losing why someone was verified is not a thing a checkbox should do.
+select assert_raises(
+  $$select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', false)$$,
+  'removing verification without saying why is refused');
+
+select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', true,
+                                'Licence and Mulkiya seen at Muscat depot');
+select act_as_reset();
+
+select assert_true(
+  (select d.verified_at is not null and d.verified_by is not null
+     from public.drivers d where d.profile_id = '22222222-0000-4000-8000-00000000bbbb'),
+  'the driver is verified, and the record says by whom');
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', true, null);
+select act_as_reset();
+select assert_true(
+  (select d.notes = 'Licence and Mulkiya seen at Muscat depot'
+     from public.drivers d where d.profile_id = '22222222-0000-4000-8000-00000000bbbb'),
+  'a null notes argument leaves existing vetting notes alone rather than erasing them');
+
+-- ─── 7c. suspension blocks new commitments ──────────────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_suspend_account('11111111-0000-4000-8000-00000000aaaa', true,
+                                  'Three loads cancelled after a driver was dispatched');
+select act_as_reset();
+
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select assert_raises(
+  $$select public.post_load(
+      (select id from public.cities where name_en = 'Muscat'),
+      (select id from public.cities where name_en = 'Sohar'),
+      current_date + 1, current_date + 2, 'Cargo from a suspended shipper')$$,
+  'a suspended shipper cannot post a load');
+select act_as_reset();
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_suspend_account('22222222-0000-4000-8000-00000000bbbb', true,
+                                  'Documents under review');
+select act_as_reset();
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select assert_raises(
+  $$select public.post_leg(
+      (select id from public.cities where name_en = 'Muscat'),
+      (select id from public.cities where name_en = 'Sohar'),
+      current_date + 1, current_date + 2)$$,
+  'a suspended driver cannot declare a leg');
+select act_as_reset();
+
+-- ─── 7d. …but does NOT strand a load in progress ────────────────────────────
+--
+-- This asymmetry is the whole design. A driver suspended halfway to Salalah is
+-- still carrying somebody's cargo. Locking them out of marking the delivery
+-- strands the load, denies the shipper their proof, and turns an account problem
+-- into a freight problem.
+
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                          goods_description, status)
+values ('f0f0f0f0-0000-4000-8000-000000000001',
+        '11111111-0000-4000-8000-00000000aaaa',
+        (select id from public.cities where name_en = 'Muscat'),
+        (select id from public.cities where name_en = 'Sohar'),
+        current_date + 1, current_date + 3, 'Cargo already on the road', 'in_transit');
+insert into public.trips (id, load_id, driver_id, status)
+values ('f1f1f1f1-0000-4000-8000-000000000001',
+        'f0f0f0f0-0000-4000-8000-000000000001',
+        '22222222-0000-4000-8000-00000000bbbb', 'in_transit');
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select public.advance_trip('f1f1f1f1-0000-4000-8000-000000000001', 'delivered',
+                           'Delivered to the yard', 'f1f1f1f1/pod.jpg');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.trips
+    where id = 'f1f1f1f1-0000-4000-8000-000000000001' and status = 'delivered'),
+  1, 'a suspended driver can still finish the load they are carrying');
+
+-- A suspended driver must also still be able to decline. Refusing would leave
+-- the offer pending until it expires and make the shipper wait days for an
+-- answer that cannot come — punishing them for the driver's suspension.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                          goods_description, status)
+values ('f0f0f0f0-0000-4000-8000-000000000002',
+        '11111111-0000-4000-8000-00000000aaaa',
+        (select id from public.cities where name_en = 'Muscat'),
+        (select id from public.cities where name_en = 'Sohar'),
+        current_date + 4, current_date + 5, 'Offered to a suspended driver', 'matched');
+insert into public.offers (id, load_id, driver_id, status, source)
+values ('f2f2f2f2-0000-4000-8000-000000000001',
+        'f0f0f0f0-0000-4000-8000-000000000002',
+        '22222222-0000-4000-8000-00000000bbbb', 'pending', 'ops');
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select assert_raises(
+  $$select public.respond_to_offer('f2f2f2f2-0000-4000-8000-000000000001', true)$$,
+  'a suspended driver cannot accept new work');
+select public.respond_to_offer('f2f2f2f2-0000-4000-8000-000000000001', false);
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.offers
+    where id = 'f2f2f2f2-0000-4000-8000-000000000001' and status = 'declined'),
+  1, 'but can still decline, so the shipper is not left waiting');
+
+-- ─── 7e. lifting a suspension restores the account ──────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_suspend_account('11111111-0000-4000-8000-00000000aaaa', false,
+                                  'Spoke to them, misunderstanding resolved');
+select act_as_reset();
+
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select assert_true(
+  (select public.post_load(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Sohar'),
+     current_date + 1, current_date + 2, 'Cargo after reinstatement') is not null),
+  'lifting the suspension lets them post again');
+select act_as_reset();
+
+select assert_true(
+  (select p.suspended_at is null and p.suspended_by is null and p.suspended_reason is null
+     from public.profiles p where p.id = '11111111-0000-4000-8000-00000000aaaa'),
+  'and clears every trace of it from the row — the history lives in the audit log');
+
+-- ─── 7f. a dispatcher cannot suspend a dispatcher ───────────────────────────
+--
+-- Locking yourself out of the console is a support call at best. Locking out a
+-- colleague is a way to remove a witness.
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select assert_raises(
+  $$select public.ops_suspend_account('33333333-0000-4000-8000-00000000cccc',
+                                      true, 'suspending myself')$$,
+  'a dispatcher cannot suspend themselves');
+
+-- ─── 7g. role is not editable, by anyone, ever ──────────────────────────────
+
+-- Not in the signature and never will be: changing a role crosses a tenant
+-- boundary and changes every RLS outcome for every row that account owns.
+select assert_equals(
+  (select count(*) from information_schema.parameters
+    where specific_schema = 'public'
+      and specific_name like 'ops_update_profile%'
+      and parameter_name = 'p_role'),
+  0, 'ops_update_profile has no role parameter');
+
+select public.ops_update_profile('22222222-0000-4000-8000-00000000bbbb',
+                                 null, '+968 9999 9999', null);
+select act_as_reset();
+
+select assert_true(
+  (select p.phone = '+968 9999 9999' and p.full_name = 'Console Driver'
+     from public.profiles p where p.id = '22222222-0000-4000-8000-00000000bbbb'),
+  'a null argument leaves the field alone rather than erasing it');
+
+-- ─── 7h. the reason reaches the person it is about ──────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select assert_raises(
+  $$select public.ops_suspend_account('11111111-0000-4000-8000-00000000aaaa', true,
+       'reason with a bidi override ' || U&'\202E')$$,
+  'a suspension reason carrying a bidi override is refused — the user will read it');
+select act_as_reset();
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 8. The unqualified-type trap
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- `advance_trip` pinned `search_path = ''` correctly, qualified every table
+-- correctly, and then cast to `'in_transit'::load_status` — a bare type name,
+-- which with an empty search path resolves against nothing. Every call by every
+-- driver since 0004 raised `type "load_status" does not exist`. The entire
+-- delivery flow was dead and nothing noticed, because no test called it and
+-- nothing has run on a real device.
+--
+-- Section 7d above is now the regression test for that specific function. This
+-- section guards the class, because the next one will be written the same way.
+--
+-- The check is deliberately static: it reads the catalogue rather than calling
+-- anything, so it covers functions no test happens to exercise — which is the
+-- exact hole the bug lived in.
+
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(fn, ', ')
+  into v_bad
+  from (
+    select p.oid::regprocedure::text as fn, p.prosrc
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef
+      and array_to_string(p.proconfig, ',') like '%search_path=%'
+      and n.nspname in ('public', 'private')
+  ) f
+  where
+    -- A cast to one of our enums with nothing in front of the `::`.
+    f.prosrc ~ '::\s*(load_status|trip_status|leg_status|offer_status|user_role)\M';
+
+  if v_bad is not null then
+    raise exception
+      'FAIL: unqualified enum cast inside a search_path-pinned definer function: %. '
+      'With search_path = '''' a bare type name resolves against nothing and the '
+      'function fails at runtime, every time. Write public.load_status.', v_bad;
+  end if;
+  raise notice 'pass: no definer function casts to an unqualified enum';
+end $$;
+
+-- The same trap, one step removed: a declared variable of a bare enum type.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(fn, ', ')
+  into v_bad
+  from (
+    select p.oid::regprocedure::text as fn, p.prosrc
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef
+      and array_to_string(p.proconfig, ',') like '%search_path=%'
+      and n.nspname in ('public', 'private')
+  ) f
+  where f.prosrc ~ '\mdeclare\M[\s\S]*?\m\w+\s+(load_status|trip_status|leg_status|offer_status|user_role)\s*(:=|;)';
+
+  if v_bad is not null then
+    raise exception
+      'FAIL: unqualified enum in a declare block inside a definer function: %', v_bad;
+  end if;
+  raise notice 'pass: no definer function declares an unqualified enum variable';
+end $$;
+
+-- And the rule those two are corollaries of: SECURITY.md §12 — every definer
+-- function pins its search path. An unpinned one is a privilege-escalation
+-- primitive, not merely a latent runtime error.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ')
+  into v_bad
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where p.prosecdef
+    and n.nspname in ('public', 'private')
+    and (p.proconfig is null or array_to_string(p.proconfig, ',') not like '%search_path=%');
+
+  if v_bad is not null then
+    raise exception 'FAIL: security definer function with no pinned search_path: %', v_bad;
+  end if;
+  raise notice 'pass: every security definer function pins its search_path';
+end $$;
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;
