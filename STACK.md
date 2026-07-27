@@ -150,12 +150,22 @@ price = max(min_fare, base + per_tonne × ceil(weight_kg / 1000))
 
 Four things worth knowing before touching it:
 
-- **The rate card ships empty**, in `private`, with no client grant and no write
-  RPC. Loaded by hand, like appointing a dispatcher. Until then every load routes
-  to `finding_truck` and ops prices it — which is §0's "be the algorithm
-  yourself", and it means the empty state is the concierge product, not an outage.
+- **The rate card ships empty**, in `private`, with no client grant. Until it is
+  loaded every load routes to `finding_truck` and ops prices it — which is §0's
+  "be the algorithm yourself", and it means the empty state is the concierge
+  product, not an outage.
+- **As of 0018 an appointed dispatcher can read and edit it** through
+  `ops_rate_cards` / `ops_upsert_rate_card` / `ops_delete_rate_card`, from the ops
+  console at `~/truckkoo-ops`. This is a deliberate widening of where the crown
+  jewel can be read, and it was agreed to explicitly rather than inherited. It
+  replaces "ring whoever has the database password" at 6am. The table still has
+  no client grant: every path runs through `require_ops()`, writes still fire the
+  0010 `rate_card_audit` trigger, and now also land in `private.ops_audit` with
+  the dispatcher's name and their reason — which is mandatory.
 - **The formula is SQL only.** No `src/lib/pricing.ts`, ever: two implementations
   disagree eventually, and a client-side one ships the moat in the app bundle.
+  Unchanged by 0018 — no rate data reaches the shipper/driver bundle, and
+  `ops_preview_price` calls `private.compute_price` rather than reimplementing it.
 - **A null price is a normal outcome.** `advise_me`, `no_rate`, `over_capacity`
   all mean "a human is pricing this". "Not sure — advise me" stays unpriceable on
   purpose — guessing a truck type to produce a number quotes a truck nobody asked

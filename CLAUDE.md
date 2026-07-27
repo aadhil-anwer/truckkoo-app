@@ -33,6 +33,11 @@ cities, and truck types.
    are loaded by hand, never invented in a migration. `npm run seed:rates` loads a
    fake card for development — it lives outside `migrations/` on purpose, so it
    cannot reach production. See `STACK.md` §2c.
+   **0018 exception, agreed explicitly:** an appointed dispatcher can read and
+   edit the card through `require_ops()` RPCs from the ops console. The table
+   still has no client grant, the formula is still SQL-only, and no rate data
+   reaches the shipper/driver bundle. Every edit needs a reason and lands in
+   both `rate_card_audit` and `ops_audit`.
 4. **RTL is structural, not a phase-2 task.** Logical properties only
    (`marginStart`, `paddingEnd`, `start`/`end`). Never `left`/`right`. All
    user-facing strings go through `t()` in `src/i18n`. React Native does **not**

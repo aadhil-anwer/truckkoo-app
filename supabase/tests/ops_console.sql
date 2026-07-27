@@ -1181,6 +1181,189 @@ begin
   raise notice 'pass: every security definer function pins its search_path';
 end $$;
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 9. Migration 0018 — settings and the rate card
+-- ════════════════════════════════════════════════════════════════════════════
+
+select assert_ops_only($$select * from public.ops_settings()$$, 'ops_settings');
+select assert_ops_only(
+  $$select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb)$$,
+  'ops_set_setting');
+select assert_ops_only($$select * from public.ops_rate_cards()$$, 'ops_rate_cards');
+select assert_ops_only($$select * from public.ops_corridors()$$, 'ops_corridors');
+select assert_ops_only(
+  $$select public.ops_upsert_rate_card('a','b','10t',1,1,1,'test')$$,
+  'ops_upsert_rate_card');
+select assert_ops_only($$select public.ops_delete_rate_card(1, 'test')$$,
+  'ops_delete_rate_card');
+select assert_ops_only($$select public.ops_preview_price(1,1,1,1000)$$,
+  'ops_preview_price');
+
+-- The crown jewel stays out of reach of the table itself, regardless of the RPCs.
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select assert_raises($$select * from private.rate_cards$$,
+  'the rate card table is still unreadable by a client');
+select assert_raises($$select * from private.app_settings$$,
+  'so is the settings table');
+select assert_raises($$select * from private.rate_card_audit$$,
+  'and the rate audit trail');
+select act_as_reset();
+
+-- ─── 9a. the settings whitelist ─────────────────────────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_equals((select count(*) from public.ops_settings()), 5,
+  'ops_settings returns exactly the five whitelisted keys');
+
+-- `app_settings` is where kill switches live. A generic key/value writer
+-- reachable from a browser turns one compromised session into arbitrary config.
+select assert_not_found(
+  $$select public.ops_set_setting('some_other_key', 'true'::jsonb)$$,
+  'a key outside the whitelist is refused, and refused as "not found"');
+
+select assert_raises(
+  $$select public.ops_set_setting('auto_dispatch_enabled', '3'::jsonb)$$,
+  'a boolean setting rejects a number');
+select assert_raises(
+  $$select public.ops_set_setting('auto_dispatch_max_offers', 'true'::jsonb)$$,
+  'a numeric setting rejects a boolean');
+select assert_raises(
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '0'::jsonb)$$,
+  'and rejects a value below the range');
+select assert_raises(
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '9999'::jsonb)$$,
+  'and above it');
+
+select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb);
+select act_as_reset();
+
+select assert_true(
+  (select not private.setting_bool('auto_dispatch_enabled', true)),
+  'the kill switch can be thrown from the console');
+select assert_true(
+  (select a.after->>'value' = 'false' from private.ops_audit a
+    where a.action = 'ops_set_setting'),
+  'and the change is audited');
+
+-- Prove it actually took effect, rather than only changing a row.
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select public.post_load(
+  (select id from public.cities where name_en = 'Muscat'),
+  (select id from public.cities where name_en = 'Sohar'),
+  current_date + 8, current_date + 9, 'Posted with dispatch switched off');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from private.dispatch_log dl
+    join public.loads l on l.id = dl.load_id
+   where l.goods_description = 'Posted with dispatch switched off'
+     and dl.skipped = 'disabled'),
+  1, 'and auto-dispatch really is off, and says so in the log');
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_set_setting('auto_dispatch_enabled', 'true'::jsonb);
+select act_as_reset();
+
+-- ─── 9b. the rate card ──────────────────────────────────────────────────────
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_true((select count(*) > 0 from public.ops_corridors()),
+  'the corridor bands are listed, so the console can offer a dropdown');
+
+-- A typo'd corridor inserts cleanly and then silently never matches a load —
+-- a rate that exists, looks configured, and prices nothing.
+select assert_raises(
+  $$select public.ops_upsert_rate_card('Not A Real Corridor',
+      (select corridor from public.cities where corridor is not null limit 1),
+      '10t', 50000, 5000, 30000, 'typo test')$$,
+  'an unknown corridor is refused rather than silently never matching');
+
+select assert_raises(
+  $$select public.ops_upsert_rate_card(
+      (select corridor from public.cities where corridor is not null limit 1),
+      (select corridor from public.cities where corridor is not null limit 1),
+      'not-a-truck', 50000, 5000, 30000, 'bad type')$$,
+  'an unknown truck type is refused');
+
+-- A zero floor lets a zero-weight quote price at zero, and loads_price_positive
+-- then rejects the load's price with a constraint error the shipper cannot act on.
+select assert_raises(
+  $$select public.ops_upsert_rate_card(
+      (select corridor from public.cities where corridor is not null limit 1),
+      (select corridor from public.cities where corridor is not null limit 1),
+      '10t', 50000, 5000, 0, 'zero floor')$$,
+  'a zero minimum fare is refused at configuration time');
+
+-- A rate card applies to every future load on that corridor, so a slipped
+-- decimal here is not one bad quote, it is all of them.
+select assert_raises(
+  $$select public.ops_upsert_rate_card(
+      (select corridor from public.cities where corridor is not null limit 1),
+      (select corridor from public.cities where corridor is not null limit 1),
+      '10t', 999999999999, 5000, 30000, 'slipped decimal')$$,
+  'an absurd base fare is refused');
+
+select assert_raises(
+  $$select public.ops_upsert_rate_card(
+      (select corridor from public.cities where corridor is not null limit 1),
+      (select corridor from public.cities where corridor is not null limit 1),
+      '10t', 50000, 5000, 30000, null)$$,
+  'a rate change with no reason is refused');
+
+-- The happy path. 50.000 OMR base + 5.000 per tonne, 30.000 floor — in baisa,
+-- because OMR is a three-decimal currency and every amount in this schema is an
+-- integer of minor units.
+select set_config('tests.rate_id',
+  public.ops_upsert_rate_card(
+    (select corridor from public.cities where name_en = 'Muscat'),
+    (select corridor from public.cities where name_en = 'Salalah'),
+    '10t', 50000, 5000, 30000,
+    'Diesel up 8%, reviewed with the yard')::text,
+  true);
+
+select assert_equals((select count(*) from public.ops_rate_cards()), 1,
+  'the rate card is readable by a dispatcher');
+
+select assert_true(
+  (select rc.base_baisa = 50000 and rc.min_fare_baisa = 30000
+     from public.ops_rate_cards() rc),
+  'with the amounts it was given, in integer baisa');
+
+-- The same formula the real quote path uses. Not a second implementation:
+-- 50000 + 5000 * 8t = 90000 baisa = 90.000 OMR.
+select assert_equals(public.ops_preview_price(50000, 5000, 30000, 8000), 90000,
+  'the price preview runs the one real formula');
+select assert_equals(public.ops_preview_price(50000, 5000, 30000, null), 50000,
+  'and handles an unstated weight');
+select assert_equals(public.ops_preview_price(1000, 0, 30000, 1000), 30000,
+  'and applies the floor');
+
+select act_as_reset();
+
+-- Both audit trails, because neither subsumes the other: rate_card_audit is the
+-- row-level history the pricing rules require, ops_audit is the who-and-why.
+select assert_equals(
+  (select count(*) from private.rate_card_audit where action = 'insert'), 1,
+  'the 0010 row-level rate audit still fires');
+select assert_true(
+  (select a.reason like 'Diesel up 8%%' from private.ops_audit a
+    where a.action = 'ops_upsert_rate_card'),
+  'and the ops audit carries who changed it and why');
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select public.ops_delete_rate_card(current_setting('tests.rate_id')::bigint,
+                                   'Corridor no longer served');
+select act_as_reset();
+
+select assert_equals((select count(*) from private.rate_cards), 0,
+  'a rate band can be removed');
+select assert_true(
+  (select a.before is not null and a.after is null from private.ops_audit a
+    where a.action = 'ops_delete_rate_card'),
+  'and the audit keeps what it was before it went');
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;
