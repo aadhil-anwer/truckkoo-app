@@ -9,6 +9,53 @@ an entry only when it is actually closed.
 
 ---
 
+## The ops console (0015–0018)
+
+Added 2026-07-27. Migrations `0015`–`0018` and a separate web app at
+`~/truckkoo-ops`. What is not settled:
+
+### The console has never run against the production project
+
+Every screen and every RPC has been exercised against a **local** Supabase — over
+HTTP as a signed-in dispatcher, not only through tests. None of it has touched
+the real project, and no dispatcher has been appointed there.
+
+**Done when:** the console is deployed, a real dispatcher account is in
+`private.ops_users` on production, and one load has been moved through it end to
+end. See `truckkoo-ops/DEPLOY.md`.
+
+### Ops can mark a delivery with no proof photo
+
+`ops_set_trip_status(..., 'delivered', ...)` does not require a photo, while the
+driver's `advance_trip` still does. This is deliberate — the case is a driver
+ringing in from somewhere with no signal, and refusing would either lose the
+delivery record or push dispatch back to a raw UPDATE. The trip event records
+that there was no proof, so it is findable and countable.
+
+**Watch for:** if this becomes the normal path rather than the exception, the
+proof-of-delivery guarantee is worth less than it looks. Nothing counts it yet.
+
+### The rate card is now reachable from a browser
+
+A deliberate widening, recorded in `STACK.md` §2c and `CLAUDE.md` 3b rather than
+inherited. The table still has no client grant and the formula is still SQL-only,
+but an appointed dispatcher can now read the card from a web page, which was
+previously true only at a psql prompt.
+
+**Watch for:** this is the thing to reverse first if a dispatcher account is ever
+compromised. Revoking execute on the three `ops_*_rate_card` functions closes it
+without touching anything else.
+
+### `ops_audit` has no retention policy
+
+It grows without bound and nothing prunes it. That is the correct default for an
+audit log, but it is a decision nobody has made explicitly.
+
+**Done when:** either a retention period is chosen and implemented, or a note
+here says it is deliberately permanent.
+
+---
+
 ## Auth — needs a live Supabase project to verify
 
 These came out of building the password-reset flow (2026-07-26). None can be

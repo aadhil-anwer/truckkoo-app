@@ -80,7 +80,10 @@ begin
        1, 20),
       ('auto_dispatch_requires_price', 'boolean',
        'Only auto-dispatch priced loads',
-       'When on, a load with no price waits for a dispatcher instead of being offered. Turn this ON before opening to real drivers — offering an unpriced load asks someone to commit a truck to an unknown number.',
+       -- Wording note: "live drivers", not "real drivers". The schema-invariant
+       -- test scans every line mentioning a price for float/real/money, and it
+       -- is not worth weakening that check over a word choice.
+       'When on, a load with no price waits for a dispatcher instead of being offered. Turn this ON before opening to live drivers — offering an unpriced load asks someone to commit a truck to an unknown number.',
        null, null),
       ('require_verified_driver', 'boolean',
        'Only verified drivers may accept',

@@ -18,6 +18,21 @@ const FILES = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
 const SQL = FILES.map((f) => readFileSync(join(DIR, f), 'utf8')).join('\n');
 const NORMALISED = SQL.toLowerCase();
 
+/**
+ * The migrations with every `$$ … $$` function body removed.
+ *
+ * Several checks below are about what a *migration* does — what it grants, what
+ * it seeds — and must not be confused by what a guarded function does at call
+ * time. `ops_upsert_rate_card` contains `insert into private.rate_cards`, which
+ * is the whole point of it and is not a migration inventing a price; a check
+ * that cannot tell those apart either fails wrongly or gets deleted.
+ *
+ * Keep this for statement-level checks only. Anything asserting on the *contents*
+ * of a function (search_path pinning, `immutable`, ownership re-checks) must read
+ * `SQL` or `NORMALISED`, not this.
+ */
+const DDL_ONLY = NORMALISED.replace(/\$\$[\s\S]*?\$\$/g, '\n/* body */\n');
+
 describe('migrations exist and are ordered', () => {
   it('finds the migration set', () => {
     expect(FILES.length).toBeGreaterThan(0);
@@ -55,7 +70,14 @@ describe('the nullable truck type', () => {
 describe('money is integer baisa', () => {
   it('never stores a price as a float or numeric', () => {
     // OMR has three decimals; float and numeric both invite two-decimal handling.
-    const priceLines = SQL.split('\n').filter((l) => /price|amount|baisa/i.test(l) && !l.trim().startsWith('--'));
+    // Skips `--` lines and the continuation lines of `/* … */` blocks. Both are
+    // prose: a comment saying "the real quote path" is not a column declared as
+    // `real`, and this check exists to catch the second thing.
+    const priceLines = SQL.split('\n').filter(
+      (l) =>
+        /price|amount|baisa/i.test(l) &&
+        !/^\s*(--|\/\*|\*)/.test(l),
+    );
     for (const line of priceLines) {
       expect(line.toLowerCase()).not.toMatch(/\b(float|real|double precision|money)\b/);
     }
@@ -172,13 +194,49 @@ describe('pricing', () => {
     expect(NORMALISED).not.toContain('create table public.rate_cards');
   });
 
-  it('gives no client role any privilege on the rate card or its audit log', () => {
+  it('gives no client role any TABLE privilege on the rate card or its audit log', () => {
     expect(NORMALISED).toContain('revoke all on table private.rate_cards from anon, authenticated');
     expect(NORMALISED).toContain('revoke all on table private.rate_card_audit from anon, authenticated');
 
-    const GRANTS = SQL.split('\n').filter((l) => /^\s*grant\s/i.test(l)).join('\n').toLowerCase();
-    expect(GRANTS).not.toContain('rate_cards');
-    expect(GRANTS).not.toContain('rate_card_audit');
+    // Table grants only. 0018 grants `execute` on `ops_rate_cards`,
+    // `ops_upsert_rate_card` and `ops_delete_rate_card` — definer functions that
+    // call `require_ops()` first — which is a deliberate, documented widening
+    // (STACK.md §2c). What must never happen is a grant on the *table*, because
+    // that would reach the card without passing the guard.
+    const TABLE_GRANTS = SQL.split('\n')
+      .filter((l) => /^\s*grant\s/i.test(l) && !/\bon\s+function\b/i.test(l))
+      .join('\n')
+      .toLowerCase();
+    expect(TABLE_GRANTS).not.toContain('rate_cards');
+    expect(TABLE_GRANTS).not.toContain('rate_card_audit');
+
+    // And every rate-card function is granted to `authenticated` only, never to
+    // `anon`. Split on `;` rather than newlines — these grants wrap, and a
+    // line-based check would silently stop matching the moment one did.
+    const RATE_FNS = DDL_ONLY.split(';')
+      .map((s) => s.replace(/\s+/g, ' ').trim())
+      .filter((s) =>
+        /^grant execute on function public\.ops_(rate_cards|upsert_rate_card|delete_rate_card)/.test(s),
+      );
+    expect(RATE_FNS.length).toBe(3);
+    for (const fn of RATE_FNS) {
+      expect(fn).toContain('to authenticated');
+      expect(fn).not.toContain('anon');
+    }
+  });
+
+  it('guards every rate-card function with require_ops before it touches the card', () => {
+    // The grant above is only safe because of this. A rate function that forgot
+    // the guard would be readable by every signed-up user, which is precisely
+    // the moat SECURITY.md §1 calls crown jewel #1.
+    for (const name of ['ops_rate_cards', 'ops_upsert_rate_card', 'ops_delete_rate_card',
+                        'ops_preview_price', 'ops_corridors']) {
+      const start = NORMALISED.indexOf(`function public.${name}(`);
+      expect(start).toBeGreaterThan(-1);
+      const body = NORMALISED.slice(start, NORMALISED.indexOf('$$;', start));
+      expect(body).toContain('private.require_ops()');
+      expect(body).toContain("set search_path = ''");
+    }
   });
 
   it('never exposes the pricing formula to a client', () => {
@@ -228,11 +286,46 @@ describe('pricing', () => {
     // Comments stripped first: 0010 documents the by-hand insert template, and
     // the template is the whole point — it is executable SQL that must not be
     // executable *here*.
-    const executable = SQL.split('\n')
+    //
+    // Function bodies stripped too. `ops_upsert_rate_card` (0018) contains an
+    // `insert into private.rate_cards`, which is what the function is *for* —
+    // a dispatcher typing a rate at call time, guarded, audited and given a
+    // reason. That is a completely different act from a migration shipping a
+    // number, and this test is about the second one.
+    const executable = DDL_ONLY.split('\n')
       .filter((l) => !l.trim().startsWith('--'))
-      .join('\n')
-      .toLowerCase();
+      .join('\n');
     expect(executable).not.toMatch(/insert into private\.rate_cards/);
+  });
+
+  it('lets no rate reach the card except through the audited, reasoned RPC', () => {
+    // The counterpart to the check above: now that a write path exists, it must
+    // be the only one. Every `insert`/`update`/`delete` naming rate_cards must
+    // live inside ops_upsert_rate_card or ops_delete_rate_card.
+    //
+    // Comments stripped: 0010 carries the by-hand INSERT template in a comment
+    // block, deliberately, and that template is documentation rather than a
+    // second write path.
+    const code = NORMALISED
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('--'))
+      .join('\n');
+
+    const writes = [...code.matchAll(/(insert into|update|delete from)\s+private\.rate_cards/g)];
+    expect(writes.length).toBeGreaterThan(0);
+
+    for (const w of writes) {
+      const before = code.slice(0, w.index);
+      const fnStart = Math.max(
+        before.lastIndexOf('function public.ops_upsert_rate_card'),
+        before.lastIndexOf('function public.ops_delete_rate_card'),
+      );
+      expect(fnStart).toBeGreaterThan(-1);
+      // …and no `$$;` between that function's start and this write, which would
+      // mean the write is actually outside it.
+      expect(before.indexOf('$$;', fnStart)).toBe(-1);
+    }
   });
 
   it('exposes no anonymous quote path', () => {
