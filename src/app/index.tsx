@@ -1,98 +1,57 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+/**
+ * The launch route.
+ *
+ * Every cold start, deep link to the bare scheme, and browser hit on `/` lands
+ * here, and it exists only to hand off. Without it expo-router renders its
+ * "Unmatched Route" page, which is what a user would see on first open.
+ *
+ * The Gate in `_layout.tsx` cannot cover this case: its last branch only
+ * redirects users who are inside `(auth)`, so a signed-in user with a profile
+ * would sit on `/` indefinitely. This route makes the same decision declaratively
+ * — one `<Redirect>` per state, no effects, no flash of a screen the user is
+ * about to be moved off.
+ */
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Redirect } from 'expo-router';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
+import { useAmIOps } from '@/lib/queries';
+import { useSession } from '@/lib/session';
+import { color } from '@/theme/tokens';
+
+export default function Index() {
+  const { session, profile, loading } = useSession();
+  // Asked once per session. A dispatcher also holds a shipper or driver profile —
+  // ops membership is additional, not an alternative — so this has to be checked
+  // before the role branch or staff would land on a customer screen.
+  const ops = useAmIOps();
+
+  // Nothing is known yet. Show the same quiet boot state as the Gate rather than
+  // guessing at a destination and bouncing the user off it a frame later.
+  if (loading || (!!session && ops.isPending)) {
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+      <View style={styles.boot}>
+        <ActivityIndicator color={color.orange} />
+      </View>
     );
   }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+  if (!session) return <Redirect href="/sign-in" />;
+  // Signed in but the profile row was never created: signup owns finishing it.
+  if (!profile) return <Redirect href="/sign-up" />;
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+  // Navigation only. Every ops RPC re-checks membership in the database, so a
+  // wrong answer here — or a forced route — reveals nothing.
+  if (ops.data === true) return <Redirect href="/ops" />;
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
+  return <Redirect href={profile.role === 'driver' ? '/driver' : '/customer'} />;
 }
 
 const styles = StyleSheet.create({
-  container: {
+  boot: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    backgroundColor: color.paper,
   },
 });
