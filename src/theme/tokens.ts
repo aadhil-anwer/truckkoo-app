@@ -1,29 +1,49 @@
 /**
  * Truckkoo design tokens — the app half of DESIGN.md.
  *
- * The four load-bearing decisions, kept verbatim from the website:
- *   1. one orange accent, everything else black/white
- *   2. weight-900 tight headlines
- *   3. hairline 1px borders instead of shadows
- *   4. light and dark surfaces each carry their own card/border/muted triple
+ * ── The 2026 rewire ────────────────────────────────────────────────────────
  *
- * Never reuse a light-mode border on a dark surface, and never use `orange`
- * for text on dark — see `orangeOnDark`.
+ * The app used to be a consignment note: hairline rules doing all the structural
+ * work, no shadows, no icons, no fills. That identity came off the website, and
+ * it was internally coherent — but a website reads at desk distance and a phone
+ * app does not. Held at arm's length in a cab, hairlines vanish and every block
+ * on the screen weighs the same.
+ *
+ * So the *skeleton* is now Uber's, deliberately: surfaces with soft depth,
+ * generous radii, one enormous entry point per screen, list rows carrying an
+ * icon chip, and a single pinned action at the thumb. The *palette* stays ours —
+ * one orange, black, white. Uber's structure, Truckkoo's colour.
+ *
+ * What survived the rewire, and why:
+ *   - `font.button` at 19/900. This is an accessibility floor, not taste. See below.
+ *   - `doc.*` and `stamp.*`. The finished consignment note is still a document,
+ *     and it is the one screen where that is literally true (see load/[id].tsx).
+ *   - Logical properties everywhere. RTL is structural (CLAUDE.md §4).
  */
 
 export const color = {
   orange: '#f1551f',
   orangeDeep: '#d9430f',
-  /** #f1551f fails 4.5:1 as text on black. Use this on dark or over photos. */
+  /** #f1551f fails 4.5:1 as text on white. Use this on dark or over photos. */
   orangeOnDark: '#ff7a4d',
   orangeSoft: '#feeee7',
 
   ink: '#0b0b0b',
   inkSoft: '#6b6b6b',
+  /** Tertiary type only — timestamps, units. Never a label a decision rests on. */
+  inkFaint: '#8e8e8e',
 
   paper: '#ffffff',
   paperDeep: '#f6f6f6',
   line: '#e8e8e8',
+
+  /**
+   * Filled neutral surfaces — the Uber device the old system had no equivalent
+   * for. An icon chip, a secondary button, an unselected segment: all this grey,
+   * never a border.
+   */
+  fill: '#f2f2f2',
+  fillPress: '#e4e4e4',
 
   asphalt: '#0b0b0b',
   asphalt2: '#161616',
@@ -36,37 +56,64 @@ export const color = {
   danger: '#c0341c',
 } as const;
 
-/** Spacing scale in use on the website. Stick to it. */
+/**
+ * Spacing, on an 8pt grid.
+ *
+ * The names are unchanged from the old 6/10/14/18/22/26/34/56 scale so no call
+ * site had to be rewritten, but every value moved onto the grid. That single
+ * change is most of why the app now reads as regularly spaced rather than
+ * approximately spaced.
+ */
 export const space = {
-  xs: 6,
-  sm: 10,
-  md: 14,
-  lg: 18,
-  xl: 22,
-  xxl: 26,
-  xxxl: 34,
-  huge: 56,
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+  huge: 48,
 } as const;
 
+/** The screen gutter. One number, every screen, so nothing is optically off-axis. */
+export const GUTTER = 20;
+
 export const radius = {
-  control: 10,
-  card: 12,
-  panel: 16,
+  /** Inputs, chips, small controls. */
+  control: 12,
+  /** The workhorse surface. */
+  card: 16,
+  /** A sheet's top corners, and full-bleed panels. */
+  panel: 20,
+  sheet: 24,
   pill: 999,
 } as const;
 
 /**
- * Only three weights are in real use: 600 nav/small print, 800 labels/buttons,
- * 900 headings. Body copy is the only 400.
+ * Type scale.
  *
- * Archivo and Almarai are loaded at runtime; `undefined` family means the
- * platform default, which is what we render until the fonts land.
+ * Uber's hierarchy is aggressive: one very large thing per screen, then a hard
+ * drop to 16. The old scale crowded four sizes between 18 and 26, which is what
+ * made every screen read as one undifferentiated weight.
  */
 export const font = {
-  body: { fontSize: 16, lineHeight: 26, fontWeight: '400' },
-  bodySmall: { fontSize: 14, lineHeight: 22, fontWeight: '400' },
-  smallPrint: { fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  label: { fontSize: 14, lineHeight: 18, fontWeight: '800' },
+  /** The one big statement per screen. "Where to?", "Arriving Friday". */
+  display: { fontSize: 32, lineHeight: 36, fontWeight: '900', letterSpacing: -1 },
+  hero: { fontSize: 28, lineHeight: 32, fontWeight: '900', letterSpacing: -0.8 },
+  title: { fontSize: 22, lineHeight: 27, fontWeight: '900', letterSpacing: -0.5 },
+  /** Section headers above a list. */
+  section: { fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
+  /** A list row's first line. */
+  rowTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700', letterSpacing: -0.1 },
+  cardTitle: { fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
+
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
+  bodySmall: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
+  smallPrint: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  label: { fontSize: 14, lineHeight: 18, fontWeight: '700' },
+  /** Tab bar labels, unit suffixes, counts. The floor of the scale. */
+  micro: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 0.1 },
+
   /**
    * 19px, not 16, and it is an accessibility fix rather than a taste one.
    *
@@ -80,35 +127,53 @@ export const font = {
    * committed brand orange intact and is independently right for the use scene:
    * read one-handed, gloved, through a windscreen, in Gulf sun, on a cheap
    * screen. 18px would still fail — the bar is 18.66, so this must not drop.
+   *
+   * This survived the Uber rewire unchanged. Uber's own CTA is black and could
+   * take 16px; ours is orange by decision, so it cannot.
    */
   button: { fontSize: 19, lineHeight: 24, fontWeight: '900' },
-  cardTitle: { fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
-  title: { fontSize: 26, lineHeight: 28, fontWeight: '900', letterSpacing: -0.6 },
-  hero: { fontSize: 34, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9 },
   /**
-   * The website's signature: tracked uppercase kicker in orange above a
-   * section title. It is a system there because it appears once per section —
-   * do not staple it onto every card.
+   * The website's tracked uppercase kicker. Kept for the finished consignment
+   * note and nowhere else — it is a print device, and the app is no longer print.
    */
   eyebrow: { fontSize: 12, lineHeight: 16, fontWeight: '800', letterSpacing: 2.6 },
 } as const;
 
-/** Depth comes from borders. This is deliberately almost invisible. */
+/**
+ * Depth.
+ *
+ * This is the rule the rewire overturned. DESIGN.md used to say depth comes from
+ * borders and never shadows; on a phone that produced a flat grey field where
+ * nothing announced itself as tappable. Shadows are now the primary device and
+ * hairlines are the secondary one.
+ *
+ * They are still restrained — Uber's are barely-there too. The tell of a cheap
+ * app is a 20px blur at 0.2 opacity, not the presence of a shadow at all.
+ */
 export const elevation = {
+  /** A surface resting on the page. */
   card: {
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  /** Only filled buttons get a coloured shadow. */
+  /** A sheet or bar floating above content. Reads at the edge, not underneath. */
+  raised: {
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
+  },
+  /** Only the filled primary button gets a coloured shadow. */
   orangeButton: {
     shadowColor: color.orange,
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.32,
     shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 } as const;
 
@@ -121,22 +186,25 @@ export const motion = {
 /** Every tap target clears 44pt. Non-negotiable — drivers wear gloves. */
 export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 export const MIN_TARGET = 44;
+/** The pinned CTA. Taller than the minimum on purpose: it is the thumb's target. */
+export const CTA_HEIGHT = 56;
+/** The circular chip behind a row's icon. Uber's list-row signature. */
+export const CHIP = 40;
 
 /**
  * ── The consignment-note vocabulary ────────────────────────────────────────
  *
- * The app's surfaces are built as the document freight already runs on: a
- * consignment note. This is not decoration — it is the artifact every Omani
- * driver and shipper already handles, so the interface arrives pre-understood.
+ * Retained, but demoted. It used to be the whole app; it is now the treatment
+ * for exactly one screen — the finished load in `load/[id].tsx`, which really is
+ * a document a business files against an offline settlement.
  *
- * It also lands exactly on DESIGN.md's existing identity: hairline 1px rules ARE
- * document rules, weight-900 caps ARE document headers, and one orange reads as
- * the stamp. Nothing here fights the website.
+ * Everywhere else, a load is a card with an icon and a price, because everywhere
+ * else the user is deciding rather than filing.
  */
 export const doc = {
-  /** The ruled line. DESIGN.md §3: depth comes from borders, never shadows. */
+  /** The ruled line. Now a secondary device, behind fills and shadows. */
   rule: 1,
-  /** A heavier rule closing a block — the only permitted weight above hairline. */
+  /** A heavier rule closing a block. */
   ruleStrong: 2,
 
   /**
@@ -152,35 +220,32 @@ export const doc = {
   /** The value written into a field. Larger than the label, always. */
   fieldValue: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
 
-  /**
-   * The two city names are the load's identity — the one thing readable at
-   * arm's length in a moving cab.
-   */
+  /** The two city names on a printed note. */
   endpoint: { fontSize: 22, lineHeight: 26, fontWeight: '900', letterSpacing: -0.4 },
 
   /** Reference number / document id. The only place a monospace face is honest. */
   reference: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0.6 },
 
   /** Inset of a note's inner content from its ruled edge. */
-  gutter: 14,
+  gutter: 16,
 } as const;
 
 /**
- * Status stamp colors.
+ * Status colors.
  *
- * A rubber stamp is the right device for this audience: large, blunt, and
- * readable without reading. Every entry pairs a foreground with a background it
- * clears 4.5:1 against — checked, not assumed.
+ * Now rendered as a soft filled pill rather than a rubber stamp — same job, same
+ * checked contrast, less costume. Every entry pairs a foreground with a
+ * background it clears 4.5:1 against.
  */
 export const stamp = {
-  /** Waiting on us. Neutral ink on paper — deliberately unexciting. */
-  pending: { fg: '#4a4a4a', bg: '#f1f1f1', border: '#d6d6d6' },
+  /** Waiting on us. Neutral ink on grey — deliberately unexciting. */
+  pending: { fg: '#4a4a4a', bg: '#f1f1f1', border: '#e2e2e2' },
   /** Something is happening. The single accent, earning its keep. */
-  active: { fg: '#a33308', bg: color.orangeSoft, border: '#f6c3ad' },
+  active: { fg: '#a33308', bg: color.orangeSoft, border: '#fadbcc' },
   /** Done. Green is WhatsApp's on the website; here it doubles as success. */
-  done: { fg: '#14663a', bg: '#e6f5ec', border: '#b6e0c8' },
+  done: { fg: '#14663a', bg: '#e6f5ec', border: '#cceadb' },
   /** Stopped. Never red-on-red alarm; this is information, not a failure. */
-  stopped: { fg: '#7a2f22', bg: '#f7ebe8', border: '#e3c4bd' },
+  stopped: { fg: '#7a2f22', bg: '#f7ebe8', border: '#ecd6d0' },
 } as const;
 
 export type StampTone = keyof typeof stamp;

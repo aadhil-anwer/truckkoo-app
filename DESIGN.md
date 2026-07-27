@@ -7,6 +7,33 @@ same brand as the website.
 900-weight headlines, hairline borders instead of shadows, generous vertical
 section rhythm.
 
+> ### ⚠ The app no longer follows §3 and §4 of this document
+>
+> **This file describes the website, and the website has not changed.** Read it
+> for anything touching `~/truckkoo`, and for the parts the app still inherits:
+> the palette (§1), the type weights (§2), motion (§5), and every accessibility
+> convention (§6) — all still binding everywhere.
+>
+> The **app's** shape, depth and spacing were rebuilt in July 2026 onto Uber's
+> structural skeleton, at the product owner's direction. What changed, and only
+> for `truckkoo-app`:
+>
+> | This document says | The app now does |
+> |---|---|
+> | Depth comes from 1px borders, never shadows | Depth comes from soft shadows and `#f2f2f2` fills; hairlines only divide rows *inside* a surface |
+> | Radii 10 / 12 / 14–16 | Radii 12 / 16 / 20 / 24 |
+> | Spacing scale `6 10 14 18 22 26 34 56` | An 8pt grid: `4 8 12 16 20 24 32 48` |
+> | No icon tiles | One icon family (MaterialCommunityIcons) in circular chips, 24px, via `src/components/icon.tsx` |
+> | Ruled label-over-value form fields | Filled 56pt inputs and picker rows |
+> | — | A bottom tab bar, a pinned CTA per screen, and one 32/900 statement per screen |
+>
+> **The app's system is `src/theme/tokens.ts`**, which is the authority for
+> anything in this repo, and `src/components/{primitives,ui}.tsx`, which are the
+> only places those tokens are assembled into shapes. The two design languages
+> are deliberately allowed to differ: a marketing page read at desk distance and
+> a tool used one-handed in a truck cab are not the same problem. What holds them
+> together is the palette, the weights, and the voice.
+
 ---
 
 ## 1. Color

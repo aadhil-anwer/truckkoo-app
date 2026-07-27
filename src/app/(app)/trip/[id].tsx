@@ -8,24 +8,41 @@
  * delivery is append-only, because a trail that can be edited is not a trail.
  *
  * The two transitions are separate confirmations rather than one screen with a
- * toggle. A driver tapping the wrong thing here creates a dispute with a customer.
+ * toggle. A driver tapping the wrong thing here creates a dispute with a
+ * customer, so the screen asks one question at a time, states it as a question,
+ * and puts the answer under the thumb.
  */
 
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
-import { FactRow, NoteBody, NoteFoot, RoutePair } from '@/components/consignment';
-import { Masthead } from '@/components/masthead';
-import { Body, Button, Note, NoteHead, Stamp, TextButton } from '@/components/primitives';
+import { Icon } from '@/components/icon';
+import { Body, Button, Stamp } from '@/components/primitives';
+import {
+  ActionBar,
+  EmptyState,
+  FactChips,
+  PageTitle,
+  RouteLine,
+  Screen,
+  TopBar,
+} from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { formatWeight, reference } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useMyTrips, useVisibleLoads } from '@/lib/queries';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
-import { color, font, space } from '@/theme/tokens';
+import { color, font, GUTTER, radius, space } from '@/theme/tokens';
 
 export default function TripScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,25 +68,27 @@ export default function TripScreen() {
 
   if (trips.isPending || loads.isPending) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <Screen tone="surface" edges={['top', 'bottom']}>
+        <TopBar onBack={() => router.back()} />
         <View style={styles.center}>
-          <ActivityIndicator color={color.orange} />
+          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
-  // Not found and not-yours are the same thing to the client, because RLS returns
-  // no row either way (SECURITY.md §3).
+  // Not found and not-yours are the same thing to the client, because RLS
+  // returns no row either way (SECURITY.md §3).
   if (!trip || !load) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <Masthead title={t('common.error.title')} />
-        <View style={styles.form}>
-          <Body muted>{t('common.error.explain')}</Body>
-          <Button label={t('common.back')} variant="secondary" onPress={() => router.back()} />
-        </View>
-      </SafeAreaView>
+      <Screen tone="surface" edges={['top', 'bottom']}>
+        <TopBar onBack={() => router.back()} />
+        <EmptyState
+          icon="alert"
+          title={t('common.error.title')}
+          explain={t('common.error.explain')}
+        />
+      </Screen>
     );
   }
 
@@ -133,109 +152,158 @@ export default function TripScreen() {
   const collected = trip.status === 'in_transit';
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <Masthead
-        title={t('trip.title')}
-        action={<TextButton label={t('common.back')} onPress={() => router.back()} />}
+    <Screen tone="surface" edges={['top', 'bottom']}>
+      <TopBar
+        onBack={() => router.back()}
+        action={
+          <Stamp tone="active">
+            {collected ? t('status.in_transit') : t('status.assigned')}
+          </Stamp>
+        }
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* The question is the headline. A driver reads one line here and knows
+            what the screen wants. */}
+        <PageTitle detail={collected ? t('trip.deliver.explain') : t('trip.collect.explain')}>
+          {collected ? t('trip.deliver.title') : t('trip.collect.title')}
+        </PageTitle>
+
         <View style={styles.block}>
-          <Note>
-            <NoteHead
-              left={t('label.load')}
-              right={
-                <Stamp tone="active">
-                  {collected ? t('status.in_transit') : t('status.assigned')}
-                </Stamp>
-              }
+          <View style={styles.panel}>
+            <RouteLine
+              from={cityName(load.origin_city)}
+              to={cityName(load.dest_city)}
+              labelFrom={t('label.from')}
+              labelTo={t('label.to')}
+              compact
             />
-            <NoteBody>
-              <RoutePair
-                from={cityName(load.origin_city)}
-                to={cityName(load.dest_city)}
-                labelFrom={t('label.from')}
-                labelTo={t('label.to')}
-              />
-              <Body>{safeText(load.goods_description)}</Body>
-              <FactRow
-                facts={[
-                  {
-                    label: t('label.weight'),
-                    value: formatWeight(load.weight_kg, t('weight.unset')),
-                  },
-                ]}
-              />
-            </NoteBody>
-            <NoteFoot reference={reference(load.id)} />
-          </Note>
+            <Body>{safeText(load.goods_description)}</Body>
+            <FactChips
+              facts={[
+                {
+                  icon: 'weight',
+                  label: t('label.weight'),
+                  value: formatWeight(load.weight_kg, t('weight.unset')),
+                },
+                { icon: 'reference', label: t('label.reference'), value: reference(load.id) },
+              ]}
+            />
+          </View>
         </View>
 
-        <View style={styles.form}>
-          {!collected ? (
-            <>
-              <Text style={styles.stepTitle}>{t('trip.collect.title')}</Text>
-              <Body muted>{t('trip.collect.explain')}</Body>
-              <Button
-                label={t('trip.collect.action')}
-                onPress={confirmCollected}
-                loading={advance.isPending}
-              />
-            </>
-          ) : (
-            <>
-              <Text style={styles.stepTitle}>{t('trip.deliver.title')}</Text>
-              <Body muted>{t('trip.deliver.explain')}</Body>
-
-              {photoUri && (
-                <Image
-                  source={{ uri: photoUri }}
-                  style={styles.preview}
-                  accessibilityLabel={t('trip.deliver.photo')}
-                />
+        {/* The photo, as a real target rather than a button labelled "photo".
+            A tappable frame is what a camera affordance looks like everywhere
+            else on the phone, and it doubles as the preview. */}
+        {collected && (
+          <View style={styles.block}>
+            <Pressable
+              onPress={takePhoto}
+              disabled={uploading}
+              accessibilityRole="button"
+              accessibilityLabel={photoUri ? t('trip.deliver.retake') : t('trip.deliver.photo')}
+              style={({ pressed }) => [styles.shot, pressed && { opacity: 0.8 }]}
+            >
+              {photoUri ? (
+                <>
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.preview}
+                    accessibilityElementsHidden
+                  />
+                  <View style={styles.retake}>
+                    <Icon name="camera" size={18} color={color.paper} />
+                    <Text style={styles.retakeText}>{t('trip.deliver.retake')}</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.shotEmpty}>
+                  <View style={styles.shotIcon}>
+                    <Icon name="camera" size={28} color={color.paper} />
+                  </View>
+                  <Text style={styles.shotLabel}>{t('trip.deliver.photo')}</Text>
+                </View>
               )}
+            </Pressable>
+          </View>
+        )}
 
-              <Button
-                label={photoUri ? t('trip.deliver.retake') : t('trip.deliver.photo')}
-                variant="secondary"
-                onPress={takePhoto}
-                disabled={uploading}
-              />
-
-              <Button
-                label={uploading ? t('trip.uploading') : t('trip.deliver.action')}
-                onPress={confirmDelivered}
-                loading={uploading || advance.isPending}
-                disabled={!photoUri}
-              />
-            </>
-          )}
-
-          {!!error && (
-            <Text style={styles.error} accessibilityLiveRegion="polite">
-              {error}
-            </Text>
-          )}
-        </View>
+        {!!error && (
+          <Text style={styles.error} accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        )}
       </ScrollView>
-    </SafeAreaView>
+
+      <ActionBar>
+        {!collected ? (
+          <Button
+            label={t('trip.collect.action')}
+            onPress={confirmCollected}
+            loading={advance.isPending}
+          />
+        ) : (
+          <Button
+            label={uploading ? t('trip.uploading') : t('trip.deliver.action')}
+            onPress={confirmDelivered}
+            loading={uploading || advance.isPending}
+            disabled={!photoUri}
+          />
+        )}
+      </ActionBar>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.paper },
-  scroll: { paddingBottom: space.huge },
+  scroll: { paddingBottom: space.xl, gap: space.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  block: { paddingHorizontal: space.xl, paddingTop: space.xl },
-  form: { paddingHorizontal: space.xl, paddingTop: space.xxl, gap: space.md },
-  stepTitle: { ...font.title, color: color.ink, textAlign: align.start },
-  preview: {
+  block: { paddingHorizontal: GUTTER },
+
+  panel: {
+    backgroundColor: color.paperDeep,
+    borderRadius: radius.card,
+    padding: space.lg,
+    gap: space.md,
+  },
+
+  shot: {
     width: '100%',
     aspectRatio: 4 / 3,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.paperDeep,
+    borderRadius: radius.card,
+    backgroundColor: color.fill,
+    overflow: 'hidden',
+    justifyContent: 'center',
   },
-  error: { ...font.bodySmall, color: color.danger, textAlign: align.start },
+  shotEmpty: { alignItems: 'center', gap: space.md },
+  shotIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    backgroundColor: color.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shotLabel: { ...font.section, color: color.ink },
+  preview: { width: '100%', height: '100%' },
+  retake: {
+    position: 'absolute',
+    bottom: space.md,
+    insetInlineStart: space.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(11,11,11,0.78)',
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  retakeText: { ...font.smallPrint, fontWeight: '700', color: color.paper },
+
+  error: {
+    ...font.bodySmall,
+    color: color.danger,
+    textAlign: align.start,
+    paddingHorizontal: GUTTER,
+  },
 });

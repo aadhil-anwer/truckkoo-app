@@ -17,15 +17,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Masthead } from '@/components/masthead';
-import { Body, Button } from '@/components/primitives';
+import { Button } from '@/components/primitives';
+import { ActionBar, EmptyState, Screen } from '@/components/ui';
 import { t } from '@/i18n';
 import { completeEmailConfirmation } from '@/lib/auth';
-import { color, space } from '@/theme/tokens';
+import { color, font, space } from '@/theme/tokens';
 
 export default function ConfirmEmail() {
   const router = useRouter();
@@ -51,31 +50,31 @@ export default function ConfirmEmail() {
     });
   }, [code, router]);
 
+  if (error) {
+    return (
+      <Screen tone="surface" edges={['top', 'bottom']}>
+        <View style={styles.flex}>
+          <EmptyState icon="alert" title={t('auth.confirm.title')} explain={error} />
+        </View>
+        <ActionBar>
+          <Button label={t('auth.submit.signIn')} onPress={() => router.replace('/sign-in')} />
+        </ActionBar>
+      </Screen>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <Masthead title={t('auth.confirm.title')} />
-      <View style={styles.form}>
-        {error ? (
-          <>
-            <Body muted>{error}</Body>
-            <Button
-              label={t('auth.submit.signIn')}
-              variant="secondary"
-              onPress={() => router.replace('/sign-in')}
-            />
-          </>
-        ) : (
-          <>
-            <ActivityIndicator color={color.orange} />
-            <Body muted>{t('auth.confirm.working')}</Body>
-          </>
-        )}
+    <Screen tone="surface" edges={['top', 'bottom']}>
+      <View style={styles.busy} accessibilityLiveRegion="polite">
+        <ActivityIndicator color={color.orange} />
+        <Text style={styles.working}>{t('auth.confirm.working')}</Text>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.paper },
-  form: { paddingHorizontal: space.xl, paddingTop: space.xxl, gap: space.md, alignItems: 'flex-start' },
+  flex: { flex: 1, justifyContent: 'center' },
+  busy: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
+  working: { ...font.body, color: color.inkSoft },
 });

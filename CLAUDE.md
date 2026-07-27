@@ -91,15 +91,47 @@ a justification.
 
 ## Design
 
-`DESIGN.md` is derived from the **website**, so it describes web CSS. Native
-tokens live in `src/theme/tokens.ts`. The four load-bearing decisions:
+`DESIGN.md` is derived from the **website**, so it describes web CSS *and it
+still describes the website only*. The app's system is `src/theme/tokens.ts`,
+assembled into shapes in `src/components/primitives.tsx` (controls) and
+`src/components/ui.tsx` (layout). Nothing else may invent a shape.
 
-- one orange accent (`#f1551f`), everything else black and white
-- weight-900 tight headlines
-- **hairline 1px borders instead of shadows** — depth comes from borders
+**The app's skeleton is Uber's, by explicit decision (July 2026).** The palette
+and the voice stayed ours; the placement, hierarchy and density did not. What is
+load-bearing now:
+
+- one orange accent (`#f1551f`) — **the pinned primary action and the live state,
+  and nothing else**. Never two oranges on a screen. Tab bars, selected states
+  and headlines are ink.
+- weight-900 tight headlines, and **one 32/900 statement per screen**, never two
+- **depth from soft shadow and `#f2f2f2` fills.** This reverses DESIGN.md §3 —
+  hairlines now only divide rows *inside* a surface. On a phone a 1px rule at
+  arm's length is invisible and gives a tappable area no bounds.
+- an **8pt grid** (`space` in tokens) and a 20px screen gutter, everywhere
+- **one pinned `ActionBar` per screen**, at the thumb. A CTA below the fold does
+  not exist to someone who has never scrolled a page on purpose.
+- one icon family, reached only through `src/components/icon.tsx`, which names
+  *things* (`pickup`, `truck`, `pay`) rather than glyphs and mirrors directional
+  icons under RTL
 - light and dark surfaces each carry their own card/border/muted triple; never
   reuse a light-mode border on dark, and never `#f1551f` as text on dark (use
   `#ff7a4d`)
+
+**`font.button` stays at 19/900.** It is not taste. White on `#f1551f` is
+3.47:1, so the label only clears AA by qualifying as large text, whose bold
+threshold is 18.66px. `tests/unit/contrast.test.ts` computes this from the
+tokens — change a colour or a size and it tells you what you did.
+
+The **ops console screens keep the old document treatment** (`masthead.tsx`,
+`consignment.tsx`). They were not part of the rewire, they are still tested, and
+a dispatcher is the one user of this app who is not low-tech. Do not restyle them
+in passing.
+
+**Navigation is a bottom tab bar** (`src/app/(app)/(tabs)/`), role-aware. Tabs are
+hidden with `tabBarItemStyle: {display:'none'}`, **not** expo-router's `href:
+null` shortcut — expo-router consumes `href` before descriptors are built, so a
+custom `tabBar` never sees it and renders every hidden tab. That shipped once.
+`tests/components/tab-bar.test.tsx` is what stops it returning.
 
 Voice: confident, plainspoken, operator-grade. **Specifics beat adjectives** —
 tonnages, city names, and "no brokers" outperform "world-class solutions".

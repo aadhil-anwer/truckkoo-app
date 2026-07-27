@@ -1,0 +1,200 @@
+/**
+ * Shared harness for the screen integration tests.
+ *
+ * Extracted when the two home screens became six. Every screen mocks the same
+ * query layer against the same two cities and the same load, so keeping that in
+ * one place is what stops `shipper-screens` and `driver-screens` from drifting
+ * into disagreeing about what a load looks like.
+ *
+ * This file is imported for its side effects — the `jest.mock` calls below are
+ * hoisted into whichever test file imports it, which is the only way to mock a
+ * module for a test that also imports the screen under test.
+ */
+
+import type { City, Load, TruckType } from '@/lib/queries';
+
+/**
+ * An explicit safe-area mock rather than the library's shipped one.
+ *
+ * `react-native-safe-area-context/jest/mock` is a `export default {...}` module,
+ * so a factory returning it hands back `{ default: ... }` and every named import
+ * — `SafeAreaView` included — resolves to `undefined`. React then fails with
+ * "Element type is invalid", pointing at the screen rather than at the mock.
+ *
+ * `SafeAreaView` becomes a plain View: insets are zero under test, and what these
+ * tests assert is content, not padding.
+ */
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const insets = { top: 0, bottom: 0, left: 0, right: 0 };
+  const frame = { x: 0, y: 0, width: 320, height: 640 };
+
+  return {
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(View, null, children),
+    SafeAreaView: ({ children, ...rest }: { children?: React.ReactNode }) =>
+      React.createElement(View, rest, children),
+    SafeAreaInsetsContext: React.createContext(insets),
+    SafeAreaFrameContext: React.createContext(frame),
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => frame,
+    initialWindowMetrics: { insets, frame },
+  };
+});
+
+// The `mock` prefix is required, not stylistic: `jest.mock` factories are hoisted
+// above these declarations, so Jest rejects any out-of-scope reference that is not
+// prefixed `mock` — the guard against reading an uninitialised variable.
+export const mockPush = jest.fn();
+export const mockReplace = jest.fn();
+export const mockBack = jest.fn();
+export const mockRespondMutate = jest.fn();
+export const mockQuoteMutate = jest.fn();
+/** Mutable so a detail-screen test can say which load it opened. */
+export const mockParams: { current: Record<string, string> } = { current: {} };
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: mockReplace,
+    back: mockBack,
+  }),
+  useLocalSearchParams: () => mockParams.current,
+  Redirect: () => null,
+  Link: () => null,
+}));
+
+jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
+
+jest.mock('@/lib/session', () => ({
+  useSession: () => ({
+    session: { user: { id: 'u1' } },
+    profile: { id: 'u1', role: 'shipper', full_name: 'Aisha Trading', phone: null },
+    loading: false,
+    refreshProfile: jest.fn(),
+  }),
+}));
+
+jest.mock('@/lib/queries', () => {
+  const actual = jest.requireActual('@/lib/queries');
+  return {
+    ...actual,
+    useCities: jest.fn(),
+    useTruckTypes: jest.fn(),
+    useMyLoads: jest.fn(),
+    useMyLegs: jest.fn(),
+    useMyOffers: jest.fn(),
+    useMyTrips: jest.fn(),
+    useVisibleLoads: jest.fn(),
+    useRespondToOffer: jest.fn(),
+    // The shipper's view of who is carrying the load. Mocked like the rest —
+    // unmocked they call the real `useQuery`, which needs a QueryClientProvider
+    // this harness deliberately does not build.
+    useTripCounterpart: jest.fn(),
+    useTripTruck: jest.fn(),
+    useTripEvents: jest.fn(),
+    usePodUrl: jest.fn(),
+    // The price. Same reason as the four above.
+    useCurrentQuote: jest.fn(),
+    useQuoteLoad: jest.fn(),
+  };
+});
+
+/* ─── fixtures ───────────────────────────────────────────────────────────── */
+
+/** A resolved react-query result. */
+export function ok<T>(data: T) {
+  return { data, isPending: false, isError: false, isRefetching: false, refetch: jest.fn() };
+}
+export const PENDING = {
+  data: undefined,
+  isPending: true,
+  isError: false,
+  isRefetching: false,
+  refetch: jest.fn(),
+};
+export const FAILED = {
+  data: undefined,
+  isPending: false,
+  isError: true,
+  isRefetching: false,
+  refetch: jest.fn(),
+};
+
+export const MUSCAT: City = {
+  id: 1,
+  name_en: 'Muscat',
+  name_ar: 'مسقط',
+  country: 'OM',
+  corridor: 'Muscat',
+};
+export const SALALAH: City = {
+  id: 2,
+  name_en: 'Salalah',
+  name_ar: 'صلالة',
+  country: 'OM',
+  corridor: 'Dhofar',
+};
+
+export const TRUCK = {
+  code: '10t',
+  name_en: '10-ton truck',
+  name_ar: 'شاحنة ١٠ طن',
+  description_en: 'Commercial freight',
+} as TruckType;
+
+export const LOAD_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+export function load(over: Partial<Load> = {}): Load {
+  return {
+    id: LOAD_ID,
+    origin_city: 1,
+    dest_city: 2,
+    pickup_from: '2026-08-01',
+    pickup_to: '2026-08-01',
+    goods_description: 'Building materials',
+    weight_kg: 8000,
+    truck_type_code: '10t',
+    status: 'posted',
+    ...over,
+  } as Load;
+}
+
+/**
+ * The default world: two cities, one truck type, nothing owned by anyone.
+ * Call from `beforeEach`, then override the one hook the test is about.
+ */
+export function resetQueries(queries: Record<string, unknown>) {
+  const m = (name: string) => queries[name] as jest.Mock;
+
+  mockRespondMutate.mockReset();
+  mockParams.current = {};
+
+  m('useCities').mockReturnValue(ok([MUSCAT, SALALAH]));
+  m('useTruckTypes').mockReturnValue(ok([TRUCK]));
+  m('useMyLoads').mockReturnValue(ok([]));
+  m('useMyLegs').mockReturnValue(ok([]));
+  m('useMyOffers').mockReturnValue(ok([]));
+  m('useMyTrips').mockReturnValue(ok([]));
+  m('useVisibleLoads').mockReturnValue(ok([]));
+  m('useRespondToOffer').mockReturnValue({
+    mutate: mockRespondMutate,
+    isPending: false,
+    variables: undefined,
+  });
+
+  // Default: no trip yet, so a posted load shows none of the carrier detail.
+  m('useTripCounterpart').mockReturnValue(ok(null));
+  m('useTripTruck').mockReturnValue(ok(null));
+  m('useTripEvents').mockReturnValue(ok([]));
+  m('usePodUrl').mockReturnValue(ok(null));
+
+  // Default: no quote yet, which is what a just-posted load looks like.
+  m('useCurrentQuote').mockReturnValue(ok(null));
+  m('useQuoteLoad').mockReturnValue({
+    mutate: mockQuoteMutate,
+    isPending: false,
+    isError: false,
+  });
+}

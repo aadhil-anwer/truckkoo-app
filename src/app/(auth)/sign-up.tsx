@@ -6,8 +6,10 @@
  *   3. details   — name, phone, and for drivers, their truck
  *
  * Stepped, not a wizard with chrome: one question per screen is the governing
- * constraint for this audience (PRODUCT.md), and the step counter is a document
- * field, not a progress bar.
+ * constraint for this audience (PRODUCT.md). It now carries the same furniture
+ * as the two posting flows — back chevron, step counter, one big question, one
+ * pinned action — so a user who has signed up has already learned how to post a
+ * load.
  *
  * A user who already has a session but no profile row lands directly on step 2 —
  * which is exactly what happens after an OAuth signup.
@@ -23,21 +25,21 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Link } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
-import { Masthead } from '@/components/masthead';
-import { Body, Button, Choice, Field, Input, Rule } from '@/components/primitives';
+import { Body, Button, Choice, Field, Input, TextButton } from '@/components/primitives';
+import { ActionBar, PageTitle, Screen, TopBar } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { createProfile, createTruck, signUpWithEmail } from '@/lib/auth';
 import { useTruckTypes } from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { color, font, space } from '@/theme/tokens';
+import { color, font, GUTTER, space } from '@/theme/tokens';
 
 type Step = 'account' | 'role' | 'details';
 type Role = 'shipper' | 'driver';
 
 export default function SignUp() {
+  const router = useRouter();
   const { session, refreshProfile } = useSession();
 
   const {
@@ -71,7 +73,6 @@ export default function SignUp() {
   const [truckType, setTruckType] = useState<string | null>(null);
   const [truckError, setTruckError] = useState<string | null>(null);
   const [plate, setPlate] = useState('');
-
 
   async function submitAccount() {
     setFormError(null);
@@ -160,30 +161,53 @@ export default function SignUp() {
     setBusy(false);
   }
 
+  function back() {
+    if (step === 'details') return setStep('role');
+    // Step 2 cannot go back to step 1: the account already exists by then, and
+    // offering a "back" that cannot undo it would be a lie.
+    if (step === 'role') return;
+    router.back();
+  }
+
   const stepIndex = step === 'account' ? 1 : step === 'role' ? 2 : 3;
+  const title =
+    step === 'account'
+      ? t('auth.signUp.title')
+      : step === 'role'
+        ? t('auth.role.title')
+        : role === 'driver'
+          ? t('auth.truck.title')
+          : t('auth.name');
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <Screen tone="surface" edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Masthead
-            title={
-              step === 'account'
-                ? t('auth.signUp.title')
-                : step === 'role'
-                  ? t('auth.role.title')
-                  : role === 'driver'
-                    ? t('auth.truck.title')
-                    : t('auth.name')
+        <TopBar
+          onBack={step === 'role' ? undefined : back}
+          action={<Text style={styles.stepMark}>{`${stepIndex} ${t('step.of')} 3`}</Text>}
+        />
+
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <PageTitle
+            detail={
+              step === 'role'
+                ? t('auth.role.help')
+                : step === 'details' && role === 'driver'
+                  ? t('auth.truck.help')
+                  : undefined
             }
-          />
+          >
+            {title}
+          </PageTitle>
 
           <View style={styles.form}>
-            <Text style={styles.stepMark}>{`STEP ${stepIndex} / 3`}</Text>
-
             {step === 'account' && (
               <>
                 <Field label={t('auth.email')}>
@@ -220,39 +244,34 @@ export default function SignUp() {
                   </Text>
                 )}
 
-                <Button
-                  label={t('auth.submit.signUp')}
-                  onPress={submitAccount}
-                  loading={busy}
-                />
-
-                <Link href="/sign-in" style={styles.switch}>
-                  <Text style={styles.switchText}>{t('auth.toSignIn')}</Text>
-                </Link>
+                <View style={styles.switch}>
+                  <Body muted>{t('auth.toSignIn')}</Body>
+                  <TextButton
+                    label={t('auth.submit.signIn')}
+                    align="center"
+                    onPress={() => router.push('/sign-in')}
+                  />
+                </View>
               </>
             )}
 
             {step === 'role' && (
-              <>
-                <Body muted>{t('auth.role.help')}</Body>
-
-                <View style={styles.choices} accessibilityRole="radiogroup">
-                  <Choice
-                    title={t('auth.role.shipper.title')}
-                    detail={t('auth.role.shipper.detail')}
-                    selected={role === 'shipper'}
-                    onPress={() => setRole('shipper')}
-                  />
-                  <Choice
-                    title={t('auth.role.driver.title')}
-                    detail={t('auth.role.driver.detail')}
-                    selected={role === 'driver'}
-                    onPress={() => setRole('driver')}
-                  />
-                </View>
-
-                <Button label={t('auth.submit.signUp')} onPress={submitRole} />
-              </>
+              <View style={styles.choices} accessibilityRole="radiogroup">
+                <Choice
+                  title={t('auth.role.shipper.title')}
+                  detail={t('auth.role.shipper.detail')}
+                  icon="loads"
+                  selected={role === 'shipper'}
+                  onPress={() => setRole('shipper')}
+                />
+                <Choice
+                  title={t('auth.role.driver.title')}
+                  detail={t('auth.role.driver.detail')}
+                  icon="truck"
+                  selected={role === 'driver'}
+                  onPress={() => setRole('driver')}
+                />
+              </View>
             )}
 
             {step === 'details' && (
@@ -282,20 +301,12 @@ export default function SignUp() {
 
                 {role === 'driver' && (
                   <>
-                    <View style={styles.sectionRule}>
-                      <Rule />
-                    </View>
-
-                    <Body muted>{t('auth.truck.help')}</Body>
-
                     {/* Never render an empty radiogroup next to a rule that
                         demands a choice from it. This step asked for a truck size
                         with nothing to pick for anyone whose reference-data fetch
                         had failed — an unsatisfiable form at the last step of
                         creating an account, which is the worst place in the
-                        product to strand someone. A driver on a bad connection
-                        can still reach these states, so each one says what it is
-                        and offers the way out. */}
+                        product to strand someone. */}
                     {truckTypesPending ? (
                       <View style={styles.choicesBusy}>
                         <ActivityIndicator color={color.orange} />
@@ -319,6 +330,7 @@ export default function SignUp() {
                             key={tt.code}
                             title={localized({ name_en: tt.name_en, name_ar: tt.name_ar })}
                             detail={tt.description_en ?? undefined}
+                            icon="truck"
                             selected={truckType === tt.code}
                             onPress={() => setTruckType(tt.code)}
                           />
@@ -342,12 +354,6 @@ export default function SignUp() {
                     </Field>
                   </>
                 )}
-
-                <Button
-                  label={t('auth.submit.signUp')}
-                  onPress={submitDetails}
-                  loading={busy}
-                />
               </>
             )}
 
@@ -358,31 +364,32 @@ export default function SignUp() {
             )}
           </View>
         </ScrollView>
+
+        <ActionBar>
+          <Button
+            label={step === 'details' ? t('auth.submit.signUp') : t('common.next')}
+            loading={busy}
+            onPress={
+              step === 'account' ? submitAccount : step === 'role' ? submitRole : submitDetails
+            }
+          />
+        </ActionBar>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.paper },
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingBottom: space.xxxl },
-  form: { paddingHorizontal: space.xl, paddingTop: space.lg, gap: space.lg },
-  stepMark: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
-    color: color.inkSoft,
-    textAlign: align.start,
-  },
+  scroll: { flexGrow: 1, paddingBottom: space.xl },
+  form: { paddingHorizontal: GUTTER, gap: space.lg },
+  stepMark: { ...font.label, color: color.inkSoft },
   choices: { gap: space.sm },
   // Reserves roughly the height the options would occupy, so the step does not
   // jump under the reader's thumb when they arrive.
-  choicesBusy: { minHeight: 88, alignItems: 'center', justifyContent: 'center' },
-  sectionRule: { paddingVertical: space.xs },
-  help: { ...font.smallPrint, color: color.inkSoft, textAlign: align.start, marginTop: -space.sm },
+  choicesBusy: { minHeight: 140, alignItems: 'center', justifyContent: 'center' },
+  help: { ...font.smallPrint, color: color.inkSoft, textAlign: align.start, marginTop: -space.md },
   notice: { ...font.bodySmall, color: color.ink, textAlign: align.start },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
-  switch: { paddingVertical: space.md, alignSelf: 'center' },
-  switchText: { ...font.label, color: color.orange, textAlign: 'center' },
+  switch: { alignItems: 'center', paddingTop: space.sm },
 });

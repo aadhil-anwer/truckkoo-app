@@ -14,13 +14,12 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Masthead } from '@/components/masthead';
-import { Body, Button, Field, Input } from '@/components/primitives';
+import { Button, Field, Input } from '@/components/primitives';
+import { ActionBar, EmptyState, PageTitle, Screen } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { completePasswordReset } from '@/lib/auth';
-import { color, font, space } from '@/theme/tokens';
+import { color, font, GUTTER, space } from '@/theme/tokens';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -56,32 +55,35 @@ export default function ResetPassword() {
 
   if (!code) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <Masthead title={t('auth.reset.title')} />
-        <View style={styles.form}>
-          <Body muted>{t('auth.reset.invalid')}</Body>
-          <Button
-            label={t('auth.submit.signIn')}
-            variant="secondary"
-            onPress={() => router.replace('/sign-in')}
+      <Screen tone="surface" edges={['top', 'bottom']}>
+        <View style={styles.flex}>
+          <EmptyState
+            icon="alert"
+            title={t('auth.reset.title')}
+            explain={t('auth.reset.invalid')}
           />
         </View>
-      </SafeAreaView>
+        <ActionBar>
+          <Button label={t('auth.submit.signIn')} onPress={() => router.replace('/sign-in')} />
+        </ActionBar>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <Screen tone="surface" edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Masthead title={t('auth.reset.title')} />
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <PageTitle detail={t('auth.reset.explain')}>{t('auth.reset.title')}</PageTitle>
 
           <View style={styles.form}>
-            <Body muted>{t('auth.reset.explain')}</Body>
-
             <Field label={t('auth.reset.password')}>
               <Input
                 value={password}
@@ -102,19 +104,20 @@ export default function ResetPassword() {
                 {formError}
               </Text>
             )}
-
-            <Button label={t('auth.reset.submit')} onPress={onSubmit} loading={busy} />
           </View>
         </ScrollView>
+
+        <ActionBar>
+          <Button label={t('auth.reset.submit')} onPress={onSubmit} loading={busy} />
+        </ActionBar>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.paper },
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingBottom: space.xxxl },
-  form: { paddingHorizontal: space.xl, paddingTop: space.xl, gap: space.lg },
+  scroll: { flexGrow: 1, paddingBottom: space.xl },
+  form: { paddingHorizontal: GUTTER, gap: space.lg },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
 });

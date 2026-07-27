@@ -143,14 +143,63 @@ const en = {
   "driver.advance.pickedUp": "I have collected it",
   "driver.advance.delivered": "Mark delivered",
 
-  // ── the book ──────────────────────────────────────────────────────────────
-  // The two home screens are a docket book: tabbed sections, one sheet per page.
-  "book.sheet": "Sheet",
-  "book.tab.trip": "Trip",
-  "book.tab.offers": "Offers",
-  "book.tab.routes": "Routes",
-  "book.tab.live": "Moving now",
-  "book.tab.record": "Record",
+  // ── navigation ────────────────────────────────────────────────────────────
+  // Bottom tab labels. One word each, because the label sits under a 24px icon
+  // at 11px and a second word wraps or truncates on a narrow phone. "Home" is
+  // deliberately the same word for both roles — it is the same idea.
+  "tab.home": "Home",
+  "tab.loads": "Loads",
+  "tab.offers": "Offers",
+  "tab.routes": "Routes",
+  "tab.account": "Account",
+
+  // ── shipper home ──────────────────────────────────────────────────────────
+  // The whole screen is one question. Everything else on it is either the answer
+  // to a previous asking of that question, or a shortcut to asking it again.
+  "home.hello": "Hello",
+  "home.entry": "Where to?",
+  "home.entry.hint": "Tell us pickup and delivery — we find the truck",
+  "home.live": "Moving now",
+  "home.again": "Send it again",
+  "home.again.hint": "A route you have used before",
+  "home.seeAll": "See all",
+
+  // ── the loads tab ─────────────────────────────────────────────────────────
+  "loads.title": "Your loads",
+  "loads.seg.live": "Moving",
+  "loads.seg.past": "Finished",
+
+  // ── the driver's tabs ─────────────────────────────────────────────────────
+  "offers.title": "Offered to you",
+  "offers.hint": "Only loads that sit on a route you added",
+  "routes.title": "Your routes",
+  "routes.hint": "We match loads to these",
+  "driver.trip.title": "Your trip",
+  "driver.trip.next": "Next step",
+
+  // ── account ───────────────────────────────────────────────────────────────
+  // The one screen that is genuinely about the person rather than the freight.
+  // It states only what the profile row actually holds — no tier, no rating, no
+  // member-since. PRODUCT.md forbids inventing any of them.
+  "account.title": "Account",
+  "account.role.shipper": "You send cargo",
+  "account.role.driver": "You drive a truck",
+  "account.details": "Your details",
+  "account.help": "Get help",
+  "account.help.detail": "We reply in minutes, 7 days a week",
+  "account.language": "Language",
+  "account.language.hint": "Restart the app after changing this",
+
+  // ── stepped flows ─────────────────────────────────────────────────────────
+  // Both posting flows are now a sequence of one-question screens with a pinned
+  // action, rather than one long scroll. Each step needs its own title, because
+  // the title IS the question.
+  "common.next": "Next",
+  "step.route": "Where is it going?",
+  "step.route.hint": "Pickup first, then delivery",
+  "step.details": "What are we moving?",
+  "step.details.hint": "A rough answer is fine — we will confirm it with you",
+  "step.of": "of",
 
   "driver.routes.title": "Routes you have declared",
   "driver.routes.none.title": "No routes declared",

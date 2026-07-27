@@ -1,6 +1,12 @@
 /**
  * Sign in. Email and password, plus Google and Apple.
  *
+ * The screen leads with the brand and one sentence, then two fields, then the
+ * action pinned at the thumb — the shape every consumer app opens with, because
+ * it is the shape people have already learned. The old version put the submit
+ * button in the middle of a scroll between the password field and the OAuth
+ * pair, where it competed with two identical-looking buttons beneath it.
+ *
  * The OAuth buttons call the real `signInWithOAuth` flow — they are not stubs.
  * If the provider is not yet enabled in the Supabase dashboard, Supabase returns
  * an error and we say so in plain words rather than failing silently.
@@ -8,16 +14,16 @@
 
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Link } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
-import { Masthead } from '@/components/masthead';
-import { Body, Button, Field, Input, Rule, TextButton } from '@/components/primitives';
+import { Body, Button, Field, Input, TextButton } from '@/components/primitives';
+import { PageTitle, Screen } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { sendPasswordReset, signInWithEmail, signInWithProvider } from '@/lib/auth';
-import { color, font, space } from '@/theme/tokens';
+import { color, font, GUTTER, space } from '@/theme/tokens';
 
 export default function SignIn() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<null | 'email' | 'google' | 'apple'>(null);
@@ -69,7 +75,7 @@ export default function SignIn() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <Screen tone="surface" edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -77,12 +83,15 @@ export default function SignIn() {
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Masthead title={t('auth.signIn.title')} />
+          <View style={styles.brandWrap}>
+            <Text style={styles.brand}>{t('app.name').toUpperCase()}</Text>
+          </View>
+
+          <PageTitle detail={t('app.positioning')}>{t('auth.signIn.title')}</PageTitle>
 
           <View style={styles.form}>
-            <Body muted>{t('app.positioning')}</Body>
-
             <Field label={t('auth.email')}>
               <Input
                 value={email}
@@ -134,13 +143,9 @@ export default function SignIn() {
             />
 
             <View style={styles.orRow}>
-              <View style={styles.orRule}>
-                <Rule />
-              </View>
+              <View style={styles.orRule} />
               <Text style={styles.orText}>{t('auth.or').toUpperCase()}</Text>
-              <View style={styles.orRule}>
-                <Rule />
-              </View>
+              <View style={styles.orRule} />
             </View>
 
             <Button
@@ -161,31 +166,31 @@ export default function SignIn() {
               disabled={!!busy && busy !== 'apple'}
             />
 
-            <Link href="/sign-up" style={styles.switch}>
-              <Text style={styles.switchText}>{t('auth.toSignUp')}</Text>
-            </Link>
+            <View style={styles.switch}>
+              <Body muted>{t('auth.toSignUp')}</Body>
+              <TextButton
+                label={t('auth.submit.signUp')}
+                align="center"
+                onPress={() => router.push('/sign-up')}
+              />
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: color.paper },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: space.xxxl },
-  form: { paddingHorizontal: space.xl, paddingTop: space.xl, gap: space.lg },
+  brandWrap: { paddingHorizontal: GUTTER, paddingTop: space.lg },
+  brand: { fontSize: 13, fontWeight: '900', letterSpacing: 3, color: color.orange },
+  form: { paddingHorizontal: GUTTER, gap: space.lg },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
   notice: { ...font.bodySmall, color: color.inkSoft, textAlign: align.start },
-  orRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.xs,
-  },
-  orRule: { flex: 1 },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
+  orRule: { flex: 1, height: 1, backgroundColor: color.line },
   orText: { ...font.smallPrint, color: color.inkSoft, letterSpacing: 1.6 },
-  switch: { paddingVertical: space.md, alignSelf: 'center' },
-  switchText: { ...font.label, color: color.orange, textAlign: 'center' },
+  switch: { alignItems: 'center', paddingTop: space.sm },
 });

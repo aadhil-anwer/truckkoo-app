@@ -4,11 +4,12 @@
  * A full-screen sheet is the deliberate choice here, not laziness: 46 cities will
  * not fit inline, a wheel picker is unreadable in a moving cab, and a native
  * `<select>` has no RN equivalent worth having. One sheet used for every choice
- * means the control vocabulary never drifts between screens (operate.md).
+ * means the control vocabulary never drifts between screens.
  *
- * The closed state is a ruled row that reads as a form field being filled in —
- * the same label-over-rule pair as a text input, so a filled picker and a filled
- * text field look like the same document.
+ * The closed state is now a filled row with a leading icon — the same shape as
+ * `ListRow` and the same shape as `Input`, so a form reads as one kind of thing.
+ * It used to be a ruled line, which gave a 44pt-tall target no visible bounds:
+ * on a phone you were aiming at a 1px rule with a gloved thumb.
  */
 
 import { useMemo, useState } from 'react';
@@ -25,9 +26,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { align, t } from '@/i18n';
 import { formatLongDay, isoToday } from '@/lib/format';
-import { color, doc, font, MIN_TARGET, space } from '@/theme/tokens';
+import {
+  color,
+  CTA_HEIGHT,
+  doc,
+  font,
+  GUTTER,
+  HIT_SLOP,
+  MIN_TARGET,
+  radius,
+  space,
+} from '@/theme/tokens';
 
-import { Rule } from './primitives';
+import { Icon, type IconName } from './icon';
 
 /**
  * The next N days as picker choices.
@@ -75,6 +86,8 @@ type Props = {
   error?: string | null;
   /** Title of the open sheet. Defaults to the field label. */
   sheetTitle?: string;
+  /** Leading icon on the closed row. What the field is *about*, not decoration. */
+  icon?: IconName;
 };
 
 export function PickerField({
@@ -86,6 +99,7 @@ export function PickerField({
   searchable = false,
   error,
   sheetTitle,
+  icon,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -111,7 +125,7 @@ export function PickerField({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label.toUpperCase()}</Text>
+      <Text style={styles.fieldLabel}>{label}</Text>
 
       <Pressable
         onPress={() => setOpen(true)}
@@ -120,20 +134,21 @@ export function PickerField({
         style={({ pressed }) => [
           styles.row,
           !!error && styles.rowError,
-          pressed && { backgroundColor: color.paperDeep },
+          pressed && { backgroundColor: color.fillPress },
         ]}
       >
+        {!!icon && (
+          <View style={styles.rowIcon}>
+            <Icon name={icon} size={20} color={selected ? color.ink : color.inkSoft} />
+          </View>
+        )}
         <Text
           style={[styles.rowValue, !selected && { color: color.inkSoft }]}
           numberOfLines={1}
         >
           {selected ? selected.label : placeholder}
         </Text>
-        {/* A chevron drawn from type, not an icon dependency. Mirrors in RTL
-            because the glyph itself is direction-neutral in this rotation. */}
-        <Text style={styles.chevron} accessibilityElementsHidden>
-          ▾
-        </Text>
+        <Icon name="chevron" size={20} color={color.inkFaint} />
       </Pressable>
 
       {!!error && (
@@ -151,44 +166,41 @@ export function PickerField({
         <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
           <View style={styles.sheetHead}>
             <Text style={styles.sheetTitle} numberOfLines={1}>
-              {(sheetTitle ?? label).toUpperCase()}
+              {sheetTitle ?? label}
             </Text>
             <Pressable
               onPress={close}
               accessibilityRole="button"
               accessibilityLabel={t('common.close')}
               style={styles.sheetClose}
-              hitSlop={12}
+              hitSlop={HIT_SLOP}
             >
-              <Text style={styles.sheetCloseText}>{t('common.close')}</Text>
+              <Icon name="close" size={22} color={color.ink} />
             </Pressable>
           </View>
-          <Rule strong />
 
           {searchable && (
-            <>
-              <View style={styles.searchWrap}>
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder={t('common.search')}
-                  placeholderTextColor={color.inkSoft}
-                  style={[styles.search, { textAlign: align.start }]}
-                  autoCorrect={false}
-                  autoFocus
-                  returnKeyType="search"
-                  clearButtonMode="while-editing"
-                />
-              </View>
-              <Rule />
-            </>
+            <View style={styles.searchWrap}>
+              <Icon name="search" size={20} color={color.inkSoft} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t('common.search')}
+                placeholderTextColor={color.inkSoft}
+                style={[styles.search, { textAlign: align.start }]}
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+            </View>
           )}
 
           <FlatList
             data={filtered}
             keyExtractor={(o) => o.value}
             keyboardShouldPersistTaps="handled"
-            ItemSeparatorComponent={Rule}
+            contentContainerStyle={styles.list}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyText}>{t('common.noMatches')}</Text>
@@ -215,20 +227,22 @@ export function PickerField({
                     accessibilityState={{ selected: isSelected }}
                     style={({ pressed }) => [
                       styles.option,
-                      pressed && { backgroundColor: color.paperDeep },
-                      isSelected && { backgroundColor: color.orangeSoft },
+                      pressed && { backgroundColor: color.fill },
                     ]}
                   >
                     <View style={styles.optionText}>
-                      <Text
-                        style={[styles.optionLabel, isSelected && { color: color.orangeDeep }]}
-                      >
+                      <Text style={styles.optionLabel} numberOfLines={1}>
                         {item.label}
                       </Text>
-                      {!!item.detail && <Text style={styles.optionDetail}>{item.detail}</Text>}
+                      {!!item.detail && (
+                        <Text style={styles.optionDetail} numberOfLines={1}>
+                          {item.detail}
+                        </Text>
+                      )}
                     </View>
-                    {isSelected && <Text style={styles.tick}>●</Text>}
+                    {isSelected && <Icon name="check" size={22} color={color.orange} />}
                   </Pressable>
+                  <View style={styles.optionDivider} />
                 </>
               );
             }}
@@ -240,22 +254,25 @@ export function PickerField({
 }
 
 const styles = StyleSheet.create({
-  field: { gap: 4 },
-  fieldLabel: { ...doc.fieldLabel, color: color.inkSoft, textAlign: align.start },
+  field: { gap: space.sm },
+  fieldLabel: { ...font.label, color: color.ink, textAlign: align.start },
 
   row: {
-    minHeight: MIN_TARGET,
+    minHeight: CTA_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
-    paddingVertical: space.sm,
-    borderBottomWidth: doc.ruleStrong,
-    borderBottomColor: color.line,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    backgroundColor: color.fill,
+    borderRadius: radius.control,
+    borderWidth: doc.ruleStrong,
+    borderColor: 'transparent',
   },
-  rowError: { borderBottomColor: color.danger },
-  rowValue: { ...doc.fieldValue, color: color.ink, flex: 1, textAlign: align.start },
-  chevron: { fontSize: 14, color: color.inkSoft },
-  errorText: { ...font.smallPrint, color: color.danger, marginTop: 6, textAlign: align.start },
+  rowError: { borderColor: color.danger },
+  rowIcon: { width: 24, alignItems: 'center' },
+  rowValue: { ...font.body, fontWeight: '600', color: color.ink, flex: 1, textAlign: align.start },
+  errorText: { ...font.smallPrint, color: color.danger, textAlign: align.start },
 
   sheet: { flex: 1, backgroundColor: color.paper },
   sheetHead: {
@@ -263,25 +280,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.sm,
-    paddingHorizontal: space.xl,
+    paddingHorizontal: GUTTER,
     paddingVertical: space.md,
-    minHeight: 52,
+    minHeight: 56,
   },
-  sheetTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 2,
-    color: color.ink,
-    flexShrink: 1,
+  sheetTitle: { ...font.hero, color: color.ink, flexShrink: 1, textAlign: align.start },
+  sheetClose: {
+    width: MIN_TARGET,
+    height: MIN_TARGET,
+    borderRadius: radius.pill,
+    backgroundColor: color.fill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sheetClose: { minHeight: MIN_TARGET, justifyContent: 'center', paddingStart: space.md },
-  sheetCloseText: { ...font.label, color: color.orange },
 
-  searchWrap: { paddingHorizontal: space.xl, paddingVertical: space.sm },
-  search: { ...doc.fieldValue, color: color.ink, minHeight: MIN_TARGET },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginHorizontal: GUTTER,
+    marginBottom: space.md,
+    paddingHorizontal: space.lg,
+    backgroundColor: color.fill,
+    borderRadius: radius.control,
+  },
+  search: { ...font.body, color: color.ink, minHeight: CTA_HEIGHT, flex: 1 },
 
+  list: { paddingBottom: space.xxl },
   group: {
-    paddingHorizontal: space.xl,
+    paddingHorizontal: GUTTER,
     paddingTop: space.lg,
     paddingBottom: space.xs,
     backgroundColor: color.paper,
@@ -289,17 +316,19 @@ const styles = StyleSheet.create({
   groupText: { ...doc.fieldLabel, color: color.orange, textAlign: align.start },
 
   option: {
-    minHeight: 56,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.xl,
+    gap: space.md,
+    paddingHorizontal: GUTTER,
     paddingVertical: space.md,
   },
   optionText: { flex: 1, gap: 2 },
-  optionLabel: { ...font.cardTitle, color: color.ink, textAlign: align.start },
+  optionLabel: { ...font.rowTitle, color: color.ink, textAlign: align.start },
   optionDetail: { ...font.bodySmall, color: color.inkSoft, textAlign: align.start },
-  tick: { fontSize: 12, color: color.orange },
+  // Inset both edges, not just the start. `marginStart` alone shifts a
+  // full-bleed row without shrinking it, so the rule ran off the screen.
+  optionDivider: { height: doc.rule, backgroundColor: color.line, marginHorizontal: GUTTER },
 
   empty: { padding: space.xl },
   emptyText: { ...font.body, color: color.inkSoft, textAlign: align.start },

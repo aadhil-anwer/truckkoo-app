@@ -16,8 +16,10 @@ npm run verify        # typecheck + lint + test
 | `unit/format.test.ts` | The UTC-midnight date off-by-one. Runs under `TZ=America/New_York` on purpose — in UTC these pass against a broken implementation. |
 | `unit/i18n.test.ts` | RTL correctness and dictionary integrity. |
 | `components/primitives.test.tsx` | 44pt tap targets, disabled/loading/error states, screen-reader names. |
-| `components/waybill-book.test.tsx` | The paging structure: tab visibility, index clamping, single-orange rule. |
-| `integration/home-screens.test.tsx` | The two home screens against mocked data, including the no-dead-end promise. |
+| `components/tab-bar.test.tsx` | Role-aware tab visibility. A custom `tabBar` cannot read expo-router's `href: null`, and the version that tried showed a shipper the driver's tabs. |
+| `integration/harness.tsx` | Not a suite — the shared mocks and fixtures for the two below. Import it **first**; its `jest.mock` calls run at require time. |
+| `integration/shipper-screens.test.tsx` | Home, the loads ledger, and the load detail against mocked data — including the no-dead-end promise and the price's three no-number outcomes. |
+| `integration/driver-screens.test.tsx` | The trip, the offers (accept race, silent-decline regression, the pay that must never render blank) and the declared routes. |
 | `security/env-guard.test.ts` | The service-role-key-in-the-client guard. |
 | `security/schema-invariants.test.ts` | Static assertions over the migration SQL, including that the pricing formula has no client-side twin. |
 

@@ -9,6 +9,56 @@ an entry only when it is actually closed.
 
 ---
 
+## The interface rewire (2026-07-28)
+
+The shipper and driver surfaces were rebuilt onto Uber's structural skeleton —
+bottom tab bar, one big entry point, stepped flows, pinned CTA, icons, shadows —
+keeping the Truckkoo palette. `DESIGN.md` now carries a divergence note; the app's
+system is `src/theme/tokens.ts`. What is not settled:
+
+### It has been seen on a browser, not on a phone
+
+Every screen was driven and screenshotted at 390×844 in headless Chromium against
+a local Supabase, signed in as a real shipper and a real driver. That is more than
+this app has ever had — but it is `react-native-web`, not iOS or Android. Shadows,
+the tab bar's safe-area inset, `insetInlineEnd` on the offers badge, and the
+camera sheet on `trip/[id]` are exactly the things web renders differently or not
+at all.
+
+**Done when:** both journeys have been walked on a real Android device, which is
+the target hardware. This does not close the older "nothing has been seen running
+on a real device" entry below — it narrows it.
+
+### The load detail screen is the only way to reach a live load's price
+
+Home and the loads tab now show a card; "Get a price", the `finding_truck`
+backstop and the driver's contact all moved behind a tap into `load/[id]`. That is
+the right hierarchy, but it is one more tap than before for the single action a
+waiting shipper most wants.
+
+**Watch for:** if shippers stop asking for prices after this ships, the tap is the
+reason and the ask belongs back on the card.
+
+### RTL has not been looked at since the rewire
+
+Every new component uses logical properties and `align.start`, and
+`directionArrow()` is used everywhere a route is written as a string — but the
+Arabic dictionary is still partial, so no screen has actually been *rendered*
+right-to-left. The new pieces with real mirroring risk are the route stalk in
+`RouteLine`, the tab badge, and the chevron on every `ListRow`.
+
+**Done when:** the app has been run with `I18nManager.forceRTL(true)` and the
+three above have been looked at.
+
+### The horizontal "waybill book" was deleted
+
+`src/components/waybill-book.tsx` and its 20-odd tests are gone, replaced by the
+tab bar. It was a considered piece of work and the reason it went is not that it
+was bad: it was an invented navigation shape, and this audience has no prior for a
+horizontal pager. Recorded here so the deletion is a decision rather than a gap.
+
+---
+
 ## The ops console (0015–0018)
 
 Added 2026-07-27. Migrations `0015`–`0018` and a separate web app at
