@@ -1,0 +1,108 @@
+/**
+ * Shared test setup.
+ *
+ * Two rules this file exists to enforce:
+ *
+ * 1. **No test ever reaches the network.** `src/lib/supabase.ts` is mocked at the
+ *    module level everywhere it is reachable. A test that silently hit a real
+ *    Supabase project would be slow, flaky, and — since it authenticates — a way
+ *    to write to production from CI.
+ * 2. **Native modules are stubbed, not skipped.** Stubbing them here rather than
+ *    per-file means a component cannot quietly start depending on one without a
+ *    deliberate change to this file.
+ */
+
+// No `extend-expect` import: @testing-library/react-native has registered its
+// matchers automatically since v12.4, and the subpath was removed. Importing it
+// fails resolution outright rather than degrading.
+
+/* ─── native module stubs ────────────────────────────────────────────────── */
+
+jest.mock('expo-secure-store', () => {
+  const store = new Map<string, string>();
+  return {
+    getItemAsync: jest.fn(async (k: string) => store.get(k) ?? null),
+    setItemAsync: jest.fn(async (k: string, v: string) => void store.set(k, v)),
+    deleteItemAsync: jest.fn(async (k: string) => void store.delete(k)),
+    __store: store,
+  };
+});
+
+jest.mock('expo-localization', () => ({
+  getLocales: () => [{ languageCode: 'en', languageTag: 'en-OM', textDirection: 'ltr' }],
+}));
+
+jest.mock('expo-auth-session', () => ({
+  makeRedirectUri: ({ scheme = 'truckkoo', path = '' }: { scheme?: string; path?: string } = {}) =>
+    `${scheme}://${path}`,
+}));
+
+jest.mock('expo-web-browser', () => ({
+  openAuthSessionAsync: jest.fn(async () => ({ type: 'dismiss' })),
+}));
+
+jest.mock('expo-image-picker', () => ({
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+}));
+
+jest.mock('expo-font', () => ({ useFonts: () => [true, null], isLoaded: () => true }));
+jest.mock('expo-splash-screen', () => ({
+  preventAutoHideAsync: jest.fn(async () => {}),
+  hideAsync: jest.fn(async () => {}),
+}));
+
+/* ─── environment ────────────────────────────────────────────────────────── */
+
+// A syntactically real anon key. `src/lib/env.ts` decodes the `role` claim at
+// import time, so a placeholder string would not exercise the same path.
+process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://test-project.supabase.co';
+process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = [
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+  Buffer.from(JSON.stringify({ iss: 'supabase', ref: 'test', role: 'anon' })).toString('base64url'),
+  'signature',
+].join('.');
+
+/* ─── the network is closed ──────────────────────────────────────────────── */
+
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      signInWithPassword: jest.fn(),
+      signUp: jest.fn(),
+      signOut: jest.fn(),
+      getSession: jest.fn(async () => ({ data: { session: null } })),
+      onAuthStateChange: jest.fn(() => ({ data: { subscription: { unsubscribe: jest.fn() } } })),
+      resetPasswordForEmail: jest.fn(async () => ({ error: null })),
+      exchangeCodeForSession: jest.fn(async () => ({ error: null })),
+      updateUser: jest.fn(async () => ({ error: null })),
+      signInWithOAuth: jest.fn(),
+    },
+    from: jest.fn(),
+    rpc: jest.fn(),
+    storage: { from: jest.fn() },
+  },
+  signOutEverywhere: jest.fn(),
+}));
+
+// Any escape from the mock above should fail the test, loudly, rather than
+// hanging until the suite times out.
+global.fetch = jest.fn(() => {
+  throw new Error('A test attempted a real network request. Mock it instead.');
+}) as unknown as typeof fetch;
+
+/* ─── noise ──────────────────────────────────────────────────────────────── */
+
+// RN logs an act() warning for animations we deliberately do not await. Keep
+// every real error visible; silence only that one.
+//
+// Re-armed per test rather than once per file: `restoreMocks` in jest.config.js
+// restores spies before each test, which would otherwise undo this after the
+// first test in every file.
+const realError = console.error;
+beforeEach(() => {
+  jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('not wrapped in act')) return;
+    realError(...(args as Parameters<typeof console.error>));
+  });
+});

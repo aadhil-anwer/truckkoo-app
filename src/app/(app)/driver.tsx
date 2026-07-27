@@ -14,7 +14,7 @@
  * and why the empty routes sheet says what an empty book costs.
  */
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -53,6 +53,37 @@ export default function DriverHome() {
   const loads = useVisibleLoads();
   const respond = useRespondToOffer();
   const book = useRef<BookHandle>(null);
+  const [offerError, setOfferError] = useState<string | null>(null);
+
+  /**
+   * Answer an offer. Both paths need this, and the decline path had neither an
+   * error handler nor a loading state — a decline that failed showed the driver
+   * nothing at all, and since 0013 a decline is what returns the shipper's load
+   * to the dispatcher. Silently losing it strands the load.
+   */
+  function answer(offerId: string, accept: boolean) {
+    setOfferError(null);
+    respond.mutate(
+      { offerId, accept },
+      {
+        onSuccess: () => {
+          // This sheet is about to stop existing. Turn to the trip the driver
+          // just took, rather than leaving them wherever the book collapses to.
+          if (accept) book.current?.goToSection('trip');
+        },
+        onError: (e: unknown) => {
+          // The race, made recognisable. 0013 raises a domain error instead of a
+          // constraint violation precisely so this line can exist: "something
+          // went wrong" reads as a broken app on the one screen where a driver
+          // earns.
+          const msg = e instanceof Error ? e.message : '';
+          setOfferError(
+            msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
+          );
+        },
+      },
+    );
+  }
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
   const loadById = useMemo(
@@ -221,25 +252,31 @@ export default function DriverHome() {
 
               <Button
                 label={t('driver.accept')}
-                loading={respond.isPending && respond.variables?.offerId === offer.id}
-                onPress={() =>
-                  respond.mutate(
-                    { offerId: offer.id, accept: true },
-                    // This sheet is about to stop existing. Turn to the trip the
-                    // driver just took, rather than leaving them wherever the
-                    // book happens to collapse to.
-                    { onSuccess: () => book.current?.goToSection('trip') },
-                  )
+                loading={
+                  respond.isPending &&
+                  respond.variables?.offerId === offer.id &&
+                  respond.variables?.accept === true
                 }
+                onPress={() => answer(offer.id, true)}
               />
               {/* Declining is quiet, never a second orange — but it is a real
                   44pt button, because "no" must be as easy to hit as "yes". */}
               <Button
                 label={t('driver.decline')}
                 variant="quiet"
+                loading={
+                  respond.isPending &&
+                  respond.variables?.offerId === offer.id &&
+                  respond.variables?.accept === false
+                }
                 disabled={respond.isPending}
-                onPress={() => respond.mutate({ offerId: offer.id, accept: false })}
+                onPress={() => answer(offer.id, false)}
               />
+              {!!offerError && (
+                <Text style={styles.offerError} accessibilityLiveRegion="polite">
+                  {offerError}
+                </Text>
+              )}
             </NoteBody>
             <NoteFoot reference={reference(load.id)} />
           </Note>
@@ -331,6 +368,7 @@ const styles = StyleSheet.create({
 
   // More room above the label than below it, so the pay reads as its own section
   // rather than a trailing note on the fact row above.
+  offerError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
   pay: { paddingTop: space.md, gap: 4 },
   payLabel: { ...doc.fieldLabel, color: color.inkSoft, textAlign: align.start },
   // The one number the driver does not already know, at the same weight the route

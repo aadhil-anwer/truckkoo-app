@@ -22,17 +22,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BlankNote, LedgerRow } from '@/components/consignment';
 import { Masthead } from '@/components/masthead';
-import { Button, Note, NoteHead, Stamp, TextButton } from '@/components/primitives';
+import { Body, Button, Note, NoteHead, Stamp, TextButton } from '@/components/primitives';
 import { align, directionArrow, localized, t } from '@/i18n';
 import { signOut } from '@/lib/auth';
 import { formatWindow } from '@/lib/format';
-import { cityIndex, useCities, useOpsQueue, type OpsQueueRow } from '@/lib/queries';
+import {
+  cityIndex,
+  useCities,
+  useOpsQueue,
+  useSweepExpiredOffers,
+  type OpsQueueRow,
+} from '@/lib/queries';
 import { color, doc, font, space } from '@/theme/tokens';
 
 export default function OpsQueue() {
   const router = useRouter();
   const cities = useCities();
   const queue = useOpsQueue();
+  const sweep = useSweepExpiredOffers();
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
   const cityName = (id: number) => {
@@ -128,6 +135,21 @@ export default function OpsQueue() {
                   <Note>
                     {working.map((r, i) => row(r, i === working.length - 1))}
                   </Note>
+                  {/* Offers expire lazily — nothing moves a `pending` offer to
+                      `expired` except the driver answering it, which for an offer
+                      they are ignoring never happens. Without this, a load whose
+                      offers all timed out sits under "Offer out" forever, looking
+                      worked-on. Pulled rather than scheduled: pg_cron is not
+                      enabled, and a sweeper that silently stops is worse. */}
+                  <View style={styles.blankAction}>
+                    <Button
+                      label={t('ops.sweep')}
+                      variant="quiet"
+                      loading={sweep.isPending}
+                      onPress={() => sweep.mutate()}
+                    />
+                    {sweep.isSuccess && <Body muted>{t('ops.sweep.done')}</Body>}
+                  </View>
                 </View>
               )}
             </>

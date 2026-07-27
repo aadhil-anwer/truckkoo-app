@@ -135,6 +135,11 @@ const en = {
   "driver.pay.pending": "Truckkoo will confirm the rate with you before pickup.",
   "driver.accept": "Accept this load",
   "driver.decline": "Not this one",
+  // The payoff for the accept race being fixed server-side (0013). A driver who
+  // taps Accept a second after someone else did needs to be told what happened —
+  // "something went wrong" reads as a broken app and costs a driver's trust in
+  // the one screen where they earn.
+  "driver.offer.taken": "Another driver took this load.",
   "driver.advance.pickedUp": "I have collected it",
   "driver.advance.delivered": "Mark delivered",
 
@@ -240,10 +245,29 @@ const en = {
   "ops.queue.working": "Offer out",
   "ops.load.title": "Load to place",
   "ops.candidates.title": "Trucks already going that way",
-  "ops.candidates.none.title": "No route fits this load",
-  "ops.candidates.none.explain": "No declared leg covers this city pair and pickup window. Arrange a fresh trip and tell the shipper.",
+  "ops.candidates.none.title": "Nobody fits this load",
+  "ops.candidates.none.explain": "No declared leg covers this route and window, and no driver has run this corridor before. Arrange a fresh trip and tell the shipper.",
+  // ── the three tiers (0012) ────────────────────────────────────────────────
+  // Ordered best-first. Tier 3 is a different act from tiers 1 and 2 — those
+  // drivers said they were going; these ones only might — and the copy says so
+  // rather than presenting one undifferentiated list.
+  "ops.tier1.title": "Empty trucks going that way",
+  "ops.tier1.explain": "Declared this exact route with nothing on board.",
+  "ops.tier2.title": "Part-loaded trucks going that way",
+  "ops.tier2.explain": "Declared this route with cargo already on board.",
+  "ops.tier3.title": "Drivers who have run this corridor",
+  "ops.tier3.explain": "No declared leg for these dates. They have run this corridor before.",
+  "ops.tier3.lastRun": "Last ran",
+  "ops.dayGap": "days off the window",
   "ops.send": "Offer to this driver",
+  "ops.send.corridor": "Ask this driver",
   "ops.sent": "Already offered",
+  "ops.accepted": "Accepted",
+  "ops.declined": "Declined",
+  "ops.resend": "Offer again",
+  "ops.auto.sent": "Offered automatically when posted",
+  "ops.sweep": "Clear timed-out offers",
+  "ops.sweep.done": "Cleared. Loads with no live offer are back in the queue.",
   "ops.noMatch": "No truck fits — arrange a fresh trip",
   "ops.noMatch.done": "Marked. The shipper now sees \"finding you a truck\".",
   // ── dispatcher pricing ─────────────────────────────────────────────────────
@@ -377,6 +401,10 @@ const ar: Partial<Record<StringKey, string>> = {
   "label.to": "إلى",
   "label.goods": "نوع البضاعة",
   "label.truck": "نوع الشاحنة",
+  // Driver-facing, and it appears at the worst possible moment. The ops.* keys
+  // stay English on purpose: a dispatcher is the one user of this app who is not
+  // low-tech, and internal copy is not worth a half-translated screen.
+  "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
 };
 
 const dictionaries: Record<Language, Partial<Record<StringKey, string>>> = { en, ar };

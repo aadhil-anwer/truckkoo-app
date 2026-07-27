@@ -500,7 +500,7 @@ export function usePodUrl(photoPath: string | null | undefined) {
  * Every hook here calls an RPC that checks `private.require_ops()` internally and
  * raises "not found" for anyone else. Nothing in this section reads a table
  * directly, because no ops read policy exists — dispatch crosses tenants only
- * through those four audited functions, so a bug in an ops screen cannot widen
+ * through those audited definer functions, so a bug in an ops screen cannot widen
  * what anyone else can see.
  */
 
@@ -519,19 +519,47 @@ export type OpsQueueRow = {
   /** Null until priced. Present so a dispatcher cannot price the same load twice. */
   price_baisa: number | null;
   currency: string;
+  /**
+   * How many of `offer_count` the machine sent (0014). Without this a dispatcher
+   * cannot tell an untouched load from one auto-dispatch already worked, and
+   * would re-send what has already gone out.
+   */
+  auto_offer_count: number;
 };
 
+/**
+ * 1 — declared an EMPTY leg on this route. The whole point of the product.
+ * 2 — declared a PART-LOADED leg on this route.
+ * 3 — no declared leg, but has run this corridor before (0012).
+ */
+export type CandidateTier = 1 | 2 | 3;
+
+export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'expired';
+
 export type OpsCandidate = {
+  tier: CandidateTier;
   driver_id: string;
   driver_name: string;
-  leg_id: string;
-  leg_origin: number;
-  leg_dest: number;
-  depart_from: string;
-  depart_to: string;
-  is_empty: boolean;
+  /** NULL for tier 3: they have no declared leg, so every leg column is null. */
+  leg_id: string | null;
+  leg_origin: number | null;
+  leg_dest: number | null;
+  depart_from: string | null;
+  depart_to: string | null;
+  is_empty: boolean | null;
+  truck_id: string | null;
   truck_type: string | null;
-  already_offered: boolean;
+  capacity_kg: number | null;
+  /** Days the declared window misses the pickup window by. 0 when they overlap. */
+  day_gap: number | null;
+  /** Tier 3 only: when they last ran this corridor. */
+  last_run_at: string | null;
+  /**
+   * Replaces the old `already_offered` boolean, which was true for ANY past
+   * offer — so a driver who declined last week looked permanently unavailable
+   * and the dispatcher could not see why, let alone deliberately ask again.
+   */
+  offer_status: OfferStatus | null;
 };
 
 /**
@@ -616,7 +644,37 @@ export function useMarkFindingTruck() {
       const { error } = await supabase.rpc('ops_mark_finding_truck', { p_load_id: loadId });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ops', 'queue'] }),
+    onSuccess: (_v, loadId) => {
+      qc.invalidateQueries({ queryKey: ['ops', 'queue'] });
+      // 0013 expires any outstanding offer on the load. Without invalidating the
+      // candidate list too, every row keeps showing the `offer_status` it had
+      // before, and the dispatcher sees offers that no longer exist.
+      qc.invalidateQueries({ queryKey: ['ops', 'candidates', loadId] });
+    },
+  });
+}
+
+/**
+ * Reclaim loads whose offers quietly timed out. Offers expire lazily — nothing
+ * moves a `pending` offer to `expired` except the driver answering it, which for
+ * an offer they are ignoring never happens — so the load sits in `matched`
+ * looking worked-on. Auto-dispatch makes that common.
+ *
+ * Pulled by a dispatcher rather than scheduled: `pg_cron` is not enabled, and a
+ * sweeper that silently stops running is worse than one a person triggers.
+ */
+export function useSweepExpiredOffers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc('ops_sweep_expired_offers');
+      if (error) throw error;
+      return (data ?? 0) as number;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ops', 'queue'] });
+      qc.invalidateQueries({ queryKey: ['ops', 'candidates'] });
+    },
   });
 }
 
