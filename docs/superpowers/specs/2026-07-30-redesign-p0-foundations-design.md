@@ -43,7 +43,7 @@ These were decided explicitly and bind every later phase.
 | D2 | **MapLibre GL** as the map layer. | No API key, no per-view billing, and a fully custom dark style — which is exactly what the handoff's token table specifies. Requires a dev build; `expo-dev-client` is already present. |
 | D3 | **Real GPS tracking** in P6. | The handoff promises a live truck and an honest ETA. |
 | D4 | **Real sources for every claimed number.** Ratings, trip counts and candidate-truck counts get real backing. | `CLAUDE.md` non-negotiable #5 forbids fabricated proof. The design uses `4.9 · 212 trips`, `the last 40 trips here`, `Four trucks are heading to Barka`. These become computed, not invented. |
-| D5 | **Shipper accepts the price, then dispatch happens.** `post_load → matching → quoted → shipper accepts → offers → driver accepts → assigned`. | Literal match to T2 → T3. Consequence: a post-acceptance, pre-driver state exists that the handoff does not draw. P4 must design it — a shipper must never hit a dead end (`CLAUDE.md` #6). |
+| D5 | **Shipper accepts the price, then dispatch happens.** `post_load → matching → quoted → accepted → assigned`. The state the handoff does not draw is resolved in §4.8 as a T1 variant. | Literal match to T2 → T3. |
 | D6 | **Primary button label stays ≥18.66px bold**, deviating ~2px from the handoff's `700 17px`. | White on `#F1551F` is 3.47:1. WCAG AA needs 4.5:1 for normal text and drops to 3:1 only at 18.66px bold. This exact bug shipped once; `tests/unit/contrast.test.ts` exists to catch it. This is the **only** deviation from the handoff's type scale. |
 | D7 | **The ops screens are deleted from this repo.** Dispatch is web-only, at `~/truckkoo-ops`. | Removes the requirement to keep two design systems alive. Accepted consequence: nobody can dispatch from the mobile app. No server-side change — the web console calls the same guarded RPCs. |
 | D8 | **Icons move from `MaterialCommunityIcons` to hand-authored SVG.** | The handoff names stroke weight (1.9–2.1) and round caps as the properties that carry consistency. A glyph font cannot vary stroke weight. `icon.tsx` keeps its semantic-name contract and RTL mirroring; only rendering changes. Adds `react-native-svg`. |
@@ -214,6 +214,40 @@ same guarded functions over the network and does not notice.
 | new | `ProgressBar` fill originates at the leading edge under both directions |
 
 `npm run verify` must pass. `npm run test:db` is unaffected — P0 touches no SQL.
+
+### 4.8 The state the handoff does not draw
+
+D5 puts shipper acceptance before dispatch, which creates a state with no screen
+in the gallery: **the price is accepted, but no driver has said yes yet.** The
+handoff is design-only, so this is ours to decide. Decided now, so P4 inherits it
+rather than rediscovering it.
+
+**It is a T1 variant, not a new screen.** Two rules in the handoff already
+determine its shape:
+
+- Any wait longer than ~3 seconds is narrated with real supply information and a
+  timeline — never a spinner.
+- A **dashed** corridor means uncommitted; **solid** means committed.
+
+So the state renders as T1's skeleton with the timeline advanced one step and the
+corridor still dashed, because no truck has committed. It goes solid at T3, which
+is exactly what the handoff's own rule says it should mean.
+
+- **Load status:** `accepted` — a new value between `quoted` and `assigned`.
+- **Timeline:** Load received ✓ · Matching a truck ✓ · Your price, approved ✓ ·
+  *Truck confirming* (active).
+- **Copy** leads with supply, as T1 does — "Three trucks have your job" — rather
+  than reporting that the app is busy.
+- **Failure path:** if no driver accepts within the offer window, the load falls
+  to `finding_truck` and a human resolves it. It never becomes "no truck found".
+  `CLAUDE.md` #6: a shipper never hits a dead end.
+- **The accepted price is honoured.** A quote the shipper accepted is committed;
+  falling back to the human path must not silently re-price it. If the corridor
+  genuinely cannot be served at that price, ops issues a new quote and the
+  shipper sees T2 again — a decision, not a surprise.
+
+Recorded in `OPEN_ISSUES.md`, because it is a product decision made without the
+designer and deserves to be visible rather than buried in a spec.
 
 ---
 

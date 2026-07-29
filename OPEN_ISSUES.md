@@ -9,6 +9,72 @@ an entry only when it is actually closed.
 
 ---
 
+## The redesign (2026-07-30)
+
+Specced in `docs/superpowers/specs/2026-07-30-redesign-p0-foundations-design.md`
+as eight phases. The design handoff is **design-only** — where it left a product
+question open, the answer was decided here and is listed below so it can be
+argued with later.
+
+### The flow order changed: the shipper now accepts the price before we dispatch
+
+The handoff shows the shipper accepting a price (T2) and then meeting an assigned
+driver (T3). The build did the reverse — a driver accepted an offer and that
+created the trip, and the shipper approved nothing. The handoff's order is now
+the real order: `posted → matching → quoted → accepted → assigned`.
+
+This is a genuine product change, not a restyle. It means a shipper can commit to
+a price before any truck has committed to the job.
+
+**Watch for:** the rate of loads that reach `accepted` and then fall back to
+`finding_truck`. If it is not near zero, accepting a price before a driver exists
+is the wrong order and the reservation model (dispatch first, shipper confirms an
+already-reserved driver) is the fix.
+
+### The gap between "price accepted" and "driver assigned" has no design
+
+A consequence of the above. The gallery has no screen for it, so it was decided
+without the designer: it renders as a T1 variant — narrated wait, timeline
+advanced one step, corridor still **dashed** because no truck has committed. It
+goes solid at T3. Both of those follow rules the handoff states elsewhere, so it
+should read as designed rather than invented, but nobody has seen it.
+
+If no driver accepts inside the offer window the load falls to `finding_truck`
+and a human resolves it — never a dead end (`CLAUDE.md` #6).
+
+**Done when:** a designer has looked at the state, or it has survived real use.
+
+### An accepted price is committed, and nothing yet enforces that
+
+If a load falls back to `finding_truck` after the shipper accepted a price, the
+price must not be quietly rewritten — that is the difference between a quote and
+a note. The intended behaviour is that ops issues a *new* quote and the shipper
+decides again, seeing T2 a second time.
+
+**Not built.** `ops_set_price` can currently move a price on a load in any state.
+
+**Done when:** re-pricing a load the shipper has already accepted either requires
+a fresh shipper decision or is refused, and `supabase/tests/` asserts it.
+
+### The primary button deviates from the handoff by ~2px
+
+The handoff specifies `700 17px` on `#F1551F`. That is 3.47:1 and fails WCAG AA,
+which drops to 3:1 only at 18.66px bold. The label stays at or above that
+threshold instead. `tests/unit/contrast.test.ts` computes it from the tokens.
+
+This is the only deviation from the handoff's type scale, and it is deliberate.
+
+### The ops screens were deleted from this repo
+
+Dispatch is web-only now, at `~/truckkoo-ops`. `masthead.tsx` and
+`consignment.tsx` went with them — they had no other caller. No migration, grant
+or RPC changed, so the web console does not notice.
+
+**Consequence:** nobody can dispatch from a phone. If that turns out to matter,
+it is a rebuild against the new design system, not a revert.
+
+---
+
 ## The interface rewire (2026-07-28)
 
 The shipper and driver surfaces were rebuilt onto Uber's structural skeleton —
