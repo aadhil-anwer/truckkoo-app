@@ -12,23 +12,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import {
-  Archivo_400Regular,
-  Archivo_600SemiBold,
-  Archivo_800ExtraBold,
-  Archivo_900Black,
-} from '@expo-google-fonts/archivo';
-import {
-  Almarai_400Regular,
-  Almarai_700Bold,
-  Almarai_800ExtraBold,
-} from '@expo-google-fonts/almarai';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { initLanguage } from '@/i18n';
 import { SessionProvider, useSession } from '@/lib/session';
 import { color } from '@/theme/tokens';
+import { FONT_ASSETS } from '@/theme/faces';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -49,15 +39,7 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    Archivo_400Regular,
-    Archivo_600SemiBold,
-    Archivo_800ExtraBold,
-    Archivo_900Black,
-    Almarai_400Regular,
-    Almarai_700Bold,
-    Almarai_800ExtraBold,
-  });
+  const [fontsLoaded] = useFonts(FONT_ASSETS);
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
