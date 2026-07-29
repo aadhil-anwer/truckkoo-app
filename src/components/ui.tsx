@@ -10,10 +10,12 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from './icon';
+import { PressableSurface } from './primitives';
 import {
   GUTTER_CREAM,
   GUTTER_INK,
   GUTTER_SHEET,
+  MIN_TARGET,
   alpha,
   color,
   elevation,
@@ -23,8 +25,9 @@ import {
   space,
 } from '@/theme/tokens';
 import { align, arabicIfNeeded } from './text-direction';
+import { t } from '@/i18n';
 
-type Ground = 'ink' | 'cream';
+export type Ground = 'ink' | 'cream';
 
 export function Screen({
   ground = 'ink',
@@ -189,6 +192,129 @@ export function Notice({ icon, children }: { icon: IconName; children: string })
   );
 }
 
+/**
+ * The pickup → dropoff spine.
+ *
+ * Origin is a RING, destination is a FILLED SQUARE. The handoff calls this
+ * distinction load-bearing and it is: it is the only thing telling a user which
+ * end is which before they read a word. Do not collapse it into two dots.
+ */
+export function RouteRail({
+  origin,
+  destination,
+  compact = false,
+}: {
+  origin: string;
+  destination: string;
+  compact?: boolean;
+}) {
+  const gap = compact ? 24 : 36;
+  return (
+    <View
+      style={styles.rail}
+      accessible
+      accessibilityLabel={`${origin} ${t('route.ariaTo')} ${destination}`}
+    >
+      <View style={styles.railSpine}>
+        <View testID="rail-origin" style={styles.railOrigin} />
+        <View style={[styles.railLine, { height: gap }]} />
+        <View testID="rail-destination" style={styles.railDestination} />
+      </View>
+      <View style={[styles.railLabels, { gap: gap - 6 }]}>
+        <Text
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.rowTitle),
+            { color: color.lightText, textAlign: align.start },
+          ])}
+        >
+          {origin}
+        </Text>
+        <Text
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.rowTitle),
+            { color: color.lightText, textAlign: align.start },
+          ])}
+        >
+          {destination}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A status pill.
+ *
+ * `accent` is the live state — and remember the rule: one accent per screen. If
+ * the screen already has a pinned accent action, the pill is neutral.
+ */
+export function StatusPill({
+  label,
+  tone = 'neutral',
+}: {
+  label: string;
+  tone?: 'accent' | 'neutral';
+}) {
+  const accented = tone === 'accent';
+  return (
+    <View
+      style={StyleSheet.flatten([
+        styles.pill,
+        { backgroundColor: accented ? color.accentWash : color.raised },
+      ])}
+    >
+      {accented ? <View style={styles.pillDot} /> : null}
+      <Text
+        style={StyleSheet.flatten([
+          arabicIfNeeded(font.caption),
+          { color: accented ? color.accentLight : alpha.onInk.secondary },
+        ])}
+      >
+        {label.toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+export function Chip({
+  label,
+  selected = false,
+  ground = 'ink',
+  onPress,
+}: {
+  label: string;
+  selected?: boolean;
+  ground?: Ground;
+  onPress?: () => void;
+}) {
+  const surface = selected
+    ? { backgroundColor: ground === 'ink' ? color.lightText : color.inkText }
+    : ground === 'ink'
+      ? { backgroundColor: color.surface }
+      : { backgroundColor: color.creamCard, ...elevation.inputCream };
+
+  const tint = selected
+    ? ground === 'ink'
+      ? color.ink
+      : color.cream
+    : ground === 'ink'
+      ? color.lightText
+      : color.inkText;
+
+  return (
+    <PressableSurface
+      onPress={onPress}
+      ground={ground}
+      accessibilityLabel={label}
+      style={StyleSheet.flatten([styles.chip, surface])}
+    >
+      <Text style={StyleSheet.flatten([arabicIfNeeded(font.caption), { color: tint }])}>
+        {label}
+      </Text>
+    </PressableSurface>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   sheet: {
@@ -215,5 +341,38 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(247,245,242,.05)',
     borderRadius: radius.notice,
     padding: space.md,
+  },
+  rail: { flexDirection: 'row', gap: space.md },
+  railSpine: { alignItems: 'center', paddingTop: 4 },
+  railOrigin: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: 2.5,
+    borderColor: color.lightText,
+  },
+  railLine: { width: 1.5, backgroundColor: 'rgba(247,245,242,.2)' },
+  railDestination: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.marker,
+    backgroundColor: color.accent,
+  },
+  railLabels: { justifyContent: 'space-between' },
+  pill: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs + 2,
+    paddingHorizontal: space.md,
+    borderRadius: radius.round,
+    alignSelf: 'flex-start',
+  },
+  pillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent },
+  chip: {
+    minHeight: MIN_TARGET,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+    borderRadius: radius.round,
   },
 });

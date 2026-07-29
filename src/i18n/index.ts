@@ -43,6 +43,12 @@ const en = {
   'load.city.placeholder': 'e.g. Muscat',
   'load.submit': 'Request a quote',
 
+  // ── route rail ────────────────────────────────────────────────────────────
+  // The word joining origin and destination in the RouteRail's accessibility
+  // label — "Muscat [to] Barka". Kept as its own key rather than interpolated,
+  // since `t()` here takes a key only, no template substitution.
+  'route.ariaTo': 'to',
+
   'status.posted': 'Posted',
   'status.finding_truck': 'Finding you a truck',
   'status.matched': 'Truck found',
@@ -382,6 +388,7 @@ const ar: Partial<Record<StringKey, string>> = {
   'load.truckType': 'نوع الشاحنة (اختياري)',
   'load.truckType.unsure': 'غير متأكد — انصحوني',
   'load.city.placeholder': 'مثال: مسقط',
+  'route.ariaTo': 'إلى',
 
   'whatsapp.action': 'واتساب',
   'whatsapp.promise': 'نرد خلال دقائق · طوال أيام الأسبوع',
