@@ -1,69 +1,135 @@
 /**
- * Truckkoo design tokens — the app half of DESIGN.md.
+ * Truckkoo design tokens — the app's design system.
  *
- * ── The 2026 rewire ────────────────────────────────────────────────────────
+ * ── The 2026 redesign ──────────────────────────────────────────────────────
  *
- * The app used to be a consignment note: hairline rules doing all the structural
- * work, no shadows, no icons, no fills. That identity came off the website, and
- * it was internally coherent — but a website reads at desk distance and a phone
- * app does not. Held at arm's length in a cab, hairlines vanish and every block
- * on the screen weighs the same.
+ * Two grounds, not one. INK (#0B0C0F) is the working ground: home, tracking,
+ * offers, lists — everywhere the user is reading state. CREAM (#F4F0E9) is the
+ * asking ground: one question per screen, set in display type. A screen is one
+ * or the other, never a mix.
  *
- * So the *skeleton* is now Uber's, deliberately: surfaces with soft depth,
- * generous radii, one enormous entry point per screen, list rows carrying an
- * icon chip, and a single pinned action at the thumb. The *palette* stays ours —
- * one orange, black, white. Uber's structure, Truckkoo's colour.
+ * Reference points, per the handoff: Uber for the shape of the product, Typeform
+ * for the shape of the asking, Opal for the room it sits in.
  *
- * What survived the rewire, and why:
- *   - `font.button` at 19/900. This is an accessibility floor, not taste. See below.
- *   - `doc.*` and `stamp.*`. The finished consignment note is still a document,
- *     and it is the one screen where that is literally true (see load/[id].tsx).
- *   - Logical properties everywhere. RTL is structural (CLAUDE.md §4).
+ * WHAT IS LOAD-BEARING HERE:
+ *   - `font.button` at >=18.66px. An accessibility floor, not taste. See below.
+ *   - One accent. #F1551F is the pinned primary action OR the live state, never
+ *     both on one screen.
+ *   - #F1551F is never text on dark. `accentLight` (#FF7A45) exists for that.
+ *   - `color.delivered` appears exactly ONCE in the product (T5).
+ *   - Every type token names a fontFamily. Never fontWeight — see faces.ts.
  */
 
+import { face, arabicFaceFor } from './faces';
+
 export const color = {
-  orange: '#f1551f',
-  orangeDeep: '#d9430f',
-  /** #f1551f fails 4.5:1 as text on white. Use this on dark or over photos. */
-  orangeOnDark: '#ff7a4d',
-  orangeSoft: '#feeee7',
+  /** Root ground on working surfaces. */
+  ink: '#0B0C0F',
+  /** Sheets and cards. */
+  surface: '#15171C',
+  /** Fields, chips, nested cards. */
+  raised: '#1E2128',
 
-  ink: '#0b0b0b',
-  inkSoft: '#6b6b6b',
-  /** Tertiary type only — timestamps, units. Never a label a decision rests on. */
-  inkFaint: '#8e8e8e',
+  /** The pinned primary action OR the live state. Never both on one screen. */
+  accent: '#F1551F',
+  /** Accent-as-text-on-dark, and active map labels. #F1551F is never text here. */
+  accentLight: '#FF7A45',
+  /** Status pill and icon tile fills. */
+  accentWash: 'rgba(241,85,31,.16)',
+  /** Selected card fill on cream. */
+  accentTint: '#FFF6F2',
 
-  paper: '#ffffff',
-  paperDeep: '#f6f6f6',
-  line: '#e8e8e8',
+  /** The asking ground. */
+  cream: '#F4F0E9',
+  /** Cards and fields on cream. */
+  creamCard: '#FFFFFF',
+  /** The keypad tray. */
+  creamKeyboard: '#DDD8D0',
+
+  /** Primary text on cream. */
+  inkText: '#16171A',
+  /** Helper text on cream. */
+  mutedText: '#6C6A63',
+  /** Primary text on ink. */
+  lightText: '#F7F5F2',
+
+  /** Icon strokes in raised tiles. */
+  iconGrey: '#92959D',
+  /** Empty-state icons. */
+  iconGreyDim: '#5F636B',
 
   /**
-   * Filled neutral surfaces — the Uber device the old system had no equivalent
-   * for. An icon chip, a secondary button, an unselected segment: all this grey,
-   * never a border.
+   * Terminal success. Appears ONCE in the entire product, on T5 (delivered).
+   * If this shows up on a second screen, that screen is wrong.
    */
-  fill: '#f2f2f2',
-  fillPress: '#e4e4e4',
-
-  asphalt: '#0b0b0b',
-  asphalt2: '#161616',
-  asphaltLine: '#2c2c2c',
-  textOnDark: '#a3a3a3',
-  textOnDarkDim: '#8a8a8a',
-
-  /** WhatsApp green. Functional only — also our success colour (decided once). */
-  wa: '#1fa855',
-  danger: '#c0341c',
+  delivered: '#79E0AF',
 } as const;
 
 /**
- * Spacing, on an 8pt grid.
+ * Text alpha ramps.
  *
- * The names are unchanged from the old 6/10/14/18/22/26/34/56 scale so no call
- * site had to be rewritten, but every value moved onto the grid. That single
- * change is most of why the app now reads as regularly spaced rather than
- * approximately spaced.
+ * The handoff specifies a ramp down to `.32`. Anything carrying real copy has
+ * been RAISED to the lowest alpha that still clears WCAG AA 4.5:1 over its
+ * ground, because an alpha ramp is where sub-AA text hides: the handoff's `.45`
+ * measures 4.26:1 over ink and its `.42` measures 3.84:1. Both would have
+ * shipped looking like decisions.
+ *
+ * `tests/unit/contrast.test.ts` asserts every entry here. Lowering one is not a
+ * style change — the test will tell you what you did.
+ *
+ * Values below AA are deliberately NOT in this object. Decorative non-text uses
+ * (map minor geometry, hairlines, a disabled label) take their rgba inline at
+ * the call site, where it is visible that no one has to read it.
  */
+export const alpha = {
+  onInk: {
+    /** Body copy on ink. */
+    body: 'rgba(247,245,242,.62)',
+    /** Secondary values. */
+    secondary: 'rgba(247,245,242,.55)',
+    /** Tertiary — timestamps, units. */
+    tertiary: 'rgba(247,245,242,.5)',
+    /** Group labels and inactive tab labels. Handoff said .45/.42; both failed. */
+    label: 'rgba(247,245,242,.47)',
+  },
+  /**
+   * Cream has no light text ramp, and this is the file that found out.
+   *
+   * The handoff specifies .6 body / .5 tertiary / .45 label. Measured over
+   * #F4F0E9 those are 4.48:1, 3.29:1 and 2.95:1 — all short of AA, and raising
+   * them to pass collapses all three onto the same value, because ink-on-cream
+   * runs out of headroom at about .61.
+   *
+   * So cream gets two text levels instead of three, and anything that wanted the
+   * third uses the solid `color.mutedText` (#6C6A63, 4.77:1) — which is the
+   * handoff's own token for helper text on cream.
+   */
+  onCream: {
+    body: 'rgba(22,23,26,.72)',
+    /** Step counters and group labels. The floor — nothing lighter clears AA. */
+    label: 'rgba(22,23,26,.61)',
+  },
+} as const;
+
+/**
+ * Hairlines.
+ *
+ * Depth comes from soft shadow and filled surfaces. A hairline only divides rows
+ * INSIDE a surface — on a phone at arm's length a 1px rule doing structural work
+ * is invisible, and it gives a tappable area no bounds.
+ */
+export const hairline = {
+  /** Rules between rows inside a card. */
+  inner: 'rgba(255,255,255,.07)',
+  card: 'rgba(255,255,255,.08)',
+  /** Sheet top edge and the tab bar. */
+  sheet: 'rgba(255,255,255,.09)',
+  /** A secondary button's edge. */
+  emphasis: 'rgba(255,255,255,.13)',
+  onCream: 'rgba(22,23,26,.1)',
+} as const;
+
+/** Spacing, on the handoff's scale. */
 export const space = {
   xs: 4,
   sm: 8,
@@ -75,177 +141,235 @@ export const space = {
   huge: 48,
 } as const;
 
-/** The screen gutter. One number, every screen, so nothing is optically off-axis. */
-export const GUTTER = 20;
+/** Screen gutters. Different by ground, per the handoff. */
+export const GUTTER_INK = 22;
+export const GUTTER_CREAM = 28;
+export const GUTTER_SHEET = 20;
+
+/** Clearance above the floating tab bar, so a pinned action is never under it. */
+export const TABBAR_CLEARANCE_3 = 116;
+export const TABBAR_CLEARANCE_4 = 108;
 
 export const radius = {
-  /** Inputs, chips, small controls. */
-  control: 12,
-  /** The workhorse surface. */
-  card: 16,
-  /** A sheet's top corners, and full-bleed panels. */
-  panel: 20,
-  sheet: 24,
-  pill: 999,
+  /** Buttons, chips, pills, tab bar, avatars, progress tracks. */
+  round: 100,
+  /** Tracking sheets. */
+  sheetTrack: 32,
+  sheet: 30,
+  offer: 26,
+  review: 24,
+  card: 22,
+  input: 20,
+  row: 18,
+  tile: 16,
+  notice: 14,
+  tileSm: 13,
+  tileXs: 12,
+  key: 9,
+  /** The destination square on a route rail. Nearly square, deliberately. */
+  marker: 3,
 } as const;
 
 /**
- * Type scale.
+ * Type.
  *
- * Uber's hierarchy is aggressive: one very large thing per screen, then a hard
- * drop to 16. The old scale crowded four sizes between 18 and 26, which is what
- * made every screen read as one undifferentiated weight.
+ * Two families carry the product. Instrument Serif is reserved for questions and
+ * hero numbers — ONE display statement per screen. Two serif headlines on one
+ * screen is a bug. Archivo does everything else.
+ *
+ * Every token names a fontFamily. None sets fontWeight: React Native does not
+ * synthesize weights for custom families, so a weight without a family is a
+ * silent no-op. See faces.ts.
  */
 export const font = {
-  /** The one big statement per screen. "Where to?", "Arriving Friday". */
-  display: { fontSize: 32, lineHeight: 36, fontWeight: '900', letterSpacing: -1 },
-  hero: { fontSize: 28, lineHeight: 32, fontWeight: '900', letterSpacing: -0.8 },
-  title: { fontSize: 22, lineHeight: 27, fontWeight: '900', letterSpacing: -0.5 },
-  /** Section headers above a list. */
-  section: { fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
-  /** A list row's first line. */
-  rowTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700', letterSpacing: -0.1 },
-  cardTitle: { fontSize: 18, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
+  // ── Instrument Serif: questions and hero numbers only ──
+  /** The price on T2. The largest type in the product. */
+  priceHero: { fontFamily: face.serif, fontSize: 76, lineHeight: 68, letterSpacing: -1.5 },
+  /** Driver payout, D2. */
+  payoutHero: { fontFamily: face.serif, fontSize: 52, lineHeight: 49, letterSpacing: -1 },
+  /** Payout on an offer card, D1. */
+  payout: { fontFamily: face.serif, fontSize: 44, lineHeight: 40, letterSpacing: -0.8 },
+  /** Screen headline, N1/N6/T5. */
+  displayLg: { fontFamily: face.serif, fontSize: 44, lineHeight: 46, letterSpacing: -0.6 },
+  /** Screen headline, question screens. */
+  display: { fontFamily: face.serif, fontSize: 42, lineHeight: 45, letterSpacing: -0.5 },
+  /** The estimate range, S9. */
+  estimate: { fontFamily: face.serif, fontSize: 38, lineHeight: 40, letterSpacing: -0.4 },
+  /** A question inside a sheet, where there is less room than on cream. */
+  question: { fontFamily: face.serif, fontSize: 32, lineHeight: 35, letterSpacing: -0.3 },
 
-  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
-  bodySmall: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
-  smallPrint: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  label: { fontSize: 14, lineHeight: 18, fontWeight: '700' },
-  /** Tab bar labels, unit suffixes, counts. The floor of the scale. */
-  micro: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 0.1 },
+  // ── Archivo: everything else ──
+  /** Greetings and statements. */
+  statement: { fontFamily: face.archivo700, fontSize: 21, lineHeight: 26, letterSpacing: -0.5 },
+  /** Card and row titles. */
+  title: { fontFamily: face.archivo700, fontSize: 18, lineHeight: 23, letterSpacing: -0.3 },
+  rowTitle: { fontFamily: face.archivo700, fontSize: 16, lineHeight: 21, letterSpacing: -0.2 },
 
   /**
-   * 19px, not 16, and it is an accessibility fix rather than a taste one.
+   * The primary button label. >=18.66px bold, and this must not drop.
    *
-   * White on the brand orange `#f1551f` measures **3.47:1**. WCAG 2.1 AA wants
-   * 4.5:1 for normal text and 3:1 for large text, where "large" for bold starts
-   * at **18.66px** (14pt). At 16px the primary button — every Accept, every
-   * Confirm delivery, every Post your first load — failed AA outright.
+   * White on #F1551F measures 3.47:1. AA wants 4.5:1 for normal text and 3:1 for
+   * large text, where "large" for bold starts at 18.66px (14pt). The handoff
+   * specifies 17px, which fails outright. Darkening does not rescue it either —
+   * #d9430f on white is 4.41:1, still short. So the type crosses the large-text
+   * threshold instead, keeping the committed brand orange intact.
    *
-   * Darkening does not rescue it: `orangeDeep #d9430f` on white is 4.41:1, still
-   * short. So the type crosses the large-text threshold instead, which keeps the
-   * committed brand orange intact and is independently right for the use scene:
-   * read one-handed, gloved, through a windscreen, in Gulf sun, on a cheap
-   * screen. 18px would still fail — the bar is 18.66, so this must not drop.
-   *
-   * This survived the Uber rewire unchanged. Uber's own CTA is black and could
-   * take 16px; ours is orange by decision, so it cannot.
+   * 18px would still fail. The bar is 18.66. This is the single deliberate
+   * deviation from the handoff's type scale, and it is an accessibility floor.
    */
-  button: { fontSize: 19, lineHeight: 24, fontWeight: '900' },
-  /**
-   * The website's tracked uppercase kicker. Kept for the finished consignment
-   * note and nowhere else — it is a print device, and the app is no longer print.
-   */
-  eyebrow: { fontSize: 12, lineHeight: 16, fontWeight: '800', letterSpacing: 2.6 },
+  button: { fontFamily: face.archivo700, fontSize: 19, lineHeight: 24 },
+  /** Secondary and tertiary button labels — not on accent, so free of the above. */
+  buttonSecondary: { fontFamily: face.archivo600, fontSize: 16, lineHeight: 21 },
+
+  /** Values and strong labels. */
+  value: { fontFamily: face.archivo600, fontSize: 15, lineHeight: 20 },
+  body: { fontFamily: face.archivo400, fontSize: 14.5, lineHeight: 22 },
+  bodySmall: { fontFamily: face.archivo400, fontSize: 13, lineHeight: 20 },
+  /** Chips, captions, timestamps. */
+  caption: { fontFamily: face.archivo600, fontSize: 12.5, lineHeight: 17 },
+  /** Uppercase tracked group labels. */
+  groupLabel: {
+    fontFamily: face.archivo700,
+    fontSize: 12.5,
+    lineHeight: 16,
+    letterSpacing: 1.5,
+  },
+  /** Tab bar labels. At the 12.5px floor deliberately — see BODY_FLOOR. */
+  tabLabel: { fontFamily: face.archivo700, fontSize: 12.5, lineHeight: 15 },
+  /** Load references. The one place a monospace face is honest. */
+  reference: { fontFamily: 'Menlo', fontSize: 14.5, lineHeight: 19, letterSpacing: 0.4 },
 } as const;
+
+export type FontToken = keyof typeof font;
+type TextStyleish = { fontFamily: string; fontSize: number; lineHeight: number };
+
+/**
+ * Adapt a Latin type token for Arabic.
+ *
+ * Two changes, both from the handoff: swap to the Plex Arabic face one weight
+ * step lighter (Plex Arabic runs optically heavier than Archivo, so matching the
+ * nominal weight makes Arabic shout), and loosen the leading — 1.35 on headings
+ * and 1.7 on body, against 1.06 and 1.55.
+ *
+ * Encoded here so no screen has to remember it.
+ */
+export function arabicize<T extends TextStyleish>(style: T): T {
+  const isHeading = style.fontSize >= 21;
+  return {
+    ...style,
+    fontFamily: arabicFaceFor(style.fontFamily),
+    lineHeight: Math.round(style.fontSize * (isHeading ? 1.35 : 1.7)),
+  };
+}
 
 /**
  * Depth.
  *
- * This is the rule the rewire overturned. DESIGN.md used to say depth comes from
- * borders and never shadows; on a phone that produced a flat grey field where
- * nothing announced itself as tappable. Shadows are now the primary device and
- * hairlines are the secondary one.
- *
- * They are still restrained — Uber's are barely-there too. The tell of a cheap
- * app is a 20px blur at 0.2 opacity, not the presence of a shadow at all.
+ * Soft shadow and filled surfaces do the structural work. These are restrained
+ * on purpose — the tell of a cheap app is a 20px blur at 0.2 opacity, not the
+ * presence of a shadow.
  */
 export const elevation = {
-  /** A surface resting on the page. */
-  card: {
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
+  /** A card resting on cream. */
+  cardCream: {
+    shadowColor: '#16171A',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  /** An input on cream. */
+  inputCream: {
+    shadowColor: '#16171A',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  /** A sheet or bar floating above content. Reads at the edge, not underneath. */
-  raised: {
+  /** A selected card on cream — the accent carries the shadow. */
+  selectedCream: {
+    shadowColor: color.accent,
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  /** A raised card on ink, e.g. the offer card. */
+  cardInk: {
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 44,
+    shadowOffset: { width: 0, height: 18 },
     elevation: 8,
   },
+  /** A bottom sheet. Reads at its top edge, not underneath. */
+  sheet: {
+    shadowColor: '#000',
+    shadowOpacity: 0.65,
+    shadowRadius: 44,
+    shadowOffset: { width: 0, height: -18 },
+    elevation: 16,
+  },
+  /** The floating tab bar. */
+  tabBar: {
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 38,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
+  },
   /** Only the filled primary button gets a coloured shadow. */
-  orangeButton: {
-    shadowColor: color.orange,
-    shadowOpacity: 0.32,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+  accentButton: {
+    shadowColor: color.accent,
+    shadowOpacity: 0.34,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 6,
   },
 } as const;
 
+/**
+ * Map scrims, so type stays legible over geometry. Which one depends on how much
+ * map is showing. Consumed by P1 — defined here so the values live with the rest
+ * of the system.
+ */
+export const scrim = {
+  /** Map fills the upper ~470px (S1, S3, S4). */
+  topHeavy: {
+    colors: ['rgba(11,12,15,.55)', 'rgba(11,12,15,0)', 'rgba(11,12,15,0)', '#0B0C0F'],
+    locations: [0, 0.22, 0.58, 1],
+  },
+  /** Full-bleed hero (N1). */
+  hero: {
+    colors: ['rgba(11,12,15,.2)', 'rgba(11,12,15,.75)', '#0B0C0F'],
+    locations: [0, 0.46, 0.66],
+  },
+  /** Reduced band, where the decision is the screen (T2). */
+  band: {
+    colors: ['rgba(11,12,15,.5)', 'rgba(11,12,15,.2)', '#0B0C0F'],
+    locations: [0, 0.4, 1],
+  },
+} as const;
+
 export const motion = {
-  interactive: 180,
-  card: 200,
-  sheet: 350,
+  /** Primary press down. */
+  press: 90,
+  /** Press release. */
+  release: 140,
+  /** A selection confirming before the flow advances. */
+  confirm: 180,
+  /** The progress bar growing. */
+  progress: 240,
+  /** Screen transition. */
+  screen: 260,
+  /** The corridor drawing itself in. */
+  corridor: 420,
 } as const;
 
 /** Every tap target clears 44pt. Non-negotiable — drivers wear gloves. */
 export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 export const MIN_TARGET = 44;
-/** The pinned CTA. Taller than the minimum on purpose: it is the thumb's target. */
-export const CTA_HEIGHT = 56;
-/** The circular chip behind a row's icon. Uber's list-row signature. */
-export const CHIP = 40;
-
-/**
- * ── The consignment-note vocabulary ────────────────────────────────────────
- *
- * Retained, but demoted. It used to be the whole app; it is now the treatment
- * for exactly one screen — the finished load in `load/[id].tsx`, which really is
- * a document a business files against an offline settlement.
- *
- * Everywhere else, a load is a card with an icon and a price, because everywhere
- * else the user is deciding rather than filing.
- */
-export const doc = {
-  /** The ruled line. Now a secondary device, behind fills and shadows. */
-  rule: 1,
-  /** A heavier rule closing a block. */
-  ruleStrong: 2,
-
-  /**
-   * Field label above a ruled value, the way a printed form does it. Tracked
-   * caps at small size: legible, and unmistakably not the value itself.
-   */
-  fieldLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-  },
-  /** The value written into a field. Larger than the label, always. */
-  fieldValue: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
-
-  /** The two city names on a printed note. */
-  endpoint: { fontSize: 22, lineHeight: 26, fontWeight: '900', letterSpacing: -0.4 },
-
-  /** Reference number / document id. The only place a monospace face is honest. */
-  reference: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0.6 },
-
-  /** Inset of a note's inner content from its ruled edge. */
-  gutter: 16,
-} as const;
-
-/**
- * Status colors.
- *
- * Now rendered as a soft filled pill rather than a rubber stamp — same job, same
- * checked contrast, less costume. Every entry pairs a foreground with a
- * background it clears 4.5:1 against.
- */
-export const stamp = {
-  /** Waiting on us. Neutral ink on grey — deliberately unexciting. */
-  pending: { fg: '#4a4a4a', bg: '#f1f1f1', border: '#e2e2e2' },
-  /** Something is happening. The single accent, earning its keep. */
-  active: { fg: '#a33308', bg: color.orangeSoft, border: '#fadbcc' },
-  /** Done. Green is WhatsApp's on the website; here it doubles as success. */
-  done: { fg: '#14663a', bg: '#e6f5ec', border: '#cceadb' },
-  /** Stopped. Never red-on-red alarm; this is information, not a failure. */
-  stopped: { fg: '#7a2f22', bg: '#f7ebe8', border: '#ecd6d0' },
-} as const;
-
-export type StampTone = keyof typeof stamp;
+/** The pinned primary action, at the thumb. */
+export const CTA_HEIGHT = 58;
+/** Body copy floor. Nothing carrying words goes below this. */
+export const BODY_FLOOR = 12.5;
