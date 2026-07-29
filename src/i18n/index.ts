@@ -524,7 +524,18 @@ export function directionArrow(): string {
 /**
  * Numerals. The website renders Eastern-Arabic digits in Arabic copy (٤٠ طن),
  * so match it — PRODUCT.md records this as the chosen convention.
+ *
+ * Mapped explicitly rather than through Intl: Hermes ships a trimmed ICU and
+ * `Intl.NumberFormat('ar-OM')` returns Latin digits on Android often enough
+ * that a date or a weight would silently render in the wrong system.
  */
+const ARABIC_INDIC = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+
+export function toArabicIndic(s: string): string {
+  return s.replace(/[0-9]/g, (d) => ARABIC_INDIC[Number(d)]);
+}
+
 export function formatNumber(n: number): string {
-  return new Intl.NumberFormat(current === 'ar' ? 'ar-OM' : 'en-OM').format(n);
+  const grouped = new Intl.NumberFormat('en-OM').format(n);
+  return current === 'ar' ? toArabicIndic(grouped) : grouped;
 }

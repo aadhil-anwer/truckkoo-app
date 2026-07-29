@@ -3,11 +3,21 @@
  * a date range or a reference number looks like.
  */
 
-import { getLanguage } from '@/i18n';
+import { getLanguage, toArabicIndic } from '@/i18n';
 
 /** Locale for dates and numbers. Oman, in the active language. */
 function locale(): string {
   return getLanguage() === 'ar' ? 'ar-OM' : 'en-OM';
+}
+
+/**
+ * Restyle the digits in an already-formatted string to match the language.
+ *
+ * Call this at the output boundary, on a string some other formatter produced —
+ * never on a value you are about to do arithmetic with.
+ */
+export function localizeDigits(s: string): string {
+  return getLanguage() === 'ar' ? toArabicIndic(s) : s;
 }
 
 /**
@@ -27,17 +37,19 @@ export function formatWindow(from: string, to: string): string {
       month: 'short',
     });
   };
-  return from === to ? day(from) : `${day(from)} – ${day(to)}`;
+  return localizeDigits(from === to ? day(from) : `${day(from)} – ${day(to)}`);
 }
 
 /** Long form with a weekday, for a picker row where the choice must be obvious. */
 export function formatLongDay(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(locale(), {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  return localizeDigits(
+    new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(locale(), {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }),
+  );
 }
 
 /**
@@ -59,8 +71,8 @@ export function formatDeadline(iso: string): string {
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
 
-  if (sameDay) return time;
-  return `${d.toLocaleDateString(locale(), { weekday: 'short' })} ${time}`;
+  if (sameDay) return localizeDigits(time);
+  return localizeDigits(`${d.toLocaleDateString(locale(), { weekday: 'short' })} ${time}`);
 }
 
 /** Today's date as an ISO `date` string in the device's own timezone. */
@@ -83,5 +95,5 @@ export function reference(id: string): string {
 /** Weight, or the explicit "not given" case. Never a blank cell. */
 export function formatWeight(kg: number | null | undefined, fallback: string): string {
   if (!kg) return fallback;
-  return `${new Intl.NumberFormat(locale()).format(kg)} kg`;
+  return localizeDigits(`${new Intl.NumberFormat(locale()).format(kg)} kg`);
 }
