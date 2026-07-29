@@ -241,17 +241,25 @@ export const font = {
 } as const;
 
 export type FontToken = keyof typeof font;
-type TextStyleish = { fontFamily: string; fontSize: number; lineHeight: number };
+type TextStyleish = { fontFamily: string; fontSize: number; lineHeight: number; letterSpacing?: number };
 
 /**
  * Adapt a Latin type token for Arabic.
  *
- * Two changes, both from the handoff: swap to the Plex Arabic face one weight
- * step lighter (Plex Arabic runs optically heavier than Archivo, so matching the
- * nominal weight makes Arabic shout), and loosen the leading — 1.35 on headings
- * and 1.7 on body, against 1.06 and 1.55.
+ * Three changes, from the handoff plus one hazard it didn't call out: swap to
+ * the Plex Arabic face one weight step lighter (Plex Arabic runs optically
+ * heavier than Archivo, so matching the nominal weight makes Arabic shout),
+ * loosen the leading — 1.35 on headings and 1.7 on body, against 1.06 and
+ * 1.55 — and drop `letterSpacing` entirely.
  *
- * Encoded here so no screen has to remember it.
+ * That last one is not cosmetic. Arabic is a cursive, joined script — glyphs
+ * connect to their neighbours to form a letter. Any positive tracking (several
+ * type tokens carry it, e.g. `groupLabel`'s 1.5 and the display tokens'
+ * negative values) forces those glyphs apart and breaks the joins, which reads
+ * as broken text, not just loosely set text. Do not "restore" this — it is not
+ * an oversight.
+ *
+ * Encoded here so no screen has to remember any of it.
  */
 export function arabicize<T extends TextStyleish>(style: T): T {
   const isHeading = style.fontSize >= 21;
@@ -259,6 +267,7 @@ export function arabicize<T extends TextStyleish>(style: T): T {
     ...style,
     fontFamily: arabicFaceFor(style.fontFamily),
     lineHeight: Math.round(style.fontSize * (isHeading ? 1.35 : 1.7)),
+    letterSpacing: undefined,
   };
 }
 
