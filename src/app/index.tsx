@@ -15,20 +15,15 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect } from 'expo-router';
 
-import { useAmIOps } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { color } from '@/theme/tokens';
 
 export default function Index() {
   const { session, profile, loading } = useSession();
-  // Asked once per session. A dispatcher also holds a shipper or driver profile —
-  // ops membership is additional, not an alternative — so this has to be checked
-  // before the role branch or staff would land on a customer screen.
-  const ops = useAmIOps();
 
   // Nothing is known yet. Show the same quiet boot state as the Gate rather than
   // guessing at a destination and bouncing the user off it a frame later.
-  if (loading || (!!session && ops.isPending)) {
+  if (loading) {
     return (
       <View style={styles.boot}>
         <ActivityIndicator color={color.orange} />
@@ -39,10 +34,6 @@ export default function Index() {
   if (!session) return <Redirect href="/sign-in" />;
   // Signed in but the profile row was never created: signup owns finishing it.
   if (!profile) return <Redirect href="/sign-up" />;
-
-  // Navigation only. Every ops RPC re-checks membership in the database, so a
-  // wrong answer here — or a forced route — reveals nothing.
-  if (ops.data === true) return <Redirect href="/ops" />;
 
   return <Redirect href={profile.role === 'driver' ? '/driver' : '/customer'} />;
 }

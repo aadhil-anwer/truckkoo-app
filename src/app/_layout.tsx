@@ -100,8 +100,9 @@ function Gate() {
     }
 
     if (inAuth) {
-      // Dispatchers are routed by `/index.tsx`, which knows about ops. Sending
-      // them through the role branch here would land them on the shipper screen.
+      // `/index.tsx` routes on role. Dispatch is web-only now (~/truckkoo-ops),
+      // so a dispatcher signing in here lands on whichever surface their
+      // profiles.role names — which is the intended behaviour, not a gap.
       router.replace('/');
     }
   }, [loading, session, profile, group, segments, router]);

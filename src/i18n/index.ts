@@ -284,58 +284,6 @@ const en = {
   "event.delivered": "Delivered",
   "event.note": "Note",
 
-  // ── ops / dispatch ────────────────────────────────────────────────────────
-  // Truckkoo's own staff, not a customer. Voice stays operator-grade but this is
-  // the one surface allowed to be dense — a dispatcher is triaging, not learning.
-  "ops.masthead": "Dispatch",
-  "ops.queue.empty.title": "Nothing waiting",
-  "ops.queue.empty.explain": "Every posted load has been dealt with. New ones appear here as they come in.",
-  "ops.queue.awaiting": "Needs a decision",
-  "ops.queue.working": "Offer out",
-  "ops.load.title": "Load to place",
-  "ops.candidates.title": "Trucks already going that way",
-  "ops.candidates.none.title": "Nobody fits this load",
-  "ops.candidates.none.explain": "No declared leg covers this route and window, and no driver has run this corridor before. Arrange a fresh trip and tell the shipper.",
-  // ── the three tiers (0012) ────────────────────────────────────────────────
-  // Ordered best-first. Tier 3 is a different act from tiers 1 and 2 — those
-  // drivers said they were going; these ones only might — and the copy says so
-  // rather than presenting one undifferentiated list.
-  "ops.tier1.title": "Empty trucks going that way",
-  "ops.tier1.explain": "Declared this exact route with nothing on board.",
-  "ops.tier2.title": "Part-loaded trucks going that way",
-  "ops.tier2.explain": "Declared this route with cargo already on board.",
-  "ops.tier3.title": "Drivers who have run this corridor",
-  "ops.tier3.explain": "No declared leg for these dates. They have run this corridor before.",
-  "ops.tier3.lastRun": "Last ran",
-  "ops.dayGap": "days off the window",
-  "ops.send": "Offer to this driver",
-  "ops.send.corridor": "Ask this driver",
-  "ops.sent": "Already offered",
-  "ops.accepted": "Accepted",
-  "ops.declined": "Declined",
-  "ops.resend": "Offer again",
-  "ops.auto.sent": "Offered automatically when posted",
-  "ops.sweep": "Clear timed-out offers",
-  "ops.sweep.done": "Cleared. Loads with no live offer are back in the queue.",
-  "ops.noMatch": "No truck fits — arrange a fresh trip",
-  "ops.noMatch.done": "Marked. The shipper now sees \"finding you a truck\".",
-  // ── dispatcher pricing ─────────────────────────────────────────────────────
-  // Internal copy: a dispatcher is the one user of this app who is not low-tech,
-  // so this is the only place that may name the unit precisely rather than
-  // paraphrase it. Getting baisa wrong by a factor of 1000 is the failure mode.
-  "ops.price.title": "Price this load",
-  "ops.price.label": "Amount in rial (OMR)",
-  "ops.price.placeholder": "e.g. 120.500",
-  "ops.price.hint": "Three decimals. 120.500 is one hundred and twenty rial, five hundred baisa.",
-  "ops.price.action": "Send this price",
-  "ops.price.done": "Price sent. The shipper can see it now.",
-  "ops.price.invalid": "Enter an amount like 120.500",
-  "ops.price.current": "Priced at",
-  "ops.offerCount": "Offers out",
-  "ops.posted": "Posted",
-  "ops.empty.truck": "Empty",
-  "ops.part.truck": "Part loaded",
-
   // ── shared labels ─────────────────────────────────────────────────────────
   "label.from": "From",
   "label.to": "To",
@@ -450,9 +398,7 @@ const ar: Partial<Record<StringKey, string>> = {
   "label.to": "إلى",
   "label.goods": "نوع البضاعة",
   "label.truck": "نوع الشاحنة",
-  // Driver-facing, and it appears at the worst possible moment. The ops.* keys
-  // stay English on purpose: a dispatcher is the one user of this app who is not
-  // low-tech, and internal copy is not worth a half-translated screen.
+  // Driver-facing, and it appears at the worst possible moment.
   "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
 };
 
