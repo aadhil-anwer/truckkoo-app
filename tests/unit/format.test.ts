@@ -16,6 +16,7 @@
 // whole point: in UTC these tests pass even against a broken implementation.
 process.env.TZ = 'America/New_York';
 
+import { initLanguage } from '@/i18n';
 import {
   formatDeadline,
   formatLongDay,
@@ -168,5 +169,36 @@ describe('formatDeadline', () => {
   it('returns an empty string for an unparseable timestamp rather than "Invalid Date"', () => {
     expect(formatDeadline('not-a-timestamp')).toBe('');
     expect(formatDeadline('')).toBe('');
+  });
+});
+
+describe('Arabic-Indic wiring', () => {
+  // Proves each formatter is actually wrapped with localizeDigits — not just
+  // that localizeDigits works in isolation (numerals.test.ts covers that) and
+  // not just that these formatters produce sane output in English (covered
+  // above). Deleting the wrapping, or wrapping the wrong sub-expression, in
+  // any one of the four should fail exactly one of these.
+  afterEach(() => initLanguage('en'));
+
+  it('formatWindow renders Eastern Arabic-Indic digits in Arabic', () => {
+    initLanguage('ar');
+    expect(formatWindow('2026-07-25', '2026-07-25')).toMatch(/[٠-٩]/);
+  });
+
+  it('formatLongDay renders Eastern Arabic-Indic digits in Arabic', () => {
+    initLanguage('ar');
+    expect(formatLongDay('2026-07-25')).toMatch(/[٠-٩]/);
+  });
+
+  it('formatDeadline renders Eastern Arabic-Indic digits in Arabic', () => {
+    initLanguage('ar');
+    const soon = new Date();
+    soon.setHours(soon.getHours() + 1);
+    expect(formatDeadline(soon.toISOString())).toMatch(/[٠-٩]/);
+  });
+
+  it('formatWeight renders Eastern Arabic-Indic digits in Arabic', () => {
+    initLanguage('ar');
+    expect(formatWeight(8000, 'Not given')).toMatch(/[٠-٩]/);
   });
 });
