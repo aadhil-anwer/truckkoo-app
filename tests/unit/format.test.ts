@@ -173,32 +173,53 @@ describe('formatDeadline', () => {
 });
 
 describe('Arabic-Indic wiring', () => {
-  // Proves each formatter is actually wrapped with localizeDigits — not just
-  // that localizeDigits works in isolation (numerals.test.ts covers that) and
-  // not just that these formatters produce sane output in English (covered
-  // above). Deleting the wrapping, or wrapping the wrong sub-expression, in
-  // any one of the four should fail exactly one of these.
-  afterEach(() => initLanguage('en'));
-
-  it('formatWindow renders Eastern Arabic-Indic digits in Arabic', () => {
-    initLanguage('ar');
-    expect(formatWindow('2026-07-25', '2026-07-25')).toMatch(/[٠-٩]/);
+  // Node's Jest runner ships full ICU, so `toLocaleDateString('ar-OM')` and
+  // `Intl.NumberFormat('ar-OM')` already emit Eastern Arabic-Indic digits
+  // natively here — asserting on that output alone would pass whether or not
+  // `localizeDigits(...)` is actually wired in. Hermes on Android is the
+  // opposite: its trimmed ICU returns Latin digits for 'ar-OM'. So each test
+  // stubs the underlying locale call to return what Hermes would — Latin
+  // digits — and asserts the formatter's *return value* is Arabic-Indic
+  // anyway. That can only be true if `localizeDigits` converted it, which
+  // means the assertion is load-bearing on the wrapping actually being there.
+  afterEach(() => {
+    initLanguage('en');
+    jest.restoreAllMocks();
   });
 
-  it('formatLongDay renders Eastern Arabic-Indic digits in Arabic', () => {
+  it('formatWindow converts Latin digits the underlying formatter returned', () => {
     initLanguage('ar');
-    expect(formatLongDay('2026-07-25')).toMatch(/[٠-٩]/);
+    jest.spyOn(Date.prototype, 'toLocaleDateString').mockReturnValue('25 Jul');
+    const out = formatWindow('2026-07-25', '2026-07-25');
+    expect(out).toBe('٢٥ Jul');
+    expect(out).not.toMatch(/[0-9]/);
   });
 
-  it('formatDeadline renders Eastern Arabic-Indic digits in Arabic', () => {
+  it('formatLongDay converts Latin digits the underlying formatter returned', () => {
     initLanguage('ar');
+    jest.spyOn(Date.prototype, 'toLocaleDateString').mockReturnValue('Saturday, 25 July');
+    const out = formatLongDay('2026-07-25');
+    expect(out).toBe('Saturday, ٢٥ July');
+    expect(out).not.toMatch(/[0-9]/);
+  });
+
+  it('formatDeadline converts Latin digits the underlying formatter returned', () => {
+    initLanguage('ar');
+    jest.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('18:40');
     const soon = new Date();
     soon.setHours(soon.getHours() + 1);
-    expect(formatDeadline(soon.toISOString())).toMatch(/[٠-٩]/);
+    const out = formatDeadline(soon.toISOString());
+    expect(out).toBe('١٨:٤٠');
+    expect(out).not.toMatch(/[0-9]/);
   });
 
-  it('formatWeight renders Eastern Arabic-Indic digits in Arabic', () => {
+  it('formatWeight converts Latin digits the underlying formatter returned', () => {
     initLanguage('ar');
-    expect(formatWeight(8000, 'Not given')).toMatch(/[٠-٩]/);
+    jest.spyOn(Intl, 'NumberFormat').mockImplementation(
+      () => ({ format: () => '8,000' }) as unknown as Intl.NumberFormat,
+    );
+    const out = formatWeight(8000, 'Not given');
+    expect(out).toBe('٨,٠٠٠ kg');
+    expect(out).not.toMatch(/[0-9]/);
   });
 });
