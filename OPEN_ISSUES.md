@@ -64,6 +64,98 @@ threshold instead. `tests/unit/contrast.test.ts` computes it from the tokens.
 
 This is the only deviation from the handoff's type scale, and it is deliberate.
 
+### P0 shipped a design system nobody has seen on a phone
+
+Tokens, fonts, primitives, icons and numerals are in and tested, but P0
+deliberately built none of the 32 designed screens. Every existing screen was
+carried over mechanically to the nearest new token, so the app currently looks
+**transitional**: right colours and type, old layouts. `src/components/legacy.tsx`
+holds the old vocabulary on new tokens until each phase replaces its screens.
+
+**Done when:** P1–P7 are built. Nothing to fix here — this entry exists so a
+transitional screenshot is not mistaken for a bug, and so
+`grep -rl "components/legacy" src/app` is understood as a to-do list.
+
+### Three of the handoff's text colours were sub-AA, and the ramp had to change
+
+The contrast test now flattens `rgba` over its ground before measuring, which is
+how these surfaced. Measured over `#F4F0E9`, the handoff's cream text ramp is:
+
+| Handoff | Measured | Now |
+|---|---|---|
+| `rgba(22,23,26,.6)` body | 4.48:1 | `.72` |
+| `rgba(22,23,26,.5)` tertiary | 3.29:1 | **deleted** — use `color.mutedText` |
+| `rgba(22,23,26,.45)` label | 2.95:1 | `.61` |
+
+Raising all three to pass collapses them onto ~`.61`, because ink-on-cream runs
+out of headroom there — so cream has **two** text levels, not three, and the third
+role uses the handoff's own solid `#6C6A63` (4.77:1). On ink, `.45` and `.42`
+measured 4.26:1 and 3.84:1 and were raised to `.47`.
+
+**Visible consequence:** helper text on question screens reads slightly darker
+than the mockups. That is the cost of the AA commitment, applied consistently.
+
+**Done when:** the designer has seen it and either accepts it or supplies a
+palette that clears AA at the intended lightness.
+
+### The handoff specifies no error colour, so one was invented
+
+Every form in the product validates something and auth has to be able to say "that
+code is wrong", but the handoff's palette has no red at all. Added `danger`
+(`#C0341C`, 4.9:1 on cream) and `dangerLight` (`#FF8A80`, 8.6:1 on ink) — two
+tones for the same reason the accent has two, and deliberately pinker than
+`accentLight` so an error never reads as the action in sunlight.
+
+**Done when:** the designer confirms the hues, or replaces them.
+
+### The primary button deviates from the handoff by ~2px
+
+The handoff specifies `700 17px` on `#F1551F`. That is 3.47:1 and fails WCAG AA,
+which drops to 3:1 only at 18.66px bold. The label stays at or above that
+threshold instead. This is the only deviation from the handoff's type scale, and
+it is deliberate. `tests/unit/contrast.test.ts` computes it from the tokens.
+
+### Icons carry three known compromises
+
+- **`pickup`, `pay` and `goods` all resolve to the same `box` shape.** A screen
+  showing pickup and payment together renders two identical icons, which
+  undermines the point of a semantic icon map. Needs distinct art.
+- **`whatsapp` reuses the generic message bubble** rather than the WhatsApp mark.
+  Acceptable — no brand mandate — but worth revisiting.
+- **Nothing has been seen rendered.** Geometry was verified by tracing
+  coordinates inside the 24-unit viewBox, not by looking at it.
+
+**Done when:** the set has been seen at 20px on a device, and `pickup`/`pay` are
+visually distinct.
+
+### The three font families have not been measured on a real device
+
+Archivo, Instrument Serif and IBM Plex Sans Arabic are bundled rather than
+fetched, which is right for the audience and costs app size. Nobody has measured
+the increase, and nobody has seen Instrument Serif render at 76px on a cheap
+Android screen — the T2 price is the largest type in the product and the least
+tested.
+
+**Done when:** the bundle delta is measured and both display faces have been seen
+on target hardware.
+
+### Smaller things P0 left, each real but not blocking
+
+- **`SelectRow`'s ink-ground radio ring is untested.** The ring was hardcoded to a
+  cream value that is nearly invisible on ink; that is fixed, but every test stays
+  green if it reverts. Assert it when a screen first uses `ground="ink"`.
+- **`accessibilityRole="radio"` has no `radiogroup` parent**, so a selected option
+  is announced without its set. Belongs to a P7 accessibility pass.
+- **The i18n key-parity test only samples a curated list**, and the `ar` table is
+  `Partial<Record<StringKey, …>>` — so a *missing* Arabic string is not caught.
+  Bilingual RTL is a project non-negotiable, so this guard is weaker than it
+  looks. P7.
+- **`Notice`'s decorative icon is not hidden from the accessibility tree.**
+- **`arabicize` clears `letterSpacing` by setting it to `undefined`** rather than
+  deleting the key. Verified equivalent in React Native's style flattening — and
+  in fact stronger, since it clears an earlier value — but it depends on
+  `arabicIfNeeded(...)` staying first in any `StyleSheet.flatten([...])` array.
+
 ### The ops screens were deleted from this repo
 
 Dispatch is web-only now, at `~/truckkoo-ops`. `masthead.tsx` and

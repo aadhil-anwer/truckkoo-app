@@ -185,9 +185,34 @@ Worth carrying into the app verbatim.
 
 ---
 
-## 7. App token export
+## 7. App token export — SUPERSEDED for the app
 
-For React Native / Flutter / Tailwind config:
+> **This section, and everything above it, describes the WEBSITE.** The app no
+> longer derives from it. Since the July 2026 redesign the app's system is
+> `src/theme/tokens.ts` plus `src/theme/faces.ts`, assembled into shapes in
+> `src/components/primitives.tsx` (controls) and `src/components/ui.tsx`
+> (layout). See `CLAUDE.md` §Design and
+> `docs/superpowers/specs/2026-07-30-redesign-p0-foundations-design.md`.
+>
+> The app differs from what follows in ways that matter, so do not copy from
+> here into the app:
+>
+> - **Two grounds, not one.** Ink `#0B0C0F` for reading state, cream `#F4F0E9`
+>   for asking a question. The website's white/`#f6f6f6` pair is neither.
+> - **Depth from shadow and filled surfaces**, reversing §3. Hairlines only
+>   divide rows inside a surface — a 1px rule at arm's length is invisible and
+>   gives a tappable area no bounds.
+> - **Three type families**, and every token names a `fontFamily`: Archivo,
+>   Instrument Serif (questions and hero numbers only), IBM Plex Sans Arabic.
+>   Almarai is gone. A bare `fontWeight` on a custom family is a silent no-op.
+> - **The accent is never text.** `#f1551f` on cream is 3.05:1; `#FF7A45` is the
+>   on-dark text tone.
+> - The app's spacing is an 8pt grid, not `6 10 14 18 22 26 34 56`.
+>
+> What still holds in both: one accent, specifics over adjectives, WCAG 2.1 AA,
+> and every tap target ≥44pt.
+
+For the **website** — React Native / Flutter / Tailwind config:
 
 ```
 primary        #f1551f    primaryDark   #d9430f    primaryOnDark  #ff7a4d
@@ -205,4 +230,10 @@ fonts    Archivo (Latin), Almarai (Arabic)
 
 Keep the four load-bearing decisions — single orange accent, 900-weight tight
 headlines, hairline borders over shadows, alternating light/dark sections with
-their own color pairs — and the app will read as the same brand.
+their own color pairs — and the **website** will read as the same brand.
+
+The app reaches the same brand by different means, deliberately: a website is
+read at desk distance and an app is read one-handed, in sunlight, in a truck cab.
+Two of those four decisions were reversed for it (shadows over hairlines, and two
+grounds rather than alternating sections). The accent and the voice carried over
+unchanged, and those are what make it recognisable.

@@ -96,42 +96,74 @@ still describes the website only*. The app's system is `src/theme/tokens.ts`,
 assembled into shapes in `src/components/primitives.tsx` (controls) and
 `src/components/ui.tsx` (layout). Nothing else may invent a shape.
 
-**The app's skeleton is Uber's, by explicit decision (July 2026).** The palette
-and the voice stayed ours; the placement, hierarchy and density did not. What is
-load-bearing now:
+**The app is being rebuilt from a design handoff (July 2026)** —
+`App redesign with map interface.zip`, 32 screens in five flows. Its reference
+points: Uber for the shape of the product, Typeform for the shape of the asking,
+Opal for the room it sits in. The phase plan and the decisions that bind it are
+in `docs/superpowers/specs/2026-07-30-redesign-p0-foundations-design.md`.
 
-- one orange accent (`#f1551f`) — **the pinned primary action and the live state,
-  and nothing else**. Never two oranges on a screen. Tab bars, selected states
-  and headlines are ink.
-- weight-900 tight headlines, and **one 32/900 statement per screen**, never two
-- **depth from soft shadow and `#f2f2f2` fills.** This reverses DESIGN.md §3 —
-  hairlines now only divide rows *inside* a surface. On a phone a 1px rule at
-  arm's length is invisible and gives a tappable area no bounds.
-- an **8pt grid** (`space` in tokens) and a 20px screen gutter, everywhere
-- **one pinned `ActionBar` per screen**, at the thumb. A CTA below the fold does
-  not exist to someone who has never scrolled a page on purpose.
-- one icon family, reached only through `src/components/icon.tsx`, which names
+**Two grounds, and a screen is one or the other — never a mix.**
+
+- **Ink** `#0B0C0F` is the *working* ground: home, tracking, lists, offers —
+  everywhere the user reads state. Surfaces `#15171C`, raised `#1E2128`.
+- **Cream** `#F4F0E9` is the *asking* ground: one question per screen, set in
+  display type. Cards and fields are white on it.
+
+What is load-bearing:
+
+- one accent (`#F1551F`) — **the pinned primary action *or* the live state, never
+  both on one screen**. Tab bars, selected states and headlines are otherwise
+  ink. `#F1551F` is **never text**: on cream it is 3.05:1. Use `accentLight`
+  (`#FF7A45`) for accent-as-text-on-dark.
+- **`color.delivered` (`#79E0AF`) appears exactly once in the product**, on T5.
+  A second use means that screen is wrong.
+- **Instrument Serif is reserved** for questions and hero numbers, reached only
+  through `QuestionHeading`. **One display statement per screen** — two serif
+  headlines is a bug, not a style.
+- **Every type token names a `fontFamily`; none sets `fontWeight`.** React Native
+  does not synthesize weights for custom families, so a bare weight silently
+  renders the default face. See `src/theme/faces.ts`. This shipped broken.
+- Arabic goes through `arabicize` / `arabicIfNeeded`: one weight step lighter,
+  looser leading, and **`letterSpacing` stripped** — Arabic is cursive and Latin
+  tracking breaks the joins.
+- **depth from soft shadow and filled surfaces.** Hairlines only divide rows
+  *inside* a surface. On a phone a 1px rule at arm's length is invisible and
+  gives a tappable area no bounds.
+- one icon set, reached only through `src/components/icon.tsx`, which names
   *things* (`pickup`, `truck`, `pay`) rather than glyphs and mirrors directional
-  icons under RTL
-- light and dark surfaces each carry their own card/border/muted triple; never
-  reuse a light-mode border on dark, and never `#f1551f` as text on dark (use
-  `#ff7a4d`)
+  icons under RTL. Hand-authored SVG at stroke 1.9–2.1 with round caps — a glyph
+  font bakes stroke weight in, and stroke weight is what makes a set a set.
+- **selection is signalled three ways at once** — border, fill, and a filled
+  radio. That is deliberate redundancy for reading one-handed in direct sun
+  through a windscreen. Reducing it to one indicator is a legibility regression;
+  `tests/components/select.test.tsx` will say so.
+- **skeletons, never spinners**, and any wait over ~3s is *narrated* with a
+  `Timeline` carrying real information — not a spinner with a caption.
 
-**`font.button` stays at 19/900.** It is not taste. White on `#f1551f` is
-3.47:1, so the label only clears AA by qualifying as large text, whose bold
-threshold is 18.66px. `tests/unit/contrast.test.ts` computes this from the
-tokens — change a colour or a size and it tells you what you did.
+**`font.button` stays ≥18.66px bold.** Not taste. White on `#F1551F` is 3.47:1,
+so the label only clears AA by qualifying as large text, whose bold threshold is
+18.66px. The handoff specifies 17px, which fails outright; **this is the one
+deliberate deviation from its type scale.** `tests/unit/contrast.test.ts`
+computes every ratio from the tokens — change a colour or a size and it tells you
+what you did. It also flattens `rgba` over its ground, which is how it caught
+that the handoff's own text ramp was sub-AA in three places (see `OPEN_ISSUES.md`).
 
-The **ops console screens keep the old document treatment** (`masthead.tsx`,
-`consignment.tsx`). They were not part of the rewire, they are still tested, and
-a dispatcher is the one user of this app who is not low-tech. Do not restyle them
-in passing.
+**`src/components/legacy.tsx` is transitional and shrinking.** P0 replaced the
+design system but built none of the 32 screens, so the old vocabulary lives there
+on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
+the list of screens still awaiting their phase; when it is empty, delete the file.
+**Nothing new may import from it.**
 
-**Navigation is a bottom tab bar** (`src/app/(app)/(tabs)/`), role-aware. Tabs are
-hidden with `tabBarItemStyle: {display:'none'}`, **not** expo-router's `href:
-null` shortcut — expo-router consumes `href` before descriptors are built, so a
-custom `tabBar` never sees it and renders every hidden tab. That shipped once.
+**Navigation is a floating tab bar** (`src/app/(app)/(tabs)/`), role-aware — a
+pill at the thumb, not a bar welded to the bottom edge. Tabs are hidden with
+`tabBarItemStyle: {display:'none'}`, **not** expo-router's `href: null` shortcut —
+expo-router consumes `href` before descriptors are built, so a custom `tabBar`
+never sees it and renders every hidden tab. That shipped once.
 `tests/components/tab-bar.test.tsx` is what stops it returning.
+
+A tab badge's count belongs **inside the tab's accessible label** ("Offers, 2
+new"), never as a loose node — a bare "2" is announced with no referent. The
+count goes through `formatNumber`, like every other numeral.
 
 Voice: confident, plainspoken, operator-grade. **Specifics beat adjectives** —
 tonnages, city names, and "no brokers" outperform "world-class solutions".
@@ -170,8 +202,11 @@ function that mutates without calling `private.log_ops` is an incomplete change.
 
 **The dispatcher console is a separate web app** at `~/truckkoo-ops` (Vite +
 React, Cloudflare). It holds the anon key only and calls the same guarded RPCs.
-The two ops screens in this repo still work and are still tested — do not break
-them while building the console.
+**Dispatch is web-only: the two ops screens were deleted from this repo (2026-07-30)**,
+and `masthead.tsx`/`consignment.tsx` went with them. Nothing server-side changed —
+`am_i_ops`, `private.ops_users`, `require_ops()` and every `ops_*` RPC are
+untouched, and `supabase/tests/ops_console.sql` still passes. Consequence,
+accepted: nobody can dispatch from a phone.
 
 Matching itself lives in `private.candidates_for`, which returns three tiers —
 empty leg, part-loaded leg, corridor history — and **does not check ownership**.
@@ -187,7 +222,7 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 268 tests
+npm run verify    # typecheck + lint + 325 tests
 npm run test:db   # 157 SQL assertions (isolation + pricing) — needs `npx supabase start`
 ```
 
