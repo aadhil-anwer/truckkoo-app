@@ -106,3 +106,14 @@ beforeEach(() => {
     realError(...(args as Parameters<typeof console.error>));
   });
 });
+
+/**
+ * AsyncStorage has no native module under jest, and importing it throws before a
+ * test body runs. The package ships an in-memory mock for exactly this; using it
+ * means the booking-draft tests exercise the real read/write/clear paths rather
+ * than a hand-rolled stub that cannot disagree with them.
+ */
+jest.mock(
+  '@react-native-async-storage/async-storage',
+  () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
