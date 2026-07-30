@@ -315,6 +315,114 @@ export function Chip({
   );
 }
 
+/**
+ * The narrated wait.
+ *
+ * A spinner says "the app is busy". This says what has happened, what is
+ * happening, and what happens next — which is the difference between a wait a
+ * user tolerates and one they abandon. The handoff requires this pattern for any
+ * wait longer than ~3 seconds; it is not decoration on top of a loading state.
+ *
+ * The `active` step's ring is drawn in the accent colour — this is the "live
+ * state" use the tokens reserve the accent for, not a second pinned action, so
+ * it does not violate the one-accent-per-screen rule as long as the screen has
+ * no separate pinned CTA also in accent.
+ */
+export function Timeline({
+  steps,
+}: {
+  steps: { label: string; detail?: string; state: 'complete' | 'active' | 'future' }[];
+}) {
+  return (
+    <View accessibilityRole="list">
+      {steps.map((s, i) => (
+        <View key={`${i}-${s.label}`} style={styles.timelineRow} accessibilityRole="text">
+          <View style={styles.timelineGutter}>
+            <View
+              testID={`timeline-mark-${i}`}
+              style={StyleSheet.flatten([
+                styles.timelineMark,
+                s.state === 'complete'
+                  ? { backgroundColor: 'rgba(241,85,31,.18)' }
+                  : s.state === 'active'
+                    ? {
+                        borderWidth: 2.5,
+                        borderColor: color.accent,
+                        shadowColor: color.accent,
+                        shadowOpacity: 0.14,
+                        shadowRadius: 5,
+                        shadowOffset: { width: 0, height: 0 },
+                      }
+                    : { borderWidth: 2, borderColor: 'rgba(247,245,242,.18)' },
+              ])}
+            >
+              {s.state === 'complete' ? (
+                <View testID={`timeline-check-${i}`}>
+                  <Icon name="check" size={12} stroke={2.4} tint={color.accent} />
+                </View>
+              ) : null}
+            </View>
+            {i < steps.length - 1 ? (
+              <View testID={`timeline-connector-${i}`} style={styles.timelineConnector} />
+            ) : null}
+          </View>
+          <View style={styles.timelineText}>
+            <Text
+              style={StyleSheet.flatten([
+                arabicIfNeeded(font.value),
+                {
+                  color: s.state === 'future' ? alpha.onInk.label : color.lightText,
+                  textAlign: align.start,
+                },
+              ])}
+            >
+              {s.label}
+            </Text>
+            {s.detail ? (
+              <Text
+                style={StyleSheet.flatten([
+                  arabicIfNeeded(font.caption),
+                  {
+                    color: s.state === 'active' ? color.accentLight : alpha.onInk.tertiary,
+                    textAlign: align.start,
+                  },
+                ])}
+              >
+                {s.detail}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Skeletons, never spinners, for list and card loads.
+ *
+ * A skeleton at the final geometry tells the user what is arriving and stops the
+ * layout jumping when it does. A spinner tells them nothing and then reflows the
+ * screen under their thumb.
+ */
+export function Skeleton({
+  width = '100%',
+  height = 18,
+  round = radius.notice,
+}: {
+  width?: number | `${number}%`;
+  height?: number;
+  round?: number;
+}) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ width, height, borderRadius: round, backgroundColor: color.raised }}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   sheet: {
@@ -375,4 +483,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     borderRadius: radius.round,
   },
+  timelineRow: { flexDirection: 'row', gap: space.md },
+  timelineGutter: { alignItems: 'center' },
+  timelineMark: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineConnector: {
+    width: 1.5,
+    height: 26,
+    backgroundColor: 'rgba(247,245,242,.14)',
+  },
+  timelineText: { flex: 1, paddingBottom: space.xl, gap: 2 },
 });
