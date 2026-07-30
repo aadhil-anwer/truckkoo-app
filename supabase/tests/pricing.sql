@@ -672,6 +672,103 @@ select assert_raises(
     values ('UAE', 'Sharqiyah', '10t', 50000, 10000, 0)$$,
   'a zero minimum fare is rejected at configuration time');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- estimate_route (0021) — the pre-commit RANGE on the review screen.
+--
+-- The graceful path is the DEFAULT path today: the rate card ships empty, so
+-- every call returns NULL prices and the screen says a person will price it. A
+-- shipper must never see an error there (CLAUDE.md #6), so that case is asserted
+-- first and hardest.
+-- ════════════════════════════════════════════════════════════════════════════
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+
+-- A card IS loaded at this point in the file (Muscat -> Salalah, 10t), so this
+-- is the priced path: 150.000 OMR +/- 15%, rounded outward to whole rials.
+select assert_text(
+  (select outcome from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     '10t', 9600)),
+  'estimated', 'a loaded band produces a range');
+
+select assert_equals(
+  (select low_baisa from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     '10t', 9600)),
+  127000, 'low is 150.000 less 15%, floored to a whole rial');
+
+select assert_equals(
+  (select high_baisa from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     '10t', 9600)),
+  173000, 'high is 150.000 plus 15%, ceiled to a whole rial');
+
+-- The range must bracket what quote_route would actually charge. If it does not,
+-- the shipper is shown a band their real price falls outside of.
+select assert_equals(
+  (select count(*)::bigint from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     '10t', 9600) e
+   where e.low_baisa <= 150000 and e.high_baisa >= 150000),
+  1, 'the range brackets the price the load would actually be quoted');
+
+-- "Not sure — advise me" is the default choice in the product. It must produce a
+-- human path, not an error and not a guessed price.
+select assert_text(
+  (select outcome from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, 9600)),
+  'advise_me', 'a NULL truck type asks a person rather than guessing');
+
+select assert_equals(
+  (select count(*)::bigint from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, 9600) e
+   where e.low_baisa is null and e.high_baisa is null),
+  1, 'an unpriced outcome carries no numbers at all');
+
+select act_as_reset();
+
+-- Now the shipped state: a corridor with no card. Today that is EVERY corridor,
+-- because the card ships empty — so this is the path a real shipper takes.
+--
+-- Deliberately not `delete from private.rate_cards` here: a quote issued above
+-- references the card, and quotes are immutable, so the cascade is refused. That
+-- refusal is correct and worth knowing about — a priced quote keeps its
+-- provenance even if the card is later retired.
+select act_as('11111111-1111-4111-8111-111111111111');
+
+select assert_text(
+  (select outcome from public.estimate_route(
+     (select id from public.cities where name_en = 'Sohar'),
+     (select id from public.cities where name_en = 'Sur'),
+     '10t', 9600)),
+  'no_rate', 'an unpriced corridor returns no_rate rather than raising');
+
+select assert_equals(
+  (select count(*)::bigint from public.estimate_route(
+     (select id from public.cities where name_en = 'Sohar'),
+     (select id from public.cities where name_en = 'Sur'),
+     '10t', 9600) e
+   where e.low_baisa is null and e.high_baisa is null),
+  1, 'no card means no numbers, and the screen says a person will price it');
+
+select act_as_reset();
+
+-- A driver cannot price a route. Same rule as quote_route: it halves the set of
+-- accounts that can probe the card.
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_raises(
+  $$select * from public.estimate_route(1::bigint, 2::bigint, null, null)$$,
+  'a driver cannot estimate a route');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL PRICING ASSERTIONS HELD'; end $$;
 
 rollback;

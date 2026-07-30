@@ -33,7 +33,7 @@ changes, and a failure in one does not block the other.
 | # | Decision | Why |
 |---|---|---|
 | B1 | **"From the last 40 trips here" is cut.** | `CLAUDE.md` non-negotiable #5: never fabricate proof. There have been no trips. The rest of that sentence — "A person confirms the exact number, usually within 10 minutes" — is a real commitment the website already makes, and it stays. If a corridor's real completed-trip count is ever worth showing, it can be computed then. |
-| B2 | **The estimate is a new SQL-only RPC, `estimate_route`.** | S9 shows a range *before* a load exists, and `quote_load` prices an existing load. The new function reuses `private.compute_price` and the same rate card, so there is still exactly one implementation of a price and none of it reaches the bundle (`CLAUDE.md` 3b). |
+| B2 | **`estimate_route` (0021) adds only the RANGE.** | *Corrected while building:* `public.quote_route(origin, dest, truck, weight)` already existed and prices a route without a load, so the spec's "new RPC" was half wrong. What was actually missing is the band — and that had to go in SQL, not the client, because a band is part of how a price is presented and `CLAUDE.md` 3b keeps that out of the bundle. `estimate_route` delegates to `private.price_for`, the same function `quote_route` and `quote_load` use, so there is still exactly one place where a route becomes a price. The band width lives in `private.app_settings`. |
 | B3 | **The rate card is empty, so the estimate must degrade gracefully.** | With no rates, `estimate_route` returns an outcome rather than a number, and S9 shows "A person prices this and comes back to you, usually within 10 minutes" in place of the range. A shipper is never blocked and never sees an error (#6). This is the *expected* path today, not an edge case. |
 | B4 | **Distance is great-circle × a road factor, labelled "about".** | The handoff shows "78 km · about 1 h 10". We have coordinates but no road network. Straight-line Muscat→Barka is ~55 km against ~80 km by road, so a bare great-circle figure would be visibly wrong to an operator. A documented factor with "about" in front of it is honest; a precise-looking number would not be. The factor lives in one place and is recorded in `OPEN_ISSUES.md` as an approximation to replace with a routing source. |
 | B5 | **The booking draft persists across app kills.** | Six answers is a lot to lose. Stored under one key in AsyncStorage, cleared on successful post. |
@@ -73,8 +73,12 @@ One migration, `0021`.
 
 ```
 estimate_route(p_origin_city, p_dest_city, p_truck_type_code, p_weight_kg)
-  → (low_baisa, high_baisa, currency, outcome, distance_km)
+  → (low_baisa, high_baisa, currency, outcome)
 ```
+
+`distance_km` is **not** returned: it is computed client-side from
+`cities.lat/lng` (B4), because it is geometry rather than pricing and putting it
+here would mean a round-trip for a number the app already has.
 
 - `security definer`, `search_path = ''`, **types fully qualified** — the
   `advance_trip` lesson: an unqualified `'delivered'::load_status` inside a
