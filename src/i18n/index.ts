@@ -201,6 +201,7 @@ const en = {
   // action, rather than one long scroll. Each step needs its own title, because
   // the title IS the question.
   "common.next": "Next",
+  "action.back": "Back",
   "step.route": "Where is it going?",
   "step.route.hint": "Pickup first, then delivery",
   "step.details": "What are we moving?",
@@ -405,6 +406,7 @@ const ar: Partial<Record<StringKey, string>> = {
   "label.to": "إلى",
   "label.goods": "نوع البضاعة",
   "label.truck": "نوع الشاحنة",
+  "action.back": "رجوع",
   // Driver-facing, and it appears at the worst possible moment.
   "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
 };

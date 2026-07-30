@@ -25,6 +25,7 @@ import {
 import { Icon, type IconName } from './icon';
 import {
   CTA_HEIGHT,
+  HIT_SLOP,
   MIN_TARGET,
   alpha,
   color,
@@ -35,6 +36,8 @@ import {
   radius,
   space,
 } from '@/theme/tokens';
+import { t } from '@/i18n';
+import { localizeDigits } from '@/lib/format';
 
 type Ground = 'ink' | 'cream';
 
@@ -329,6 +332,116 @@ export function SelectCard({
   );
 }
 
+/**
+ * The question-flow progress bar.
+ *
+ * The fill grows from the LEADING edge: left in English, right in Arabic. That
+ * works because the track is a plain block container and the fill is its first
+ * child with a percentage width — no `flexDirection`, no `alignItems`, and no
+ * physical edge named anywhere. Naming one is what breaks RTL, so the test
+ * asserts their absence rather than the resulting pixel.
+ */
+export function ProgressBar({
+  step,
+  total,
+  ground = 'cream',
+}: {
+  step: number;
+  total: number;
+  ground?: Ground;
+}) {
+  const pct = `${Math.round((Math.min(step, total) / total) * 100)}%` as const;
+  return (
+    <View
+      testID="progress-track"
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: total, now: step }}
+      style={StyleSheet.flatten([
+        styles.progressTrack,
+        {
+          backgroundColor:
+            ground === 'ink' ? 'rgba(247,245,242,.14)' : 'rgba(22,23,26,.1)',
+        },
+      ])}
+    >
+      <View testID="progress-fill" style={[styles.progressFill, { width: pct }]} />
+    </View>
+  );
+}
+
+/**
+ * The back affordance.
+ *
+ * The handoff's circle is 40–42px, below the 44pt tap-target floor on its own.
+ * It reaches the floor through `HIT_SLOP`, not through growing the circle — the
+ * visual size is deliberate and the slop is what makes it compliant. Do not
+ * "fix" the 42 up to 44, and do not drop the slop as redundant: without it this
+ * control fails the 44pt rule.
+ *
+ * The chevron flips under RTL — handled inside `Icon`, once. Never re-mirror it
+ * here.
+ */
+export function BackButton({
+  onPress,
+  ground = 'ink',
+}: {
+  onPress: () => void;
+  ground?: Ground;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('action.back')}
+      hitSlop={HIT_SLOP}
+      onPress={onPress}
+      style={StyleSheet.flatten([
+        styles.backButton,
+        ground === 'ink'
+          ? { backgroundColor: 'rgba(30,33,40,.9)', borderWidth: 1, borderColor: hairline.emphasis }
+          : { backgroundColor: 'rgba(22,23,26,.06)' },
+      ])}
+    >
+      <Icon
+        name="back"
+        size={20}
+        stroke={2.1}
+        tint={ground === 'ink' ? color.lightText : color.inkText}
+      />
+    </Pressable>
+  );
+}
+
+/** Back button + progress + "n / total", the header every question screen wears. */
+export function StepHeader({
+  step,
+  total,
+  onBack,
+  ground = 'cream',
+}: {
+  step: number;
+  total: number;
+  onBack: () => void;
+  ground?: Ground;
+}) {
+  return (
+    <View style={styles.stepHeader}>
+      <BackButton onPress={onBack} ground={ground} />
+      <View style={{ flex: 1 }}>
+        <ProgressBar step={step} total={total} ground={ground} />
+      </View>
+      <Text
+        style={StyleSheet.flatten([
+          font.caption,
+          { color: ground === 'ink' ? alpha.onInk.label : alpha.onCream.label },
+        ])}
+      >
+        {localizeDigits(`${step} / ${total}`)}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   cta: {
     minHeight: CTA_HEIGHT,
@@ -382,4 +495,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: space.xs,
   },
+  progressTrack: { height: 4, borderRadius: radius.round, overflow: 'hidden' },
+  progressFill: { height: 4, borderRadius: radius.round, backgroundColor: color.accent },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md },
 });
