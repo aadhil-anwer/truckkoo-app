@@ -135,7 +135,10 @@ export default function CustomerHome() {
             screen and the only orange on it. */}
         <View style={styles.entryWrap}>
           <Pressable
-            onPress={() => router.push('/post-load')}
+            // P3: the redesigned six-step flow. The old single-form
+            // `/post-load` still exists and still works — it is what a repeat
+            // load prefills below — but new bookings start here.
+            onPress={() => router.push('/book/origin')}
             accessibilityRole="button"
             accessibilityLabel={`${t('home.entry')} ${t('home.entry.hint')}`}
             style={({ pressed }) => [styles.entry, pressed && { backgroundColor: color.cream }]}

@@ -151,6 +151,19 @@ describe('formatWeight', () => {
 });
 
 describe('formatDeadline', () => {
+  // The clock is frozen to midday. These tests build a deadline relative to
+  // "now", and against a real clock "now + 1 hour" crosses midnight for the last
+  // hour of every day — at which point the deadline genuinely is not today, the
+  // formatter correctly adds a weekday, and the test fails. It was recorded as an
+  // intermittent failure for a while; it is not intermittent, it is wrong for one
+  // hour in twenty-four.
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-30T12:00:00'));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('shows time only when the deadline is today', () => {
     const soon = new Date();
     soon.setHours(soon.getHours() + 1);
@@ -205,12 +218,17 @@ describe('Arabic-Indic wiring', () => {
 
   it('formatDeadline converts Latin digits the underlying formatter returned', () => {
     initLanguage('ar');
+    // Frozen for the same reason as the block above: "now + 1 hour" crosses
+    // midnight for the last hour of every day, and the weekday the formatter
+    // then correctly adds is not what this assertion is about.
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-30T12:00:00'));
     jest.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('18:40');
     const soon = new Date();
     soon.setHours(soon.getHours() + 1);
     const out = formatDeadline(soon.toISOString());
     expect(out).toBe('١٨:٤٠');
     expect(out).not.toMatch(/[0-9]/);
+    jest.useRealTimers();
   });
 
   it('formatWeight converts Latin digits the underlying formatter returned', () => {
