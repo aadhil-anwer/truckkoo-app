@@ -56,14 +56,6 @@ decides again, seeing T2 a second time.
 **Done when:** re-pricing a load the shipper has already accepted either requires
 a fresh shipper decision or is refused, and `supabase/tests/` asserts it.
 
-### The primary button deviates from the handoff by ~2px
-
-The handoff specifies `700 17px` on `#F1551F`. That is 3.47:1 and fails WCAG AA,
-which drops to 3:1 only at 18.66px bold. The label stays at or above that
-threshold instead. `tests/unit/contrast.test.ts` computes it from the tokens.
-
-This is the only deviation from the handoff's type scale, and it is deliberate.
-
 ### P0 shipped a design system nobody has seen on a phone
 
 Tokens, fonts, primitives, icons and numerals are in and tested, but P0
@@ -155,6 +147,65 @@ on target hardware.
   deleting the key. Verified equivalent in React Native's style flattening — and
   in fact stronger, since it clears an earlier value — but it depends on
   `arabicIfNeeded(...)` staying first in any `StyleSheet.flatten([...])` array.
+
+### 33 of the 46 city coordinates are gazetteer data, unconfirmed by anyone local
+
+`0020` gives every city a lat/lng. Thirteen are the design handoff's own values;
+the other 33 are public gazetteer data, marked `-- gazetteer` in the migration.
+
+Three layers guard them, and it is worth being precise about what each cannot do:
+
+| Guard | Catches | Misses |
+|---|---|---|
+| `0020` constraints | NULL, out-of-region, transposed lat/lng | a wrong town inside the box |
+| `supabase/tests/tenant_isolation.sql` | the above, plus two cities on one point | the same |
+| `npm run check:pins` | a coordinate in the sea (12 km tolerance) | a wrong town on land |
+
+So a coordinate can pass everything and still be the wrong town. `npm run
+preview:map` renders both framings with every pin labelled, to
+`.superpowers/map-*.svg`, which is the only way to check that.
+
+Reviewed once on 2026-07-30 and the geography reads correctly — the Batinah
+sequence, Buraimi against Al Ain, Khasab on Musandam, Sur on the east cape,
+Salalah/Taqah/Mirbat along the Dhofar coast. **That review was not done by
+someone who lives in Oman**, which is what this entry is still open for.
+
+**Done when:** someone who knows the country has looked at the preview and
+confirmed the 33, and any correction has landed as a NEW migration — `0020` is
+applied and migrations are append-only.
+
+### Riyadh and Jeddah cannot be pins, by geography
+
+They sit outside the handoff's regional framing entirely (Jeddah is on the Red
+Sea, 39.2E, against a framing that starts at 51.6E). Dammam is inside it.
+
+They stay reachable through the searchable city list, which is the complete
+index — the map is an orientation aid, not the only way to choose a city, so no
+shipper is blocked (`CLAUDE.md` #6). But **a shipper picking Jeddah will see the
+map show nothing move**, and P3 needs to handle that rather than leaving a dead
+map beside a live selection.
+
+**Done when:** P3's city picker does something sensible when the chosen city is
+off-frame.
+
+### The map has not been seen on a device
+
+Projection, layers, corridor and pins are unit-tested, and `npm run preview:map`
+renders them — but only as an SVG on a desktop. SVG with 46 pins plus country
+geometry is the first real vector work in this product, and the target is a cheap
+Android phone.
+
+**Done when:** a real map screen has been opened on target hardware and scrolls
+without dropping frames.
+
+### The jest suite has an intermittent failure nobody has pinned down
+
+A full `npm test` occasionally reports one failure that passes on rerun, in both
+parallel and `--runInBand` modes. Seen during P0 Task 12 and again in P1. It has
+never been the same test twice and has never reproduced in isolation.
+
+**Watch for:** if it starts landing on the same test, that test has a real race.
+Until then, rerun before believing a single red.
 
 ### The ops screens were deleted from this repo
 

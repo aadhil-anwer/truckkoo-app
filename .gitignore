@@ -51,3 +51,6 @@ example
 # personal PDF into a commit once; these patterns are what stops the next one.
 /*.pdf
 /*.zip
+
+# SDD scratch and generated map previews
+.superpowers/

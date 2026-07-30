@@ -148,6 +148,27 @@ computes every ratio from the tokens — change a colour or a size and it tells 
 what you did. It also flattens `rgba` over its ground, which is how it caught
 that the handoff's own text ramp was sub-AA in three places (see `OPEN_ISSUES.md`).
 
+**The map is `src/map/`, and nothing outside it computes a projection or draws a
+coastline.** There are no tiles and no native map library: the region is bundled
+Natural Earth geometry (`scripts/build-geo.mjs` → `src/map/geometry.json`),
+projected by one `d3-geo` Mercator fitted to one of two fixed framings, drawn with
+`react-native-svg`. The user cannot pan or zoom — the handoff never shows it, and
+every screen picks a framing. Children take the projection from **context**, so a
+pin and its coastline cannot disagree.
+
+Two map distinctions carry meaning: **dashed corridor = uncommitted, solid =
+committed**, and **origin is a ring, destination is a filled square** (matching
+`RouteRail`). `tests/components/map.test.tsx` guards both.
+
+**SVG coordinates are the one place logical properties do NOT apply.** A projected
+x is a position on the peninsula, not a reading direction — the Gulf does not move
+to the other side of the screen in Arabic. Only the chrome around a map flips.
+
+City coordinates live in `cities.lat/lng` (0020). They are the one piece of
+reference data **not** derived from the website, which has none. `npm run
+check:pins` asserts none is in the sea; `npm run preview:map` renders them for the
+only check that matters, which is whether a pin is in the right town.
+
 **`src/components/legacy.tsx` is transitional and shrinking.** P0 replaced the
 design system but built none of the 32 screens, so the old vocabulary lives there
 on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
