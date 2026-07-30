@@ -17,6 +17,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -201,6 +202,133 @@ export function PressableSurface({
   );
 }
 
+/**
+ * A selectable row.
+ *
+ * SELECTION IS SIGNALLED THREE WAYS AT ONCE — border, fill, and a filled radio.
+ * That is deliberate redundancy, not decoration: this is read one-handed, in
+ * direct sun, through a windscreen, on a cheap screen. Reducing it to a single
+ * indicator is a legibility regression, and `tests/components/select.test.tsx`
+ * will say so.
+ */
+export function SelectRow({
+  title,
+  subtitle,
+  selected,
+  onPress,
+  ground = 'cream',
+}: {
+  title: string;
+  subtitle?: string;
+  selected: boolean;
+  onPress: () => void;
+  ground?: Ground;
+}) {
+  // The unselected ring must stay visible on whichever ground it lands on:
+  // SelectRow renders on both, and a cream-tuned dark ring nearly disappears
+  // on ink.
+  const unselectedRing = ground === 'cream' ? 'rgba(22,23,26,.18)' : 'rgba(247,245,242,.28)';
+
+  const base =
+    ground === 'cream'
+      ? { backgroundColor: color.creamCard, borderColor: 'transparent', borderWidth: 2 }
+      : { backgroundColor: color.raised, borderColor: hairline.card, borderWidth: 1.5 };
+
+  const chosen =
+    ground === 'cream'
+      ? { backgroundColor: color.accentTint, borderColor: color.accent, borderWidth: 2 }
+      : { backgroundColor: color.raised, borderColor: color.accent, borderWidth: 1.5 };
+
+  const titleTint = ground === 'cream' ? color.inkText : color.lightText;
+  const subTint = ground === 'cream' ? color.mutedText : alpha.onInk.body;
+
+  return (
+    <Pressable
+      testID="select-surface"
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
+      onPress={onPress}
+      style={StyleSheet.flatten([
+        styles.selectRow,
+        selected ? chosen : base,
+        selected && ground === 'cream' ? elevation.selectedCream : null,
+      ])}
+    >
+      <View style={styles.selectText}>
+        <Text style={StyleSheet.flatten([font.rowTitle, { color: titleTint }])}>{title}</Text>
+        {subtitle ? (
+          <Text style={StyleSheet.flatten([font.bodySmall, { color: subTint }])}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <View
+        style={StyleSheet.flatten([
+          styles.radio,
+          { borderColor: selected ? color.accent : unselectedRing },
+        ])}
+      >
+        {selected ? <View testID="select-radio-dot" style={styles.radioDot} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+/** The larger two-up choice — N4's role fork, S7's "let us choose for you". */
+export function SelectCard({
+  title,
+  body,
+  icon,
+  selected,
+  onPress,
+}: {
+  title: string;
+  body: string;
+  icon: IconName;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      testID="select-surface"
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${title}. ${body}`}
+      onPress={onPress}
+      style={StyleSheet.flatten([
+        styles.selectCard,
+        selected
+          ? { backgroundColor: color.accentTint, borderColor: color.accent, ...elevation.selectedCream }
+          : { backgroundColor: color.creamCard, borderColor: 'transparent', ...elevation.cardCream },
+      ])}
+    >
+      <View
+        style={StyleSheet.flatten([
+          styles.selectTile,
+          { backgroundColor: selected ? color.accentWash : 'rgba(22,23,26,.05)' },
+        ])}
+      >
+        <Icon name={icon} size={27} tint={selected ? color.accent : color.iconGrey} />
+      </View>
+      <Text style={StyleSheet.flatten([font.title, { color: color.inkText }])}>{title}</Text>
+      <Text style={StyleSheet.flatten([font.bodySmall, { color: color.mutedText }])}>
+        {body}
+      </Text>
+      <View
+        style={StyleSheet.flatten([
+          styles.radio,
+          styles.radioCorner,
+          // SelectCard is cream-only, so the dark ring never needs the ink variant.
+          { borderColor: selected ? color.accent : 'rgba(22,23,26,.18)' },
+        ])}
+      >
+        {selected ? <View testID="select-radio-dot" style={styles.radioDot} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   cta: {
     minHeight: CTA_HEIGHT,
@@ -220,5 +348,38 @@ const styles = StyleSheet.create({
     minHeight: MIN_TARGET,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  selectRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.row,
+  },
+  selectText: { flex: 1, gap: 2 },
+  radio: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCorner: { position: 'absolute', top: space.xl, insetInlineEnd: space.xl },
+  radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: color.accent },
+  selectCard: {
+    borderRadius: radius.card,
+    borderWidth: 2,
+    padding: space.xl,
+    gap: space.sm,
+  },
+  selectTile: {
+    width: 54,
+    height: 54,
+    borderRadius: radius.tile,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.xs,
   },
 });
