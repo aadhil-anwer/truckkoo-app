@@ -203,17 +203,28 @@ export function RouteRail({
   origin,
   destination,
   compact = false,
+  labelled = true,
 }: {
   origin: string;
   destination: string;
   compact?: boolean;
+  /**
+   * Whether the rail announces itself.
+   *
+   * `false` when it sits inside a card that already carries the route in its own
+   * accessible name — otherwise a screen reader reads the same two cities twice,
+   * once for the card and once for the rail inside it.
+   */
+  labelled?: boolean;
 }) {
   const gap = compact ? 24 : 36;
   return (
     <View
       style={styles.rail}
-      accessible
-      accessibilityLabel={`${origin} ${t('route.ariaTo')} ${destination}`}
+      // `accessible={false}` stops the rail being its OWN element; it does not
+      // hide the city names, which the enclosing card still needs to expose.
+      accessible={labelled}
+      accessibilityLabel={labelled ? `${origin} ${t('route.ariaTo')} ${destination}` : undefined}
     >
       <View style={styles.railSpine}>
         <View testID="rail-origin" style={styles.railOrigin} />

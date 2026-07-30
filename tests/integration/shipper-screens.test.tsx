@@ -52,21 +52,24 @@ function openLoad() {
 
 describe('CustomerHome', () => {
   it('invites a first-time shipper instead of reporting emptiness', async () => {
+    // A directive, not "no loads yet" — an empty state tells a first-time user
+    // nothing they can act on. The words changed with the redesign; the rule did
+    // not.
     await render(<CustomerHome />);
-    expect(screen.getByText('Nothing moving yet')).toBeTruthy();
+    expect(screen.getByText('Your first load starts with two cities.')).toBeTruthy();
   });
 
   it('leads with the one question the app exists to ask', async () => {
     await render(<CustomerHome />);
-    expect(screen.getByText('Where to?')).toBeTruthy();
+    expect(screen.getByText('Where is it going?')).toBeTruthy();
   });
 
-  it('routes to post-load from the entry field', async () => {
+  it('routes into the booking flow from the entry field', async () => {
     await render(<CustomerHome />);
     await fireEvent.press(
-      screen.getByLabelText('Where to? Tell us pickup and delivery — we find the truck'),
+      screen.getByLabelText('Where is it going? Pick two cities. We do the rest.'),
     );
-    expect(mockPush).toHaveBeenCalledWith('/post-load');
+    expect(mockPush).toHaveBeenCalledWith('/book/origin');
   });
 
   it('shows a moving load as a card, with the route and the status', async () => {
@@ -82,7 +85,7 @@ describe('CustomerHome', () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'in_transit' })]));
     await render(<CustomerHome />);
 
-    await fireEvent.press(screen.getByLabelText(/Muscat To Salalah/));
+    await fireEvent.press(screen.getByLabelText(/Muscat to Salalah/));
     expect(mockPush).toHaveBeenCalledWith(`/load/${LOAD_ID}`);
   });
 
@@ -99,14 +102,14 @@ describe('CustomerHome', () => {
       ok([load({ status: 'in_transit', truck_type_code: null })]),
     );
     await render(<CustomerHome />);
-    expect(screen.getByText('We will advise')).toBeTruthy();
+    expect(screen.getByText('We choose it')).toBeTruthy();
   });
 
   it('offers a shortcut back to a route already used', async () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'delivered' })]));
     await render(<CustomerHome />);
 
-    await fireEvent.press(screen.getByLabelText(/Muscat → Salalah/));
+    await fireEvent.press(screen.getByLabelText(/Muscat to Salalah/));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/post-load',
       params: { origin: '1', dest: '2' },
@@ -117,7 +120,7 @@ describe('CustomerHome', () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(FAILED);
     await render(<CustomerHome />);
     expect(screen.getByText('We could not load that')).toBeTruthy();
-    expect(screen.getByLabelText('Try again')).toBeTruthy();
+    expect(screen.getByLabelText(/We could not load that Try again/)).toBeTruthy();
   });
 
   it('shows a spinner rather than an empty state while loading', async () => {

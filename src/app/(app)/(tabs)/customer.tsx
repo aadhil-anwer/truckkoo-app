@@ -1,353 +1,354 @@
 /**
- * Shipper home.
+ * S1 / S2 · The shipper's home.
  *
- * One question fills the screen — *where to?* — and everything else is either
- * the answer to a previous asking of it or a shortcut to asking it again. That
- * is Uber's home screen, and freight is the same shape: a person with something
- * that needs to be somewhere else.
+ * THE MAP IS THE HOME SURFACE — not decoration behind a list. The first thing a
+ * shipper reads is where their cargo is going, before they read a word. When a
+ * load is live its corridor is drawn; when there is none the map is quiet and the
+ * screen asks for two cities instead.
  *
- * WHAT THIS REPLACED, AND WHY
+ * S1 (a live load) and S2 (first run) are ONE screen with two states. The handoff
+ * draws them apart because a gallery cannot show state; the only difference is
+ * whether `useMyLoads` returned anything.
  *
- * The old home was a horizontal book of sheets with a tab strip: one full-width
- * "consignment note" per load, turned by swiping. It was carefully made and it
- * was the wrong shape for the audience. A user with near-zero tech skills has no
- * prior for a horizontal pager, so the second load did not exist to them; and a
- * finished load had no detail screen at all, so the delivery photo and the price
- * vanished the moment the truck arrived.
+ * ONE ACCENT. The orange search block is the pinned action, so the corridor and a
+ * single live-state pill are the only other places orange appears. A second
+ * orange action on this screen means one of them is wrong.
  *
- * Now: a vertical list of cards, each one tappable through to a real detail
- * screen. Nothing is behind a gesture. The detail lives in `load/[id]`, which is
- * the same screen whether the load is moving or finished — a shipper should not
- * have to learn two.
- *
- * The sheet carries no orange. A shipper has nothing to do while a load is
- * moving, and inventing a button to fill the space would be a lie about where
- * the work is; the one orange stays on the entry field. `finding_truck` is the
- * exception and it lives on the detail screen, where the human backstop is.
+ * WHAT THIS REPLACED. A vertical list of cards on a white ground, which was
+ * itself a deliberate replacement for a horizontal "book" of consignment notes
+ * that this audience had no prior for. The list was right about hierarchy and
+ * wrong about the medium: it never showed the shipper the one thing they
+ * actually want to see, which is the line between two places.
  */
 
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
-import { Screen } from '@/components/ui';
-import { align, directionArrow, getLanguage, localized, t, type StringKey } from '@/i18n';
-import { formatWindow } from '@/lib/format';
-import { formatMoney, type Currency } from '@/lib/money';
-import { safeText } from '@/lib/safe-text';
+import { PressableSurface } from '@/components/primitives';
 import {
-  cityIndex,
-  useCities,
-  useMyLoads,
-  useTruckTypes,
-  type Load,
-  type LoadStatus,
-} from '@/lib/queries';
+  Chip,
+  QuestionHeading,
+  RouteRail,
+  SectionLabel,
+  Skeleton,
+  StatusPill,
+} from '@/components/ui';
+import { CityPin, Corridor, MapCanvas, Scrim } from '@/map';
+import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { GUTTER_INK, color, elevation, font, radius, space } from '@/theme/tokens';
-import { Button, EmptyState, FactChips, ListRow, PageTitle, RouteLine, RowGroup, Section, Stamp, StampTone } from '@/components/legacy';
+import { formatWeight, formatWindow } from '@/lib/format';
+import { align, localized, t } from '@/i18n';
+import { arabicIfNeeded } from '@/components/text-direction';
+import {
+  GUTTER_INK,
+  TABBAR_CLEARANCE_3,
+  alpha,
+  color,
+  font,
+  hairline,
+  radius,
+  space,
+} from '@/theme/tokens';
 
-/** Status → tone. Kept in one place so no screen invents its own mapping. */
-export const TONE: Record<LoadStatus, StampTone> = {
-  posted: 'pending',
-  finding_truck: 'active',
-  matched: 'active',
-  assigned: 'active',
-  in_transit: 'active',
-  delivered: 'done',
-  closed: 'done',
-  cancelled: 'stopped',
-};
+/** Still working its way to a truck, rather than already finished. */
+const LIVE: Load['status'][] = ['posted', 'finding_truck', 'matched', 'assigned', 'in_transit'];
 
-export const LIVE: LoadStatus[] = ['posted', 'finding_truck', 'matched', 'assigned', 'in_transit'];
-
-export default function CustomerHome() {
+export default function ShipperHome() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile } = useSession();
-  const cities = useCities();
-  const truckTypes = useTruckTypes();
-  const loads = useMyLoads();
+  const { data: cities } = useCities();
+  const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
+  const { data: truckTypes } = useTruckTypes();
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
-  const index = useMemo(() => cityIndex(cities.data), [cities.data]);
-  const cityName = (id: number) => {
-    const c = index.get(id);
-    return c ? localized(c) : '—';
-  };
+  const index = cityIndex(cities);
+  const truckName = new Map((truckTypes ?? []).map((tt) => [tt.code, localized(tt)]));
 
-  const truckName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const tt of truckTypes.data ?? []) {
-      m.set(tt.code, localized({ name_en: tt.name_en, name_ar: tt.name_ar }));
-    }
-    return m;
-  }, [truckTypes.data]);
+  const live = useMemo(() => (loads ?? []).filter((l) => LIVE.includes(l.status)), [loads]);
+  const finished = useMemo(() => (loads ?? []).filter((l) => !LIVE.includes(l.status)), [loads]);
 
-  // Memoised because `recent` depends on it. `loads.data ?? []` allocates a new
-  // array every render when the query is still empty, which would make the
-  // dedupe below re-run on every keystroke elsewhere in the tree.
-  const all = useMemo(() => loads.data ?? [], [loads.data]);
-  const active = all.filter((l) => LIVE.includes(l.status));
+  // The map draws the newest live corridor. One line, not all of them — a map
+  // with four overlapping corridors orients nobody.
+  const featured = live[0];
+  const from = featured ? index.get(featured.origin_city) : undefined;
+  const to = featured ? index.get(featured.dest_city) : undefined;
 
-  /**
-   * Routes this shipper has sent before, most recent first.
-   *
-   * Uber's saved places, earned rather than configured — a freight customer runs
-   * the same corridors over and over, so the second load should cost two taps
-   * instead of six. Deduped on the city pair, capped at three: a list of
-   * shortcuts longer than the thing it shortcuts is not a shortcut.
-   */
-  const recent = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { key: string; origin: number; dest: number }[] = [];
-    for (const l of all) {
-      const key = `${l.origin_city}-${l.dest_city}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ key, origin: l.origin_city, dest: l.dest_city });
-      if (out.length === 3) break;
-    }
-    return out;
-  }, [all]);
+  const repeat = finished[0];
+  const repeatFrom = repeat ? index.get(repeat.origin_city) : undefined;
+  const repeatTo = repeat ? index.get(repeat.dest_city) : undefined;
 
-  // First name only. "Hello, Mohammed Al Balushi Trading LLC" wraps to three
-  // lines at 32px and says nothing the short form does not.
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? '';
+  const firstRun = !isLoading && live.length === 0;
 
   return (
-    <Screen>
+    <View style={styles.screen}>
+      {/* The map sits behind the content. `pointerEvents="none"` because on this
+          screen it is orientation, not a control — the pins are tappable inside
+          the booking flow, where the helper text promises it. */}
+      <View
+        style={styles.mapArea}
+        onLayout={(e) => setMapSize(e.nativeEvent.layout)}
+        pointerEvents="none"
+      >
+        {mapSize.width > 0 && (
+          <>
+            <MapCanvas framing="domestic" width={mapSize.width} height={mapSize.height}>
+              {from && to && (
+                <>
+                  <Corridor
+                    from={{ lng: from.lng, lat: from.lat }}
+                    to={{ lng: to.lng, lat: to.lat }}
+                    // Committed only once a driver has it. Drawing a solid line
+                    // earlier would tell a shipper their truck was booked.
+                    committed={
+                      featured.status === 'assigned' || featured.status === 'in_transit'
+                    }
+                  />
+                  <CityPin at={{ lng: from.lng, lat: from.lat }} state="origin" />
+                  <CityPin at={{ lng: to.lng, lat: to.lat }} state="destination" />
+                </>
+              )}
+            </MapCanvas>
+            <Scrim variant="topHeavy" width={mapSize.width} height={mapSize.height} />
+          </>
+        )}
+      </View>
+
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={loads.isRefetching}
-            onRefresh={() => {
-              loads.refetch();
-            }}
-            tintColor={color.accent}
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={color.lightText}
           />
         }
       >
-        <PageTitle>{firstName ? `${t('home.hello')}, ${safeText(firstName)}` : t('home.hello')}</PageTitle>
+        <Text style={styles.greeting} numberOfLines={1}>
+          {profile?.full_name
+            ? `${t('home.greeting')}, ${profile.full_name.split(' ')[0]}`
+            : t('home.greeting')}
+        </Text>
 
-        {/* The entry point. Deliberately the largest tappable thing on the
-            screen and the only orange on it. */}
-        <View style={styles.entryWrap}>
-          <Pressable
-            // P3: the redesigned six-step flow. The old single-form
-            // `/post-load` still exists and still works — it is what a repeat
-            // load prefills below — but new bookings start here.
-            onPress={() => router.push('/book/origin')}
-            accessibilityRole="button"
-            accessibilityLabel={`${t('home.entry')} ${t('home.entry.hint')}`}
-            style={({ pressed }) => [styles.entry, pressed && { backgroundColor: color.cream }]}
-          >
-            <View style={styles.entryIcon}>
-              <Icon name="pickup" size={22} tint={color.creamCard} />
-            </View>
-            <View style={styles.entryText}>
-              <Text style={styles.entryTitle}>{t('home.entry')}</Text>
-              {/* Wraps rather than truncating. "…we fi…" on the one row that
-                  explains the whole product is worse than a second line. */}
-              <Text style={styles.entryHint}>{t('home.entry.hint')}</Text>
-            </View>
-            <Icon name="chevron" size={22} tint={color.mutedText} />
-          </Pressable>
-        </View>
-
-        {loads.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
+        {/* S2. A directive, not an empty state: "no loads yet" tells a
+            first-time user nothing they can act on. */}
+        {firstRun && (
+          <View style={styles.firstRun}>
+            <QuestionHeading ground="ink" size="question">
+              {t('home.s2.q')}
+            </QuestionHeading>
+            <Text style={styles.body}>{t('home.s2.body')}</Text>
           </View>
-        ) : loads.isError ? (
-          <EmptyState
-            icon="alert"
-            title={t('common.error.title')}
-            explain={t('common.error.explain')}
-          >
-            <View style={styles.emptyAction}>
-              <Button
-                label={t('common.retry')}
-                variant="secondary"
-                onPress={() => {
-                  loads.refetch();
-                }}
-              />
-            </View>
-          </EmptyState>
-        ) : all.length === 0 ? (
-          <EmptyState
-            icon="truck"
-            title={t('cust.empty.title')}
-            explain={t('cust.empty.explain')}
-          />
-        ) : (
-          <>
-            {active.length > 0 && (
-              <Section
-                title={t('home.live')}
-                actionLabel={active.length > 2 ? t('home.seeAll') : undefined}
-                onAction={active.length > 2 ? () => router.push('/loads') : undefined}
-              >
-                <View style={styles.cards}>
-                  {active.slice(0, 2).map((load) => (
-                    <LoadCard
-                      key={load.id}
-                      load={load}
-                      cityName={cityName}
-                      truckName={truckName}
-                      onPress={() => router.push(`/load/${load.id}`)}
-                    />
-                  ))}
-                </View>
-              </Section>
-            )}
+        )}
 
-            {recent.length > 0 && (
-              <Section title={t('home.again')}>
-                <View style={styles.group}>
-                  <RowGroup>
-                    {recent.map((r, i) => (
-                      <ListRow
-                        key={r.key}
-                        icon="routes"
-                        // Never a hardcoded arrow: it points the wrong way in Arabic.
-                        title={`${cityName(r.origin)} ${directionArrow()} ${cityName(r.dest)}`}
-                        subtitle={t('home.again.hint')}
-                        chevron
-                        last={i === recent.length - 1}
-                        // Pre-fills the flow rather than posting anything. The
-                        // shipper still answers goods, date and truck, and still
-                        // sees the price before committing.
-                        onPress={() =>
-                          router.push({
-                            pathname: '/post-load',
-                            params: { origin: String(r.origin), dest: String(r.dest) },
-                          })
-                        }
-                      />
-                    ))}
-                  </RowGroup>
-                </View>
-              </Section>
-            )}
-          </>
+        {/* Clears the map's busiest area before the content starts. */}
+        <View style={firstRun ? styles.spacerShort : styles.spacer} />
+
+        <PressableSurface
+          onPress={() => router.push('/book/origin')}
+          accessibilityLabel={`${t('home.search.title')} ${t('home.search.hint')}`}
+          style={styles.entry}
+        >
+          <Icon name="search" size={24} tint="#FFFFFF" />
+          <View style={styles.entryText}>
+            <Text style={styles.entryTitle}>{t('home.search.title')}</Text>
+            <Text style={styles.entryHint}>{t('home.search.hint')}</Text>
+          </View>
+          <Icon name="chevron" size={20} tint="#FFFFFF" />
+        </PressableSurface>
+
+        {isError && (
+          <PressableSurface
+            onPress={() => refetch()}
+            accessibilityLabel={`${t('common.error.title')} ${t('common.retry')}`}
+            style={styles.retry}
+          >
+            <Text style={styles.retryText}>{t('common.error.title')}</Text>
+            <Text style={styles.retryAction}>{t('common.retry')}</Text>
+          </PressableSurface>
+        )}
+
+        {isLoading && (
+          <View style={styles.skeletons}>
+            {/* Skeletons at the final geometry, never a spinner: the layout does
+                not jump when the answer arrives. */}
+            <Skeleton height={150} round={radius.card} />
+            <Skeleton height={72} round={radius.row} />
+          </View>
+        )}
+
+        {live.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <SectionLabel>{t('home.onTheMove')}</SectionLabel>
+              {live.length > 1 && (
+                <PressableSurface
+                  onPress={() => router.push('/loads')}
+                  accessibilityLabel={t('home.seeAll')}
+                >
+                  <Text style={styles.seeAll}>{t('home.seeAll')}</Text>
+                </PressableSurface>
+              )}
+            </View>
+
+            {live.map((load) => {
+              const o = index.get(load.origin_city);
+              const d = index.get(load.dest_city);
+              if (!o || !d) return null;
+              return (
+                <PressableSurface
+                  key={load.id}
+                  onPress={() => router.push(`/load/${load.id}`)}
+                  accessibilityLabel={`${localized(o)} ${t('route.ariaTo')} ${localized(d)}. ${t(
+                    `status.${load.status}` as never,
+                  )}`}
+                  style={styles.loadCard}
+                >
+                  <View style={styles.loadHead}>
+                    <StatusPill
+                      label={t(`status.${load.status}` as never)}
+                      // Accent only while something is genuinely happening.
+                      tone={load.status === 'in_transit' ? 'accent' : 'neutral'}
+                    />
+                    <Text style={styles.timestamp}>
+                      {formatWindow(load.pickup_from, load.pickup_to)}
+                    </Text>
+                  </View>
+
+                  {/* The card already announces the route; the rail must not repeat it. */}
+                  <RouteRail origin={localized(o)} destination={localized(d)} compact labelled={false} />
+
+                  <View style={styles.chips}>
+                    <Chip label={load.goods_description} />
+                    {load.weight_kg != null && <Chip label={formatWeight(load.weight_kg, '')} />}
+                    {/* The truck, by NAME not code. A NULL type is "we advise" —
+                        the choice the shipper made, and it must read as that
+                        rather than as a blank field. */}
+                    <Chip
+                      label={
+                        load.truck_type_code
+                          ? (truckName.get(load.truck_type_code) ?? load.truck_type_code)
+                          : t('book.review.weWillChoose')
+                      }
+                    />
+                  </View>
+                </PressableSurface>
+              );
+            })}
+          </View>
+        )}
+
+        {repeat && repeatFrom && repeatTo && (
+          <PressableSurface
+            onPress={() =>
+              router.push({
+                pathname: '/post-load',
+                params: {
+                  origin: String(repeat.origin_city),
+                  dest: String(repeat.dest_city),
+                },
+              })
+            }
+            accessibilityLabel={`${t('home.again.title')}. ${localized(repeatFrom)} ${t(
+              'route.ariaTo',
+            )} ${localized(repeatTo)}`}
+            style={styles.again}
+          >
+            <View style={styles.againText}>
+              <Text style={styles.againRoute} numberOfLines={1}>
+                {`${localized(repeatFrom)} → ${localized(repeatTo)}`}
+              </Text>
+              <Text style={styles.againHint}>{t('home.again.title')}</Text>
+            </View>
+            <Icon name="chevron" size={18} tint={alpha.onInk.tertiary} />
+          </PressableSurface>
         )}
       </ScrollView>
-    </Screen>
-  );
-}
-
-/* ─── one live load, as a card ───────────────────────────────────────────── */
-
-/**
- * Route, status, and the two facts a shipper checks: when it goes, what it
- * costs. Everything else is one tap away, which is the whole reason the detail
- * screen exists.
- */
-export function LoadCard({
-  load,
-  cityName,
-  truckName,
-  onPress,
-}: {
-  load: Load;
-  cityName: (id: number) => string;
-  truckName: Map<string, string>;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${cityName(load.origin_city)} ${t('label.to')} ${cityName(load.dest_city)}. ${t(`status.${load.status}` as StringKey)}`}
-      style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
-    >
-      <View style={styles.cardHead}>
-        <Stamp tone={TONE[load.status]}>{t(`status.${load.status}` as StringKey)}</Stamp>
-        <Icon name="chevron" size={20} tint={color.mutedText} />
-      </View>
-
-      <RouteLine
-        from={cityName(load.origin_city)}
-        to={cityName(load.dest_city)}
-        labelFrom={t('label.from')}
-        labelTo={t('label.to')}
-        compact
-      />
-
-      <FactChips
-        facts={[
-          {
-            icon: 'calendar',
-            label: t('label.pickup'),
-            value: formatWindow(load.pickup_from, load.pickup_to),
-          },
-          {
-            icon: 'truck',
-            label: t('label.truck'),
-            // A null truck type is "Not sure — advise me", never blank.
-            value: load.truck_type_code
-              ? (truckName.get(load.truck_type_code) ?? load.truck_type_code)
-              : t('truck.unset'),
-          },
-        ]}
-      />
-
-      {load.price_baisa != null && (
-        <View style={styles.cardPrice}>
-          {/* formatMoney, never toFixed(2) — OMR carries three decimals and a
-              two-decimal render is a 10x error that looks plausible. */}
-          <Text style={styles.priceAmount}>
-            {formatMoney(load.price_baisa, load.currency as Currency, getLanguage())}
-          </Text>
-        </View>
-      )}
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: space.xxxl, gap: space.xxl },
-  center: { paddingVertical: space.huge, alignItems: 'center' },
-  emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
+  screen: { flex: 1, backgroundColor: color.ink },
+  mapArea: {
+    position: 'absolute',
+    top: 0,
+    insetInlineStart: 0,
+    insetInlineEnd: 0,
+    height: 470,
+  },
 
-  entryWrap: { paddingHorizontal: GUTTER_INK },
+  scroll: { paddingHorizontal: GUTTER_INK, gap: space.lg },
+  greeting: { ...arabicIfNeeded(font.statement), color: color.lightText, textAlign: align.start },
+  firstRun: { gap: space.sm, marginTop: space.xxl, maxWidth: 300 },
+  body: { ...arabicIfNeeded(font.body), color: alpha.onInk.body, textAlign: align.start },
+  spacer: { height: 150 },
+  spacerShort: { height: 40 },
+
   entry: {
-    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    backgroundColor: color.creamCard,
+    minHeight: 70,
+    paddingHorizontal: space.xl,
     borderRadius: radius.card,
-    ...elevation.cardCream,
-  },
-  entryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.round,
     backgroundColor: color.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  entryText: { flex: 1, gap: 2 },
-  entryTitle: { ...font.title, color: color.ink, textAlign: align.start },
-  entryHint: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
+  entryText: { flex: 1, gap: 1 },
+  entryTitle: { ...arabicIfNeeded(font.title), color: '#FFFFFF', textAlign: align.start },
+  entryHint: {
+    ...arabicIfNeeded(font.bodySmall),
+    color: 'rgba(255,255,255,.88)',
+    textAlign: align.start,
+  },
 
-  cards: { paddingHorizontal: GUTTER_INK, gap: space.md },
-  group: { paddingHorizontal: GUTTER_INK },
-
-  card: {
-    backgroundColor: color.creamCard,
-    borderRadius: radius.card,
+  retry: {
     padding: space.lg,
-    gap: space.md,
-    ...elevation.cardCream,
+    borderRadius: radius.row,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: hairline.card,
+    gap: 2,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardPrice: { flexDirection: 'row', alignItems: 'baseline' },
-  priceAmount: { ...font.title, color: color.ink, textAlign: align.start },
+  retryText: { ...arabicIfNeeded(font.body), color: color.lightText, textAlign: align.start },
+  retryAction: { ...font.caption, color: color.accentLight, textAlign: align.start },
+  skeletons: { gap: space.md },
+  section: { gap: space.sm },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  seeAll: { ...font.caption, color: color.accentLight },
+
+  loadCard: {
+    backgroundColor: color.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: hairline.card,
+    padding: space.xl,
+    gap: space.md,
+  },
+  loadHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  timestamp: { ...font.caption, color: alpha.onInk.tertiary },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+
+  again: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.row,
+    backgroundColor: color.surface,
+  },
+  againText: { flex: 1, gap: 1 },
+  againRoute: { ...arabicIfNeeded(font.rowTitle), color: color.lightText, textAlign: align.start },
+  againHint: {
+    ...arabicIfNeeded(font.bodySmall),
+    color: alpha.onInk.tertiary,
+    textAlign: align.start,
+  },
 });

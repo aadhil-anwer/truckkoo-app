@@ -14,11 +14,11 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MapStepShell } from '@/components/booking/shells';
 import { CityList } from '@/components/booking/CityList';
 import { PrimaryButton, PressableSurface } from '@/components/primitives';
-import { Notice, QuestionHeading, RouteRail } from '@/components/ui';
+import { Chip, Notice, QuestionHeading, RouteRail, SectionLabel } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CityPin, Corridor, roadKm } from '@/map';
 import { useBookingDraft } from '@/lib/booking';
-import { cityIndex, useCities } from '@/lib/queries';
+import { cityIndex, useCities, useMyLoads } from '@/lib/queries';
 import { align, formatNumber, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { alpha, color, font, hairline, radius, space } from '@/theme/tokens';
@@ -29,6 +29,7 @@ export default function Destination() {
   const router = useRouter();
   const { draft, update, ready } = useBookingDraft();
   const { data: cities } = useCities();
+  const { data: myLoads } = useMyLoads();
 
   const index = cityIndex(cities);
   const origin = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
@@ -43,6 +44,16 @@ export default function Destination() {
 
   const km = origin && dest ? roadKm(origin, dest) : null;
   const shown = (cities ?? []).filter((c) => c.country === draft.destinationCountry);
+
+  // Where this shipper has actually sent things before, most recent first.
+  // REAL history or nothing — a first-time shipper sees no row rather than
+  // invented suggestions (CLAUDE.md #5). Excludes the current origin, since a
+  // load cannot start and end in the same place.
+  const recent = [...new Set((myLoads ?? []).map((l) => l.dest_city))]
+    .filter((id) => id !== draft.originCityId)
+    .map((id) => index.get(id))
+    .filter((c): c is NonNullable<typeof c> => !!c)
+    .slice(0, 4);
 
   return (
     <MapStepShell
@@ -131,6 +142,29 @@ export default function Destination() {
           </View>
         )}
 
+        {recent.length > 0 && (
+          <View style={styles.recent}>
+            <SectionLabel>{t('book.dest.recent')}</SectionLabel>
+            <View style={styles.recentChips}>
+              {recent.map((c) => (
+                <Chip
+                  key={c.id}
+                  label={c.name_en}
+                  selected={draft.destinationCityId === c.id}
+                  onPress={() =>
+                    // A recent destination may be in another country; follow it
+                    // rather than leaving the list showing somewhere else.
+                    update({
+                      destinationCityId: c.id,
+                      destinationCountry: c.country as 'OM' | 'AE' | 'SA',
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
         <View style={styles.list}>
           <CityList
             cities={shown}
@@ -195,6 +229,8 @@ const styles = StyleSheet.create({
   segmentText: { ...font.caption, color: alpha.onInk.secondary },
   segmentTextOn: { color: color.inkText },
   notice: { marginTop: space.md },
+  recent: { marginTop: space.lg, gap: space.sm },
+  recentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   list: { marginTop: space.lg },
   footer: { paddingTop: space.md, backgroundColor: color.surface, borderTopWidth: 1, borderTopColor: hairline.inner },
 });

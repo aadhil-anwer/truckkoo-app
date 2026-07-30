@@ -211,6 +211,40 @@ Found at 23:29 while running P3's suite. Both affected tests now freeze the cloc
 to midday. **If a single red appears again, do not assume flakiness — that
 assumption cost several reruns here.**
 
+### P3 shipped, with three approximations worth naming
+
+**The road distance is a factor, not a route.** `src/map/distance.ts` is a
+great-circle distance times 1.35, and every screen that shows it says "about".
+Straight-line Muscat→Barka is 55 km against ~80 km by road, so a bare figure
+would be visibly wrong to someone who drives it weekly. The factor was derived
+from three real corridors and is a single constant — when a routing source
+arrives, that file is the only thing that changes.
+
+**The estimate is usually absent.** The rate card ships empty, so
+`estimate_route` returns `no_rate` on essentially every call, and S9 says a
+person will price it. That is the designed path, not a bug — but it means
+**nobody has seen the priced version of that card outside a test.**
+
+**"From the last 40 trips here" was cut** from S9's copy. There have been no
+trips, and rule #5 forbids inventing them. If a corridor's real completed-trip
+count is ever worth showing, it can be computed then.
+
+### The booking flow has not been walked by a person
+
+Eight screens, a persisted draft, and a real `post_load` call — all of it
+compiles, exports and is unit-tested, and none of it has been opened. The most
+likely failures are the ones tests cannot see: the sheet covering the map on a
+short screen, the keyboard covering the weight field, the city list scrolling
+inside a fixed sheet.
+
+**Done when:** someone completes S3→S9 on a device and a load appears.
+
+### The loads tab still uses the pre-redesign card
+
+`src/components/load-card.tsx` was extracted from the old shipper home when P3
+rebuilt it, because a screen importing components from a sibling screen is how
+two screens quietly become one. It is transitional and belongs to X1, in P7.
+
 ### The ops screens were deleted from this repo
 
 Dispatch is web-only now, at `~/truckkoo-ops`. `masthead.tsx` and

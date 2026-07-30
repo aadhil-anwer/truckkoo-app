@@ -20,7 +20,7 @@ import { formatWindow } from '@/lib/format';
 import { cityIndex, useCities, useMyLoads, useTruckTypes } from '@/lib/queries';
 import { GUTTER_INK, color, space } from '@/theme/tokens';
 
-import { LIVE, LoadCard, TONE } from './customer';
+import { LIVE, LoadCard, TONE } from '@/components/load-card';
 import { Button, EmptyState, ListRow, PageTitle, RowGroup, Segmented, Stamp } from '@/components/legacy';
 
 type LoadView = 'live' | 'past';
