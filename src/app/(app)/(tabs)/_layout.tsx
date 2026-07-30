@@ -24,7 +24,7 @@
 
 import { Tabs } from 'expo-router/tabs';
 
-import { TabBar, tabIcon } from '@/components/tab-bar';
+import { TabBar } from '@/components/tab-bar';
 import { t } from '@/i18n';
 import { useMyOffers } from '@/lib/queries';
 import { useSession } from '@/lib/session';
@@ -56,7 +56,6 @@ export default function TabsLayout() {
         name="customer"
         options={{
           tabBarLabel: t('tab.home'),
-          tabBarIcon: tabIcon('home', 'homeOn'),
           tabBarItemStyle: isDriver ? HIDDEN : undefined,
         }}
       />
@@ -64,7 +63,6 @@ export default function TabsLayout() {
         name="loads"
         options={{
           tabBarLabel: t('tab.loads'),
-          tabBarIcon: tabIcon('loads', 'loadsOn'),
           tabBarItemStyle: isDriver ? HIDDEN : undefined,
         }}
       />
@@ -74,7 +72,6 @@ export default function TabsLayout() {
         name="driver"
         options={{
           tabBarLabel: t('tab.home'),
-          tabBarIcon: tabIcon('home', 'homeOn'),
           tabBarItemStyle: isDriver ? undefined : HIDDEN,
         }}
       />
@@ -82,7 +79,6 @@ export default function TabsLayout() {
         name="offers"
         options={{
           tabBarLabel: t('tab.offers'),
-          tabBarIcon: tabIcon('offers', 'offersOn'),
           tabBarBadge: pending > 0 ? pending : undefined,
           tabBarItemStyle: isDriver ? undefined : HIDDEN,
         }}
@@ -91,7 +87,6 @@ export default function TabsLayout() {
         name="routes"
         options={{
           tabBarLabel: t('tab.routes'),
-          tabBarIcon: tabIcon('routes', 'routesOn'),
           tabBarItemStyle: isDriver ? undefined : HIDDEN,
         }}
       />
@@ -101,7 +96,6 @@ export default function TabsLayout() {
         name="account"
         options={{
           tabBarLabel: t('tab.account'),
-          tabBarIcon: tabIcon('account', 'accountOn'),
         }}
       />
     </Tabs>

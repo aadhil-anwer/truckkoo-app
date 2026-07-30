@@ -15,6 +15,7 @@
  */
 
 import { render, screen, fireEvent } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import type { BottomTabBarProps } from 'expo-router/tabs';
 
@@ -121,7 +122,7 @@ describe('TabBar', () => {
         {...propsFor([{ name: 'offers', options: { tabBarLabel: 'Offers', tabBarBadge: 3 } }])}
       />,
     );
-    expect(screen.getByLabelText('Offers, 3')).toBeTruthy();
+    expect(screen.getByLabelText('Offers, 3 new')).toBeTruthy();
   });
 
   it('renders no badge at zero', async () => {
@@ -131,5 +132,30 @@ describe('TabBar', () => {
       />,
     );
     expect(screen.queryByText('0')).toBeNull();
+  });
+});
+
+describe('the floating tab bar', () => {
+  it('exposes a badge count inside the tab label, not as a loose node', async () => {
+    // A separate badge node is announced out of context — "2" with no referent.
+    await render(
+      <TabBar
+        {...propsFor([{ name: 'offers', options: { tabBarLabel: 'Offers', tabBarBadge: 2 } }])}
+      />,
+    );
+    expect(screen.getByLabelText('Offers, 2 new')).toBeTruthy();
+  });
+
+  it('marks the focused tab as selected for assistive tech', async () => {
+    await render(<TabBar {...propsFor(shipperTabs, 0)} />);
+    expect(screen.getByLabelText('Home').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('gives every tab at least the 44pt target', async () => {
+    await render(<TabBar {...propsFor(shipperTabs)} />);
+    for (const tab of screen.getAllByRole('tab')) {
+      const style = StyleSheet.flatten(tab.props.style) ?? {};
+      expect(style.minHeight ?? 0).toBeGreaterThanOrEqual(44);
+    }
   });
 });

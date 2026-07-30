@@ -1,17 +1,13 @@
 /**
  * The bottom tab bar.
  *
- * Replaces the in-page tab strip the two home screens used to carry. That strip
- * was an index into a horizontal book of sheets — an invented navigation shape,
- * and the kind of thing a user with near-zero tech skills has no prior for. A bar
- * of labelled icons at the bottom of the screen is the one navigation pattern
- * every phone owner in the world has already learned, including from apps they
- * did not choose to learn.
+ * A floating pill, anchored above the safe area rather than docked to the
+ * screen edge — the handoff's skeleton reads depth from soft shadow and filled
+ * surfaces, not from a hairline the way the old document-style bar did.
  *
- * ACTIVE IS INK, NOT ORANGE. There is one orange on a screen and it belongs to
- * the action. The only orange permitted here is a badge count, because an
- * unanswered offer is genuinely urgent to a driver — it is money with a clock on
- * it — and that is exactly what an accent is for.
+ * ACTIVE IS ACCENT, and it is the one place besides the pinned action that
+ * `color.accent` is allowed to appear — never both on a screen at once. The
+ * handoff calls this out explicitly: tab bars are otherwise ink.
  */
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -19,25 +15,19 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { formatNumber } from '@/i18n';
-import { color, doc, font, MIN_TARGET, radius, space } from '@/theme/tokens';
+import { alpha, color, elevation, font, hairline, MIN_TARGET, radius, space } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
 
-/**
- * A tab's icon, as the standard `tabBarIcon` render prop expects.
- *
- * Screens declare `tabBarIcon: tabIcon('offers', 'offersOn')` rather than
- * inventing their own closure, so the focused/unfocused pairing and the sizing
- * are decided once here instead of five times in the layout.
- */
-export function tabIcon(name: IconName, nameOn: IconName) {
-  return function TabIcon({ focused }: { focused: boolean }) {
-    return (
-      <Icon name={focused ? nameOn : name} size={24} color={focused ? color.ink : color.inkFaint} />
-    );
-  };
-}
+/** Route name → icon. The five tab screens map onto icon names 1:1. */
+const ROUTE_ICON: Record<string, IconName> = {
+  customer: 'home',
+  driver: 'home',
+  loads: 'loads',
+  offers: 'offers',
+  routes: 'routes',
+  account: 'account',
+};
 
 /**
  * Whether a screen asked not to appear in the bar.
@@ -58,7 +48,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <View
-      style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}
+      style={[styles.bar, { marginBottom: Math.max(insets.bottom, space.sm) }]}
       accessibilityRole="tablist"
     >
       {state.routes.map((route, index) => {
@@ -70,6 +60,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         const label =
           typeof options.tabBarLabel === 'string' ? options.tabBarLabel : route.name;
         const focused = state.index === index;
+        const tint = focused ? color.accent : alpha.onInk.label;
 
         function onPress() {
           const event = navigation.emit({
@@ -94,24 +85,13 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             onPress={onPress}
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
-            accessibilityLabel={badge > 0 ? `${label}, ${formatNumber(badge)}` : label}
+            // The count lives inside the accessible name, not as a separate
+            // node — a loose "2" is announced with no referent.
+            accessibilityLabel={badge ? `${label}, ${badge} new` : label}
             style={({ pressed }) => [styles.tab, pressed && { opacity: 0.6 }]}
           >
-            <View>
-              {options.tabBarIcon?.({
-                focused,
-                color: focused ? color.ink : color.inkFaint,
-                size: 24,
-              })}
-              {badge > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText} numberOfLines={1}>
-                    {formatNumber(badge)}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.label, focused && styles.labelOn]} numberOfLines={1}>
+            <Icon name={ROUTE_ICON[route.name] ?? 'home'} size={21} tint={tint} />
+            <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
               {label}
             </Text>
           </Pressable>
@@ -123,42 +103,27 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   bar: {
+    position: 'absolute',
+    insetInlineStart: 15,
+    insetInlineEnd: 15,
+    bottom: 26,
+    height: 66,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: color.paper,
-    borderTopWidth: doc.rule,
-    borderTopColor: color.line,
-    paddingTop: space.sm,
+    alignItems: 'center',
+    borderRadius: radius.round,
+    backgroundColor: 'rgba(30,33,40,.94)',
+    borderWidth: 1,
+    borderColor: hairline.sheet,
+    ...elevation.tabBar,
   },
   tab: {
     flex: 1,
     minHeight: MIN_TARGET,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 4,
     paddingHorizontal: space.xs,
   },
-  label: { ...font.micro, color: color.inkFaint, textAlign: 'center' },
-  labelOn: { color: color.ink },
-
-  badge: {
-    position: 'absolute',
-    top: -4,
-    // Logical, so the badge sits on the outer corner in Arabic too.
-    insetInlineEnd: -10,
-    minWidth: 18,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: color.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  // White on #f1551f is 3.47:1 and this is a *count*, so it cannot rely on
-  // recognition the way a status word can. It is rescued by weight and by never
-  // exceeding two digits — and it is never the only place the number appears:
-  // the tab's accessible name carries it, and the Offers screen states it in
-  // full. Treat this as an ornament on top of real information, not as the
-  // information.
-  badgeText: { fontSize: 11, lineHeight: 14, fontWeight: '900', color: color.paper },
+  label: { ...font.tabLabel },
 });
