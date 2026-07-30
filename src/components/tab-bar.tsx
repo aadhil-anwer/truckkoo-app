@@ -16,6 +16,7 @@ import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatNumber } from '@/i18n';
+import { face } from '@/theme/faces';
 import { alpha, color, elevation, font, hairline, MIN_TARGET, radius, space } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
@@ -161,5 +162,9 @@ const styles = StyleSheet.create({
   // 10.5px is below the 12.5px body-copy floor by design — that floor is for
   // copy, and this numeral is not copy: it duplicates a count already carried
   // in full by the tab's accessible label. Do not "fix" this to the floor.
-  badgeText: { fontSize: 10.5, lineHeight: 13, fontWeight: '700', color: '#fff' },
+  // The family is named explicitly (not `fontWeight: '700'` beside a default
+  // face) because React Native does not synthesize weights for custom fonts —
+  // a bare `fontWeight` on a custom family is a silent no-op, and at 10.5px
+  // this numeral needs its bold face just to stay legible at all.
+  badgeText: { fontFamily: face.archivo700, fontSize: 10.5, lineHeight: 13, color: '#fff' },
 });
