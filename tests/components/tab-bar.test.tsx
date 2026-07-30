@@ -20,6 +20,7 @@ import { StyleSheet } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 
 import { TabBar } from '@/components/tab-bar';
+import { initLanguage } from '@/i18n';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -136,6 +137,42 @@ describe('TabBar', () => {
 });
 
 describe('the floating tab bar', () => {
+  afterEach(() => initLanguage('en'));
+
+  it('renders a visible badge dot when a count is present', async () => {
+    await render(
+      <TabBar
+        {...propsFor([{ name: 'offers', options: { tabBarLabel: 'Offers', tabBarBadge: 2 } }])}
+      />,
+    );
+    expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('renders no visible badge when the count is absent or zero', async () => {
+    await render(<TabBar {...propsFor(shipperTabs)} />);
+    expect(screen.queryByText('0')).toBeNull();
+
+    await render(
+      <TabBar
+        {...propsFor([{ name: 'offers', options: { tabBarLabel: 'Offers', tabBarBadge: 0 } }])}
+      />,
+    );
+    expect(screen.queryByText('0')).toBeNull();
+  });
+
+  it('localises the visible badge count under Arabic — not vacuously', async () => {
+    // The count is composed in JS (`${badge}` would be Latin regardless of
+    // locale); Arabic-Indic digits can only appear here via `formatNumber`.
+    initLanguage('ar');
+    await render(
+      <TabBar
+        {...propsFor([{ name: 'offers', options: { tabBarLabel: 'Offers', tabBarBadge: 2 } }])}
+      />,
+    );
+    expect(screen.queryByText('2')).toBeNull();
+    expect(screen.getByText('٢')).toBeTruthy();
+  });
+
   it('exposes a badge count inside the tab label, not as a loose node', async () => {
     // A separate badge node is announced out of context — "2" with no referent.
     await render(

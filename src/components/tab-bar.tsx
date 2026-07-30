@@ -15,6 +15,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { formatNumber } from '@/i18n';
 import { alpha, color, elevation, font, hairline, MIN_TARGET, radius, space } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
@@ -85,12 +86,24 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             onPress={onPress}
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
-            // The count lives inside the accessible name, not as a separate
-            // node — a loose "2" is announced with no referent.
-            accessibilityLabel={badge ? `${label}, ${badge} new` : label}
+            // The count lives inside the accessible name too, not only in the
+            // dot below — a loose "2" with no referent is announced as noise,
+            // and `formatNumber` (not raw interpolation) is what keeps it in
+            // Eastern Arabic-Indic under `ar`, same as everywhere else a count
+            // reaches text in this app.
+            accessibilityLabel={badge ? `${label}, ${formatNumber(badge)} new` : label}
             style={({ pressed }) => [styles.tab, pressed && { opacity: 0.6 }]}
           >
-            <Icon name={ROUTE_ICON[route.name] ?? 'home'} size={21} tint={tint} />
+            <View>
+              <Icon name={ROUTE_ICON[route.name] ?? 'home'} size={21} tint={tint} />
+              {badge > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText} numberOfLines={1}>
+                    {formatNumber(badge)}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
               {label}
             </Text>
@@ -126,4 +139,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xs,
   },
   label: { ...font.tabLabel },
+
+  // A badge is a *live state* — an unanswered offer with a clock on it — which
+  // is one of the two sanctioned uses of the accent (the other is the pinned
+  // action), so this is not a one-accent violation even while another tab is
+  // active. `insetInlineEnd`, not the handoff's literal `right: 20px`: this
+  // codebase is structurally RTL, and `right` would land the dot on the wrong
+  // side of the icon in Arabic.
+  badge: {
+    position: 'absolute',
+    top: -2,
+    insetInlineEnd: 20,
+    minWidth: 17,
+    height: 17,
+    borderRadius: radius.round,
+    backgroundColor: color.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  // 10.5px is below the 12.5px body-copy floor by design — that floor is for
+  // copy, and this numeral is not copy: it duplicates a count already carried
+  // in full by the tab's accessible label. Do not "fix" this to the floor.
+  badgeText: { fontSize: 10.5, lineHeight: 13, fontWeight: '700', color: '#fff' },
 });
