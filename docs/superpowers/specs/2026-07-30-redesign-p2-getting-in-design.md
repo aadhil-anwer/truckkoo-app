@@ -1,9 +1,37 @@
 # Truckkoo redesign — P2 · Getting in
 
 **Date:** 2026-07-30
-**Status:** awaiting approval
+**Status:** DEFERRED (2026-07-30) — see §0. Spec stands; build not started.
 **Depends on:** P0 (complete), P1 (complete)
 **Screens:** N1–N6, plus one the handoff did not draw
+
+---
+
+## 0. Deferred
+
+**P2 is parked at the owner's direction: SMS is being moved to a later date.**
+Nothing was built. The only change made was to `supabase/config.toml`, and it was
+reverted — the working tree carries no half-applied state.
+
+**Why the whole phase parks, not just the SMS part.** N4 (role), N4b (name) and
+N5 (truck class) look independent, but they run *after* an authenticated session
+exists. Today that session comes from the email screens, which decision A1
+deletes. So building the back half of P2 while the front half waits would mean
+either keeping email auth (contradicting A1) or shipping screens nothing can
+reach. Neither is worth the churn.
+
+**What this unblocks instead.** P3 (shipper booking, S1–S10) does **not** depend
+on P2 — it needs P0's vocabulary and P1's map, both of which are done. P3 is the
+next buildable phase, and it is where the map, the question pattern and the
+booking flow all finally become a product someone can use.
+
+**To resume P2**, in order:
+1. Point Supabase Auth at the SMS provider (production dashboard).
+2. Re-apply the local `[auth.sms.test_otp]` block so the flow is testable without
+   spending anything.
+3. Settle the open question in §6 — whether `before_user_created` fires *before*
+   the SMS is sent. That determines whether the GCC allowlist is enforcement or
+   merely advice, and it is the one thing in this spec that was never verified.
 
 ---
 

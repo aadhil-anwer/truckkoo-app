@@ -207,6 +207,34 @@ never been the same test twice and has never reproduced in isolation.
 **Watch for:** if it starts landing on the same test, that test has a real race.
 Until then, rerun before believing a single red.
 
+### P2 (phone sign-in) is deferred — SMS moved to a later date
+
+Specced in `docs/superpowers/specs/2026-07-30-redesign-p2-getting-in-design.md`
+and **not built**. The config change was reverted; the tree carries nothing
+half-applied.
+
+The whole phase parks rather than just the SMS screens: N4/N4b/N5 run after a
+session exists, and today that session comes from the email screens the spec
+deletes. Building the back half would mean keeping email auth or shipping
+unreachable screens.
+
+**Consequence for sequencing:** P3 (shipper booking) does not depend on P2 and is
+the next buildable phase. Email auth stays in place until P2 resumes.
+
+**Two things left unverified**, and both matter when it resumes:
+
+- **Whether `before_user_created` fires before the SMS is sent.** If it does not,
+  the GCC number allowlist is advice rather than enforcement, and the toll-fraud
+  exposure is larger than the spec's mitigation implies. Nobody has tested this.
+- **`profiles.phone` is still client-writable.** It carries an INSERT grant, so a
+  user can put a number they do not own into their own profile — and that is the
+  number a dispatcher would ring. It is not exploitable for privilege, but it is
+  a data-integrity hole that exists **today**, independent of P2, and it will
+  outlive the deferral.
+
+**Done when:** P2 resumes, or — for the second item — sooner, because it is not
+actually blocked on SMS.
+
 ### The ops screens were deleted from this repo
 
 Dispatch is web-only now, at `~/truckkoo-ops`. `masthead.tsx` and
