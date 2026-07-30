@@ -77,7 +77,8 @@
     "test:db:pricing": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/pricing.sql",
     "test:db:ops": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/ops_console.sql",
     "verify": "npm run typecheck && npm run lint && npm test",
-    "build:geo": "node scripts/build-geo.mjs"
+    "build:geo": "node scripts/build-geo.mjs",
+    "check:pins": "node scripts/check-city-pins.mjs"
   },
   "private": true
 }

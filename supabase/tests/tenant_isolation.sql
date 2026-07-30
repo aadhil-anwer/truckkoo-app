@@ -947,6 +947,40 @@ select assert_equals(
   0, 'a driver who was not offered still cannot see the cargo');
 select act_as_reset();
 
+-- ─── 6b. city coordinates (0020) ────────────────────────────────────────────
+-- A NULL coordinate projects as (0,0) — the Atlantic off Ghana. A transposed
+-- pair lands in Kazakhstan. Both are cheap to assert here and expensive to
+-- notice by eye on a dark map.
+--
+-- What this canNOT check is whether a coordinate inside the box is the RIGHT
+-- town, or whether it is in the sea: Postgres has no geometry here. That is
+-- `npm run check:pins`, which tests containment against the outline the app
+-- actually draws.
+do $$
+declare n int;
+begin
+  select count(*) into n from public.cities where lat is null or lng is null;
+  if n > 0 then raise exception 'cities missing coordinates: %', n; end if;
+
+  select count(*) into n from public.cities
+   where lat not between 16 and 27 or lng not between 38 and 61;
+  if n > 0 then raise exception 'cities outside the operating region: %', n; end if;
+
+  select count(*) into n from public.cities
+   where country = 'OM'
+     and (lng not between 51.9 and 60.0 or lat not between 16.6 and 26.5);
+  if n > 0 then raise exception 'OM cities outside Oman: %', n; end if;
+
+  -- Every city must be distinctly placed. Two cities on one point is a
+  -- copy-paste in the migration, and it renders as one pin for two towns.
+  select count(*) into n from (
+    select lat, lng from public.cities group by lat, lng having count(*) > 1
+  ) dupes;
+  if n > 0 then raise exception 'cities sharing a coordinate: %', n; end if;
+end $$;
+
+do $$ begin raise notice 'city coordinates: present, in-region, and distinct'; end $$;
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;

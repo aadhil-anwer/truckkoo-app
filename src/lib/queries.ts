@@ -15,7 +15,25 @@ const LOAD_COLUMNS =
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 
-export type City = { id: number; name_en: string; name_ar: string; country: string; corridor: string | null };
+export type City = {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  country: string;
+  corridor: string | null;
+  /** WGS84, from 0020. NOT NULL in the database — the map projects these directly. */
+  lat: number;
+  lng: number;
+};
+
+/**
+ * The cities select list, hoisted so a test can assert the map's columns survive.
+ *
+ * If `lat`/`lng` fall out of here the map does not error — every pin projects
+ * from `undefined`, lands in the same corner, and it reads as a projection bug
+ * for an afternoon. `tests/unit/city-coordinates.test.ts` guards it.
+ */
+export const CITY_COLUMNS = 'id, name_en, name_ar, country, corridor, lat, lng';
 export type TruckType = {
   code: string;
   name_en: string;
@@ -96,7 +114,7 @@ export function useCities() {
     queryFn: async (): Promise<City[]> => {
       const { data, error } = await supabase
         .from('cities')
-        .select('id, name_en, name_ar, country, corridor')
+        .select(CITY_COLUMNS)
         .order('sort');
       if (error) throw error;
       return data ?? [];

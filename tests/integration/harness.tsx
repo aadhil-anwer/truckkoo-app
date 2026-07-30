@@ -128,6 +128,10 @@ export const MUSCAT: City = {
   name_ar: 'مسقط',
   country: 'OM',
   corridor: 'Muscat',
+  // The real coordinates, matching 0020 — a fixture that lies about geography
+  // makes a map test pass while the map is wrong.
+  lng: 58.408,
+  lat: 23.588,
 };
 export const SALALAH: City = {
   id: 2,
@@ -135,6 +139,8 @@ export const SALALAH: City = {
   name_ar: 'صلالة',
   country: 'OM',
   corridor: 'Dhofar',
+  lng: 54.092,
+  lat: 17.02,
 };
 
 export const TRUCK = {
