@@ -886,11 +886,43 @@ values ('bbbbbbbb-0000-4000-8000-000000000013', '55555555-5555-4555-8555-5555555
         current_date + 10, current_date + 12, true)
 on conflict (id) do nothing;
 
+-- A rate card, so the load can actually be PRICED and therefore accepted.
+-- Without one `issue_quote` produces no price, the load sits in `finding_truck`
+-- waiting for a human, and nothing dispatches at all — which is correct under
+-- the new order and is exactly the state the product ships in today. See
+-- OPEN_ISSUES.md.
+insert into private.rate_cards
+  (origin_corridor, dest_corridor, truck_type_code,
+   base_baisa, per_tonne_baisa, min_fare_baisa)
+select
+  private.corridor_of((select id from public.cities where name_en = 'Muscat')),
+  private.corridor_of((select id from public.cities where name_en = 'Salalah')),
+  '10t', 50000, 10000, 80000
+on conflict do nothing;
+
 select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
 select public.post_load(
   (select id from public.cities where name_en = 'Muscat'),
   (select id from public.cities where name_en = 'Salalah'),
-  current_date + 10, current_date + 12, 'Auto-dispatched cargo');
+  current_date + 10, current_date + 12, 'Auto-dispatched cargo', 9600, '10t');
+
+select assert_equals(
+  (select count(*) from public.loads
+    where goods_description = 'Auto-dispatched cargo' and status = 'quoted'),
+  1, 'a priced load waits for the shipper to decide');
+
+-- 0023 REORDERED THIS. Posting no longer dispatches: no driver should be asked
+-- to carry a load at a price the shipper has not agreed to yet. This assertion
+-- used to expect 1 offer here, and it expecting 0 now is the point of the phase.
+select assert_equals(
+  (select count(*) from public.offers o
+    join public.loads l on l.id = o.load_id
+   where l.goods_description = 'Auto-dispatched cargo'),
+  0, 'posting a load does NOT offer it — the shipper has not accepted a price');
+
+-- Accepting is what releases it to drivers.
+select public.accept_quote(
+  (select id from public.loads where goods_description = 'Auto-dispatched cargo'));
 select act_as_reset();
 
 select assert_equals(
@@ -900,7 +932,7 @@ select assert_equals(
      and o.driver_id = '55555555-5555-4555-8555-555555555555'
      and o.status = 'pending'
      and o.source = 'auto'),
-  1, 'posting a load auto-offers it to the empty-leg driver');
+  1, 'accepting the quote auto-offers it to the empty-leg driver');
 
 -- Tier 2 is not "unambiguous". A part-loaded truck is a judgement call, and
 -- judgements stay with the dispatcher.
@@ -924,7 +956,11 @@ select act_as('11111111-1111-4111-8111-111111111111');
 select public.post_load(
   (select id from public.cities where name_en = 'Muscat'),
   (select id from public.cities where name_en = 'Salalah'),
-  current_date + 10, current_date + 12, 'Cargo posted with dispatch off');
+  current_date + 10, current_date + 12, 'Cargo posted with dispatch off', 9600, '10t');
+-- 0023: dispatch is attempted at ACCEPTANCE now, not at posting, so the kill
+-- switch has to be exercised there. The switch itself is unchanged.
+select public.accept_quote(
+  (select id from public.loads where goods_description = 'Cargo posted with dispatch off'));
 select act_as_reset();
 
 select assert_equals(

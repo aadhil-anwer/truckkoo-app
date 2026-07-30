@@ -1254,6 +1254,20 @@ select public.post_load(
   current_date + 8, current_date + 9, 'Posted with dispatch switched off');
 select act_as_reset();
 
+-- 0023: dispatch is attempted when the shipper ACCEPTS, not when they post — so
+-- the kill switch has to be exercised there. The price is set directly rather
+-- than through ops_set_price: this assertion is about the switch, and routing it
+-- through the pricing guard would make it fail for reasons that have nothing to
+-- do with dispatch being off.
+update public.loads
+   set price_baisa = 45000, status = 'quoted'
+ where goods_description = 'Posted with dispatch switched off';
+
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select public.accept_quote(
+  (select id from public.loads where goods_description = 'Posted with dispatch switched off'));
+select act_as_reset();
+
 select assert_equals(
   (select count(*) from private.dispatch_log dl
     join public.loads l on l.id = dl.load_id
