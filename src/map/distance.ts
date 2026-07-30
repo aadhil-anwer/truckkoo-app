@@ -21,12 +21,16 @@ const EARTH_KM = 6371;
 /**
  * Road distance ÷ straight-line distance, for this region.
  *
- * Derived from the corridors the product actually runs: Muscat→Barka (~55 straight
- * / ~80 road), Muscat→Sohar (~195 / ~230), Muscat→Nizwa (~120 / ~165). Oman's
- * road network hugs the coast and threads the Hajar mountains, so the ratio is
- * higher than the ~1.2 typical of flat, gridded countries.
+ * MUST MATCH `road_factor_pct` in `private.app_settings` (migration 0025), which
+ * is what the PRICE is built from. This constant only drives what a screen shows;
+ * if the two disagree, a shipper sees one distance and is charged for another.
+ *
+ * 1.20 fits the long corridors, where the per-km term dominates the price:
+ * Muscat→Sohar and Muscat→Salalah both imply ~1.20. Short hops imply more like
+ * 1.47 and therefore read low — Muscat→Barka comes out around 65 km against ~80
+ * on the ground. That error is deliberate and is absorbed by the minimum fare.
  */
-export const ROAD_FACTOR = 1.35;
+export const ROAD_FACTOR = 1.2;
 
 export type Coord = { lat: number; lng: number };
 

@@ -31,14 +31,21 @@ describe('greatCircleKm', () => {
 });
 
 describe('roadKm', () => {
-  it('lands near the real Muscat–Barka road distance (~80 km)', () => {
-    expect(roadKm(MUSCAT, BARKA)).toBeGreaterThan(65);
-    expect(roadKm(MUSCAT, BARKA)).toBeLessThan(95);
+  it('is accurate on the long corridors, which is what the factor was tuned for', () => {
+    // Muscat–Sohar is ~230 km by road. The per-km term dominates the price on
+    // routes like this, so this is the accuracy that costs money to get wrong.
+    expect(roadKm(MUSCAT, SOHAR)).toBeGreaterThan(210);
+    expect(roadKm(MUSCAT, SOHAR)).toBeLessThan(250);
   });
 
-  it('lands near the real Muscat–Sohar road distance (~230 km)', () => {
-    expect(roadKm(MUSCAT, SOHAR)).toBeGreaterThan(200);
-    expect(roadKm(MUSCAT, SOHAR)).toBeLessThan(280);
+  it('reads LOW on short hops, and that is the accepted trade', () => {
+    // Muscat–Barka is ~80 km by road and this returns ~65. Short trips run on
+    // local roads and imply a factor nearer 1.47, but one constant cannot serve
+    // both ends and 1.20 was chosen for the long routes (migration 0025). The
+    // shortfall is absorbed by the minimum fare rather than by the shipper.
+    const km = roadKm(MUSCAT, BARKA);
+    expect(km).toBeGreaterThan(60);
+    expect(km).toBeLessThan(80);
   });
 
   it('is always longer than the straight line — a road is never a chord', () => {
