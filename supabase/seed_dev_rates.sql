@@ -94,7 +94,7 @@ pair as (
 
 insert into private.rate_cards
   (origin_corridor, dest_corridor, truck_type_code,
-   base_baisa, per_tonne_baisa, min_fare_baisa, currency)
+   base_baisa, per_tonne_baisa, min_fare_baisa, per_km_baisa, currency)
 select
   p.origin_corridor,
   p.dest_corridor,
@@ -113,6 +113,12 @@ select
   -- it instead of the computed price.
   (round((25000 + p.tier * 40000) * (1 + t.capacity_kg / 10000.0))::bigint
      + (1500 + p.tier * 1200)::bigint)                                    as min_fare_baisa,
+
+  -- Per road kilometre (0024). Invented like everything else here, but shaped
+  -- like the real thing: a bigger truck burns more per km. A 10-tonne truck
+  -- lands around 180 baisa/km, so Muscat->Sohar (~260 km) contributes roughly
+  -- 47 rial of distance on top of the base.
+  round(60 + t.capacity_kg / 90.0)::bigint                                as per_km_baisa,
 
   'OMR'
 from pair p

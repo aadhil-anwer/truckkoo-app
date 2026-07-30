@@ -769,6 +769,62 @@ select assert_raises(
   'a driver cannot estimate a route');
 select act_as_reset();
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- Per-kilometre pricing (0024).
+--
+-- The card keys on a CORRIDOR PAIR, so before this every city inside a band cost
+-- the same: Muscat→Sohar and Muscat→Shinas priced identically despite 40 km
+-- between them. OPEN_ISSUES has carried that since 0010.
+-- ════════════════════════════════════════════════════════════════════════════
+
+insert into private.rate_cards
+  (origin_corridor, dest_corridor, truck_type_code,
+   base_baisa, per_tonne_baisa, min_fare_baisa, per_km_baisa)
+select
+  private.corridor_of((select id from public.cities where name_en = 'Muscat')),
+  private.corridor_of((select id from public.cities where name_en = 'Sohar')),
+  '10t', 20000, 5000, 25000, 150
+on conflict (origin_corridor, dest_corridor, truck_type_code) do update
+  set per_km_baisa = 150, base_baisa = 20000, per_tonne_baisa = 5000, min_fare_baisa = 25000;
+
+-- Superuser, not act_as: `private.price_for` is revoked from `authenticated`
+-- (asserted earlier in this file), so a shipper cannot call it directly. The
+-- shipper-facing path is quote_route, which is exercised above.
+
+-- Two cities in the SAME corridor pair, at different distances, must now differ.
+select assert_at_least(
+  (select (select price_baisa from private.price_for(
+             (select id from public.cities where name_en = 'Muscat'),
+             (select id from public.cities where name_en = 'Sohar'), '10t', 9600))
+        - (select price_baisa from private.price_for(
+             (select id from public.cities where name_en = 'Muscat'),
+             (select id from public.cities where name_en = 'Barka'), '10t', 9600))),
+  1, 'a farther city in the same corridor band costs more');
+
+-- The floor holds however badly a card is configured. Nothing is ever free.
+select assert_equals(
+  private.compute_price(0, 0, 25000, null, 0, 0),
+  25000, 'a card with no base and no per-km still charges the minimum fare');
+
+select assert_equals(
+  private.compute_price(0, 0, 25000, 100, 0, 5),
+  25000, 'a tiny load over a short distance still charges the minimum fare');
+
+-- Distance is resolved server-side from cities.lat/lng, never supplied by a
+-- caller: a client-supplied multiplier on a price is a client-supplied price.
+select assert_at_least(
+  (select private.route_km(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'))::bigint),
+  900, 'Muscat to Salalah is resolved as a long road, not a straight line');
+
+select assert_equals(
+  (select count(*) from (select private.route_km(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Barka')) as km) q
+   where q.km between 60 and 95),
+  1, 'Muscat to Barka lands near the real road distance');
+
 do $$ begin raise notice 'ALL PRICING ASSERTIONS HELD'; end $$;
 
 rollback;

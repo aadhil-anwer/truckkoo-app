@@ -245,6 +245,51 @@ inside a fixed sheet.
 rebuilt it, because a screen importing components from a sibling screen is how
 two screens quietly become one. It is transitional and belongs to X1, in P7.
 
+### The road factor is one number doing a job that needs two
+
+`private.route_km` is a great-circle distance times `road_factor_pct` (default
+135). Measured against real road distances:
+
+| Route | Estimated | Real | Error | Implied factor |
+|---|---|---|---|---|
+| Muscat→Barka | 73 km | ~80 km | −8% | 1.47 |
+| Muscat→Sohar | 259 km | ~230 km | +13% | 1.20 |
+| Muscat→Salalah | 1158 km | ~1030 km | +12% | 1.20 |
+
+Short trips run on local roads and need a *higher* factor; long trips run on
+highway and need a lower one. A single constant cannot serve both, so it
+**over-charges long routes by roughly 12%** — and long routes are where the
+per-km term dominates the price.
+
+It is a setting (`private.app_settings.road_factor_pct`), so it can be tuned from
+the console without a migration. **Tune it toward the trips that carry the most
+money before real rates go live.**
+
+**Done when:** either a real routing/distance source replaces the factor, or the
+value is set deliberately by someone looking at the corridor mix.
+
+### The client and the server each compute a road distance
+
+`src/map/distance.ts` (display) and `private.route_km` (pricing) implement the
+same arithmetic with the same 1.35 factor in two languages. Pricing cannot use
+the client's number — a client-supplied multiplier on a price is a
+client-supplied price — so the duplication is deliberate, but it can drift: the
+server's factor is tunable and the client's is a constant.
+
+**Watch for:** a distance shown on S4 that disagrees with the one the price was
+built from. The fix is to have the client display the server's number wherever an
+RPC has already been called.
+
+### Loading the dev rate card breaks `npm run test:db`
+
+`npm run seed:rates` writes 320 fake cards and 640 audit rows. `ops_console.sql`
+asserts exact counts on both, so the suite fails until
+`npm run seed:rates:clear` runs — and the audit table needs truncating too,
+because clearing the cards does not remove their history.
+
+**Done when:** the SQL suites assert relative counts, or seed into a separate
+database. Until then: clear before testing.
+
 ### The ops screens were deleted from this repo
 
 Dispatch is web-only now, at `~/truckkoo-ops`. `masthead.tsx` and
