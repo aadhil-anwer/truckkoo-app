@@ -36,20 +36,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Body, Button, IconButton, Stamp } from '@/components/primitives';
-import {
-  ActionBar,
-  Avatar,
-  EmptyState,
-  FactChips,
-  ListRow,
-  PageTitle,
-  RouteLine,
-  RowGroup,
-  Screen,
-  Section,
-  TopBar,
-} from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, getLanguage, localized, t, type StringKey } from '@/i18n';
 import { formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
@@ -68,7 +55,8 @@ import {
   useTruckTypes,
   type Load,
 } from '@/lib/queries';
-import { color, elevation, font, GUTTER, radius, space } from '@/theme/tokens';
+import { GUTTER_INK, color, elevation, font, radius, space } from '@/theme/tokens';
+import { ActionBar, Avatar, Body, Button, EmptyState, FactChips, IconButton, ListRow, PageTitle, RouteLine, RowGroup, Section, Stamp, TopBar } from '@/components/legacy';
 
 export default function LoadDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -109,10 +97,10 @@ export default function LoadDetail() {
 
   if (loads.isPending) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <TopBar onBack={() => router.back()} />
         <View style={styles.center} accessibilityLiveRegion="polite">
-          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
         </View>
       </Screen>
     );
@@ -122,7 +110,7 @@ export default function LoadDetail() {
   // database (SECURITY.md §3): the row simply is not in this shipper's list.
   if (!load) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <TopBar onBack={() => router.back()} />
         <EmptyState
           icon="alert"
@@ -144,7 +132,7 @@ export default function LoadDetail() {
   }
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       {/* No status pill up here. The headline below already says it, and the two
           together read as the app repeating itself — the exact kind of doubling
           that makes a screen look unedited. */}
@@ -393,41 +381,41 @@ function ProofPhoto({ path }: { path: string }) {
 const styles = StyleSheet.create({
   scroll: { paddingBottom: space.xl, gap: space.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  block: { paddingHorizontal: GUTTER },
+  block: { paddingHorizontal: GUTTER_INK },
 
   panel: {
-    backgroundColor: color.paperDeep,
+    backgroundColor: color.cream,
     borderRadius: radius.card,
     padding: space.lg,
     gap: space.md,
   },
   notice: {
-    backgroundColor: color.orangeSoft,
+    backgroundColor: color.accentTint,
     borderRadius: radius.card,
     padding: space.lg,
   },
 
   priceBlock: { gap: space.sm },
   price: { ...font.display, color: color.ink, textAlign: align.start },
-  priceMeta: { ...font.smallPrint, color: color.inkSoft, textAlign: align.start },
+  priceMeta: { ...font.caption, color: color.mutedText, textAlign: align.start },
 
   driver: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
     borderRadius: radius.card,
     padding: space.lg,
-    ...elevation.card,
+    ...elevation.cardCream,
   },
   driverText: { flex: 1, gap: space.xs, alignItems: 'flex-start' },
-  driverName: { ...font.section, color: color.ink, textAlign: align.start },
+  driverName: { ...font.title, color: color.ink, textAlign: align.start },
   driverFacts: { paddingTop: space.md },
 
   proof: {
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: radius.card,
-    backgroundColor: color.paperDeep,
+    backgroundColor: color.cream,
   },
 });

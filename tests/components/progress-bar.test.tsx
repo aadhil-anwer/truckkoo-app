@@ -1,10 +1,9 @@
-import { StyleSheet, I18nManager } from 'react-native';
+import { I18nManager } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 
 import { ProgressBar, StepHeader } from '@/components/primitives';
 import { initLanguage } from '@/i18n';
-
-const flat = (s: unknown) => StyleSheet.flatten(s) ?? {};
+import { flat } from '../helpers/style';
 
 /**
  * The progress fill must grow from the LEADING edge — left in English, right in

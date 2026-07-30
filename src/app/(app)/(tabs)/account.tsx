@@ -17,13 +17,13 @@
 
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Avatar, ListRow, PageTitle, RowGroup, Screen, Section } from '@/components/ui';
-import { Button } from '@/components/primitives';
+import { Screen } from '@/components/ui';
 import { getLanguage, t } from '@/i18n';
 import { signOut } from '@/lib/auth';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { useSession } from '@/lib/session';
-import { GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, space } from '@/theme/tokens';
+import { Avatar, Button, ListRow, PageTitle, RowGroup, Section } from '@/components/legacy';
 
 export default function AccountTab() {
   const { profile } = useSession();
@@ -93,8 +93,8 @@ export default function AccountTab() {
 
 const styles = StyleSheet.create({
   scroll: { paddingBottom: space.xxxl, gap: space.xxl },
-  identity: { alignItems: 'center', gap: space.md, paddingHorizontal: GUTTER },
+  identity: { alignItems: 'center', gap: space.md, paddingHorizontal: GUTTER_INK },
   identityRows: { alignSelf: 'stretch' },
-  group: { paddingHorizontal: GUTTER },
-  out: { paddingHorizontal: GUTTER, paddingTop: space.sm },
+  group: { paddingHorizontal: GUTTER_INK },
+  out: { paddingHorizontal: GUTTER_INK, paddingTop: space.sm },
 });

@@ -69,6 +69,8 @@ const NAMED = {
   // information
   calendar: 'calendar',
   clock: 'clock',
+  weight: 'weight',
+  reference: 'reference',
   info: 'info',
   question: 'question',
   alert: 'alert',

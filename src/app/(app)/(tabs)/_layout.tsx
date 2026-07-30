@@ -48,7 +48,7 @@ export default function TabsLayout() {
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: color.paperDeep },
+        sceneStyle: { backgroundColor: color.cream },
       }}
     >
       {/* ── shipper ─────────────────────────────────────────────────────── */}

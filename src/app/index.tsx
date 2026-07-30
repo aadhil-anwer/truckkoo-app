@@ -26,7 +26,7 @@ export default function Index() {
   if (loading) {
     return (
       <View style={styles.boot}>
-        <ActivityIndicator color={color.orange} />
+        <ActivityIndicator color={color.accent} />
       </View>
     );
   }
@@ -43,6 +43,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
   },
 });

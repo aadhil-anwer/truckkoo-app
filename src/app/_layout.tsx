@@ -110,7 +110,7 @@ function Gate() {
   if (loading) {
     return (
       <View style={styles.boot}>
-        <ActivityIndicator color={color.orange} />
+        <ActivityIndicator color={color.accent} />
       </View>
     );
   }
@@ -119,7 +119,7 @@ function Gate() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: color.paper },
+        contentStyle: { backgroundColor: color.creamCard },
         animation: 'fade',
       }}
     />
@@ -131,6 +131,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
   },
 });

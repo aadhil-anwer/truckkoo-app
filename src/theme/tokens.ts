@@ -63,6 +63,21 @@ export const color = {
    * If this shows up on a second screen, that screen is wrong.
    */
   delivered: '#79E0AF',
+
+  /**
+   * Error text. NOT from the handoff — it specifies no error colour at all,
+   * which is an omission rather than a decision: every form in the product
+   * validates something, and auth has to be able to say "that code is wrong".
+   *
+   * Two tones for the same reason the accent has two: no single red clears AA on
+   * both grounds. `danger` is 4.9:1 on cream; on ink it drops to 3.5:1, so ink
+   * uses `dangerLight` instead (8.6:1). `tests/unit/contrast.test.ts` asserts both.
+   *
+   * Deliberately pinker than `accentLight` (#FF7A45) so an error is never
+   * mistaken for the accent at a glance, in sun, through a windscreen.
+   */
+  danger: '#C0341C',
+  dangerLight: '#FF8A80',
 } as const;
 
 /**

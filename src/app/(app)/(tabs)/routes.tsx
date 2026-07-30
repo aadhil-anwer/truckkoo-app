@@ -13,12 +13,12 @@ import { useMemo } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Button, Stamp } from '@/components/primitives';
-import { ActionBar, EmptyState, ListRow, PageTitle, RowGroup, Screen } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { directionArrow, localized, t } from '@/i18n';
 import { formatWindow } from '@/lib/format';
 import { cityIndex, useCities, useMyLegs } from '@/lib/queries';
-import { color, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, space } from '@/theme/tokens';
+import { ActionBar, Button, EmptyState, ListRow, PageTitle, RowGroup, Stamp } from '@/components/legacy';
 
 export default function RoutesTab() {
   const router = useRouter();
@@ -39,7 +39,7 @@ export default function RoutesTab() {
 
       {legs.isPending ? (
         <View style={styles.center}>
-          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
         </View>
       ) : legs.isError ? (
         <EmptyState icon="alert" title={t('common.error.title')} explain={t('common.error.explain')}>
@@ -63,7 +63,7 @@ export default function RoutesTab() {
               onRefresh={() => {
                 legs.refetch();
               }}
-              tintColor={color.orange}
+              tintColor={color.accent}
             />
           }
         >
@@ -104,7 +104,7 @@ export default function RoutesTab() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: GUTTER, paddingBottom: space.xxxl },
+  scroll: { paddingHorizontal: GUTTER_INK, paddingBottom: space.xxxl },
   center: { paddingVertical: space.huge, alignItems: 'center' },
   emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
 });

@@ -31,17 +31,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useRouter } from 'expo-router';
 
 import { Icon } from '@/components/icon';
-import { Button, Stamp } from '@/components/primitives';
-import {
-  EmptyState,
-  FactChips,
-  ListRow,
-  PageTitle,
-  RouteLine,
-  RowGroup,
-  Screen,
-  Section,
-} from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, directionArrow, getLanguage, localized, t, type StringKey } from '@/i18n';
 import { formatWindow } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
@@ -55,7 +45,8 @@ import {
   type LoadStatus,
 } from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { color, elevation, font, GUTTER, radius, space, type StampTone } from '@/theme/tokens';
+import { GUTTER_INK, color, elevation, font, radius, space } from '@/theme/tokens';
+import { Button, EmptyState, FactChips, ListRow, PageTitle, RouteLine, RowGroup, Section, Stamp, StampTone } from '@/components/legacy';
 
 /** Status → tone. Kept in one place so no screen invents its own mapping. */
 export const TONE: Record<LoadStatus, StampTone> = {
@@ -134,7 +125,7 @@ export default function CustomerHome() {
             onRefresh={() => {
               loads.refetch();
             }}
-            tintColor={color.orange}
+            tintColor={color.accent}
           />
         }
       >
@@ -147,10 +138,10 @@ export default function CustomerHome() {
             onPress={() => router.push('/post-load')}
             accessibilityRole="button"
             accessibilityLabel={`${t('home.entry')} ${t('home.entry.hint')}`}
-            style={({ pressed }) => [styles.entry, pressed && { backgroundColor: color.fill }]}
+            style={({ pressed }) => [styles.entry, pressed && { backgroundColor: color.cream }]}
           >
             <View style={styles.entryIcon}>
-              <Icon name="pickup" size={22} color={color.paper} />
+              <Icon name="pickup" size={22} tint={color.creamCard} />
             </View>
             <View style={styles.entryText}>
               <Text style={styles.entryTitle}>{t('home.entry')}</Text>
@@ -158,13 +149,13 @@ export default function CustomerHome() {
                   explains the whole product is worse than a second line. */}
               <Text style={styles.entryHint}>{t('home.entry.hint')}</Text>
             </View>
-            <Icon name="chevron" size={22} color={color.inkFaint} />
+            <Icon name="chevron" size={22} tint={color.mutedText} />
           </Pressable>
         </View>
 
         {loads.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+            <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
           </View>
         ) : loads.isError ? (
           <EmptyState
@@ -272,7 +263,7 @@ export function LoadCard({
     >
       <View style={styles.cardHead}>
         <Stamp tone={TONE[load.status]}>{t(`status.${load.status}` as StringKey)}</Stamp>
-        <Icon name="chevron" size={20} color={color.inkFaint} />
+        <Icon name="chevron" size={20} tint={color.mutedText} />
       </View>
 
       <RouteLine
@@ -319,7 +310,7 @@ const styles = StyleSheet.create({
   center: { paddingVertical: space.huge, alignItems: 'center' },
   emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
 
-  entryWrap: { paddingHorizontal: GUTTER },
+  entryWrap: { paddingHorizontal: GUTTER_INK },
   entry: {
     minHeight: 76,
     flexDirection: 'row',
@@ -327,31 +318,31 @@ const styles = StyleSheet.create({
     gap: space.md,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
     borderRadius: radius.card,
-    ...elevation.card,
+    ...elevation.cardCream,
   },
   entryIcon: {
     width: 44,
     height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: color.orange,
+    borderRadius: radius.round,
+    backgroundColor: color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   entryText: { flex: 1, gap: 2 },
   entryTitle: { ...font.title, color: color.ink, textAlign: align.start },
-  entryHint: { ...font.bodySmall, color: color.inkSoft, textAlign: align.start },
+  entryHint: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
 
-  cards: { paddingHorizontal: GUTTER, gap: space.md },
-  group: { paddingHorizontal: GUTTER },
+  cards: { paddingHorizontal: GUTTER_INK, gap: space.md },
+  group: { paddingHorizontal: GUTTER_INK },
 
   card: {
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
     borderRadius: radius.card,
     padding: space.lg,
     gap: space.md,
-    ...elevation.card,
+    ...elevation.cardCream,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardPrice: { flexDirection: 'row', alignItems: 'baseline' },

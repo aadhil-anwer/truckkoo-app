@@ -7,7 +7,7 @@ export default function AppLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: color.paper },
+        contentStyle: { backgroundColor: color.creamCard },
       }}
     />
   );

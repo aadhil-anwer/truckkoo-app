@@ -27,22 +27,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Icon } from '@/components/icon';
-import { Body, Button, Stamp } from '@/components/primitives';
-import {
-  ActionBar,
-  EmptyState,
-  FactChips,
-  PageTitle,
-  RouteLine,
-  Screen,
-  TopBar,
-} from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { formatWeight, reference } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useMyTrips, useVisibleLoads } from '@/lib/queries';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
-import { color, font, GUTTER, radius, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, radius, space } from '@/theme/tokens';
+import { ActionBar, Body, Button, EmptyState, FactChips, PageTitle, RouteLine, Stamp, TopBar } from '@/components/legacy';
+import { face } from '@/theme/faces';
 
 export default function TripScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -68,10 +61,10 @@ export default function TripScreen() {
 
   if (trips.isPending || loads.isPending) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <TopBar onBack={() => router.back()} />
         <View style={styles.center}>
-          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
         </View>
       </Screen>
     );
@@ -81,7 +74,7 @@ export default function TripScreen() {
   // returns no row either way (SECURITY.md §3).
   if (!trip || !load) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <TopBar onBack={() => router.back()} />
         <EmptyState
           icon="alert"
@@ -152,7 +145,7 @@ export default function TripScreen() {
   const collected = trip.status === 'in_transit';
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <TopBar
         onBack={() => router.back()}
         action={
@@ -212,14 +205,14 @@ export default function TripScreen() {
                     accessibilityElementsHidden
                   />
                   <View style={styles.retake}>
-                    <Icon name="camera" size={18} color={color.paper} />
+                    <Icon name="camera" size={18} tint={color.creamCard} />
                     <Text style={styles.retakeText}>{t('trip.deliver.retake')}</Text>
                   </View>
                 </>
               ) : (
                 <View style={styles.shotEmpty}>
                   <View style={styles.shotIcon}>
-                    <Icon name="camera" size={28} color={color.paper} />
+                    <Icon name="camera" size={28} tint={color.creamCard} />
                   </View>
                   <Text style={styles.shotLabel}>{t('trip.deliver.photo')}</Text>
                 </View>
@@ -258,10 +251,10 @@ export default function TripScreen() {
 const styles = StyleSheet.create({
   scroll: { paddingBottom: space.xl, gap: space.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  block: { paddingHorizontal: GUTTER },
+  block: { paddingHorizontal: GUTTER_INK },
 
   panel: {
-    backgroundColor: color.paperDeep,
+    backgroundColor: color.cream,
     borderRadius: radius.card,
     padding: space.lg,
     gap: space.md,
@@ -271,7 +264,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: radius.card,
-    backgroundColor: color.fill,
+    backgroundColor: color.cream,
     overflow: 'hidden',
     justifyContent: 'center',
   },
@@ -279,12 +272,12 @@ const styles = StyleSheet.create({
   shotIcon: {
     width: 64,
     height: 64,
-    borderRadius: radius.pill,
-    backgroundColor: color.orange,
+    borderRadius: radius.round,
+    backgroundColor: color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shotLabel: { ...font.section, color: color.ink },
+  shotLabel: { ...font.title, color: color.ink },
   preview: { width: '100%', height: '100%' },
   retake: {
     position: 'absolute',
@@ -294,16 +287,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(11,11,11,0.78)',
-    borderRadius: radius.pill,
+    borderRadius: radius.round,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
   },
-  retakeText: { ...font.smallPrint, fontWeight: '700', color: color.paper },
+  retakeText: { ...font.caption, fontFamily: face.archivo700, color: color.creamCard },
 
   error: {
     ...font.bodySmall,
     color: color.danger,
     textAlign: align.start,
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
   },
 });

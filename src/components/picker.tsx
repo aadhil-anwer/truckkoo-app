@@ -26,19 +26,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { align, t } from '@/i18n';
 import { formatLongDay, isoToday } from '@/lib/format';
-import {
-  color,
-  CTA_HEIGHT,
-  doc,
-  font,
-  GUTTER,
-  HIT_SLOP,
-  MIN_TARGET,
-  radius,
-  space,
-} from '@/theme/tokens';
+import { CTA_HEIGHT, GUTTER_INK, HIT_SLOP, MIN_TARGET, color, font, hairline, radius, space } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
+import { doc } from '@/components/legacy';
 
 /**
  * The next N days as picker choices.
@@ -134,21 +125,21 @@ export function PickerField({
         style={({ pressed }) => [
           styles.row,
           !!error && styles.rowError,
-          pressed && { backgroundColor: color.fillPress },
+          pressed && { backgroundColor: color.cream },
         ]}
       >
         {!!icon && (
           <View style={styles.rowIcon}>
-            <Icon name={icon} size={20} color={selected ? color.ink : color.inkSoft} />
+            <Icon name={icon} size={20} tint={selected ? color.ink : color.mutedText} />
           </View>
         )}
         <Text
-          style={[styles.rowValue, !selected && { color: color.inkSoft }]}
+          style={[styles.rowValue, !selected && { color: color.mutedText }]}
           numberOfLines={1}
         >
           {selected ? selected.label : placeholder}
         </Text>
-        <Icon name="chevron" size={20} color={color.inkFaint} />
+        <Icon name="chevron" size={20} tint={color.mutedText} />
       </Pressable>
 
       {!!error && (
@@ -163,7 +154,7 @@ export function PickerField({
         presentationStyle="fullScreen"
         onRequestClose={close}
       >
-        <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
+        <SafeAreaView style={styles.sheet}>
           <View style={styles.sheetHead}>
             <Text style={styles.sheetTitle} numberOfLines={1}>
               {sheetTitle ?? label}
@@ -175,18 +166,18 @@ export function PickerField({
               style={styles.sheetClose}
               hitSlop={HIT_SLOP}
             >
-              <Icon name="close" size={22} color={color.ink} />
+              <Icon name="close" size={22} tint={color.ink} />
             </Pressable>
           </View>
 
           {searchable && (
             <View style={styles.searchWrap}>
-              <Icon name="search" size={20} color={color.inkSoft} />
+              <Icon name="search" size={20} tint={color.mutedText} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
                 placeholder={t('common.search')}
-                placeholderTextColor={color.inkSoft}
+                placeholderTextColor={color.mutedText}
                 style={[styles.search, { textAlign: align.start }]}
                 autoCorrect={false}
                 autoFocus
@@ -227,7 +218,7 @@ export function PickerField({
                     accessibilityState={{ selected: isSelected }}
                     style={({ pressed }) => [
                       styles.option,
-                      pressed && { backgroundColor: color.fill },
+                      pressed && { backgroundColor: color.cream },
                     ]}
                   >
                     <View style={styles.optionText}>
@@ -240,7 +231,7 @@ export function PickerField({
                         </Text>
                       )}
                     </View>
-                    {isSelected && <Icon name="check" size={22} color={color.orange} />}
+                    {isSelected && <Icon name="check" size={22} tint={color.accent} />}
                   </Pressable>
                   <View style={styles.optionDivider} />
                 </>
@@ -255,7 +246,7 @@ export function PickerField({
 
 const styles = StyleSheet.create({
   field: { gap: space.sm },
-  fieldLabel: { ...font.label, color: color.ink, textAlign: align.start },
+  fieldLabel: { ...font.value, color: color.ink, textAlign: align.start },
 
   row: {
     minHeight: CTA_HEIGHT,
@@ -264,32 +255,32 @@ const styles = StyleSheet.create({
     gap: space.md,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    backgroundColor: color.fill,
-    borderRadius: radius.control,
+    backgroundColor: color.cream,
+    borderRadius: radius.input,
     borderWidth: doc.ruleStrong,
     borderColor: 'transparent',
   },
   rowError: { borderColor: color.danger },
   rowIcon: { width: 24, alignItems: 'center' },
-  rowValue: { ...font.body, fontWeight: '600', color: color.ink, flex: 1, textAlign: align.start },
-  errorText: { ...font.smallPrint, color: color.danger, textAlign: align.start },
+  rowValue: { ...font.value, color: color.inkText, flex: 1, textAlign: align.start },
+  errorText: { ...font.caption, color: color.danger, textAlign: align.start },
 
-  sheet: { flex: 1, backgroundColor: color.paper },
+  sheet: { flex: 1, backgroundColor: color.creamCard },
   sheetHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.sm,
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
     paddingVertical: space.md,
     minHeight: 56,
   },
-  sheetTitle: { ...font.hero, color: color.ink, flexShrink: 1, textAlign: align.start },
+  sheetTitle: { ...font.statement, color: color.ink, flexShrink: 1, textAlign: align.start },
   sheetClose: {
     width: MIN_TARGET,
     height: MIN_TARGET,
-    borderRadius: radius.pill,
-    backgroundColor: color.fill,
+    borderRadius: radius.round,
+    backgroundColor: color.cream,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -298,38 +289,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    marginHorizontal: GUTTER,
+    marginHorizontal: GUTTER_INK,
     marginBottom: space.md,
     paddingHorizontal: space.lg,
-    backgroundColor: color.fill,
-    borderRadius: radius.control,
+    backgroundColor: color.cream,
+    borderRadius: radius.input,
   },
   search: { ...font.body, color: color.ink, minHeight: CTA_HEIGHT, flex: 1 },
 
   list: { paddingBottom: space.xxl },
   group: {
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
     paddingTop: space.lg,
     paddingBottom: space.xs,
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
   },
-  groupText: { ...doc.fieldLabel, color: color.orange, textAlign: align.start },
+  groupText: { ...doc.fieldLabel, color: color.accent, textAlign: align.start },
 
   option: {
     minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
     paddingVertical: space.md,
   },
   optionText: { flex: 1, gap: 2 },
   optionLabel: { ...font.rowTitle, color: color.ink, textAlign: align.start },
-  optionDetail: { ...font.bodySmall, color: color.inkSoft, textAlign: align.start },
+  optionDetail: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
   // Inset both edges, not just the start. `marginStart` alone shifts a
   // full-bleed row without shrinking it, so the rule ran off the screen.
-  optionDivider: { height: doc.rule, backgroundColor: color.line, marginHorizontal: GUTTER },
+  optionDivider: { height: doc.rule, backgroundColor: hairline.onCream, marginHorizontal: GUTTER_INK },
 
   empty: { padding: space.xl },
-  emptyText: { ...font.body, color: color.inkSoft, textAlign: align.start },
+  emptyText: { ...font.body, color: color.mutedText, textAlign: align.start },
 });

@@ -10,7 +10,7 @@
  * Rows lighten ~4% on ink, darken ~3% on cream.
  */
 
-import { useRef, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -41,9 +41,17 @@ import { localizeDigits } from '@/lib/format';
 
 type Ground = 'ink' | 'cream';
 
-/** The press animation, shared by every control. */
+/**
+ * The press animation, shared by every control.
+ *
+ * `useState` with an initialiser rather than `useRef(new Animated.Value(1)).current`:
+ * both give one stable value for the component's life, but reading `.current`
+ * during render is a rules-of-hooks violation that `react-hooks/refs` flags. The
+ * initialiser form is also lazier — it does not allocate an `Animated.Value` on
+ * every render just to throw it away.
+ */
 function usePressScale() {
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
   const to = (value: number, duration: number) =>
     Animated.timing(scale, { toValue: value, duration, useNativeDriver: true }).start();
   return {
@@ -96,6 +104,10 @@ export function PrimaryButton({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
+      // The Pressable is the touch target, so it declares the target's height.
+      // Leaving that only on the inner view hides the >=44pt guarantee from
+      // anything inspecting the node a finger actually lands on.
+      style={styles.ctaTarget}
     >
       <Animated.View
         testID="primary-surface"
@@ -135,6 +147,7 @@ export function SecondaryButton({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
+      style={styles.ctaTarget}
     >
       <Animated.View
         testID="secondary-surface"
@@ -443,6 +456,7 @@ export function StepHeader({
 }
 
 const styles = StyleSheet.create({
+  ctaTarget: { minHeight: CTA_HEIGHT },
   cta: {
     minHeight: CTA_HEIGHT,
     borderRadius: radius.round,

@@ -30,23 +30,15 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Body, Button, Field, Input } from '@/components/primitives';
 import { nextDays, PickerField, type PickerOption } from '@/components/picker';
-import {
-  ActionBar,
-  EmptyState,
-  FactChips,
-  PageTitle,
-  RouteLine,
-  Screen,
-  TopBar,
-} from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, getLanguage, localized, t, type StringKey } from '@/i18n';
 import { formatLongDay, formatWeight } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText } from '@/lib/safe-text';
 import { usePostLoad, useCities, useQuoteRoute, useTruckTypes } from '@/lib/queries';
-import { color, font, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, space } from '@/theme/tokens';
+import { ActionBar, Body, Button, EmptyState, FactChips, Field, Input, PageTitle, RouteLine, TopBar } from '@/components/legacy';
 
 /** "Not sure — advise me" is the absence of a truck type, so it needs a sentinel. */
 const UNSURE = '__unsure__';
@@ -168,7 +160,7 @@ export default function PostLoad() {
 
   if (done) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <TopBar />
         <View style={styles.doneWrap}>
           <EmptyState
@@ -187,7 +179,7 @@ export default function PostLoad() {
   const stepNumber = STEPS.indexOf(step) + 1;
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -381,27 +373,27 @@ export default function PostLoad() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { paddingBottom: space.xl },
-  form: { paddingHorizontal: GUTTER, gap: space.xl },
+  form: { paddingHorizontal: GUTTER_INK, gap: space.xl },
   doneWrap: { flex: 1, justifyContent: 'center' },
 
-  stepMark: { ...font.label, color: color.inkSoft },
-  help: { ...font.smallPrint, color: color.inkSoft, textAlign: align.start, marginTop: -space.md },
+  stepMark: { ...font.value, color: color.mutedText },
+  help: { ...font.caption, color: color.mutedText, textAlign: align.start, marginTop: -space.md },
   formError: {
     ...font.bodySmall,
     color: color.danger,
     textAlign: align.start,
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
     paddingTop: space.md,
   },
 
   summary: {
-    backgroundColor: color.paperDeep,
+    backgroundColor: color.cream,
     borderRadius: 16,
     padding: space.lg,
     gap: space.md,
   },
   priceBlock: { gap: space.xs },
-  priceLabel: { ...font.label, color: color.inkSoft, textAlign: align.start },
+  priceLabel: { ...font.value, color: color.mutedText, textAlign: align.start },
   // formatMoney, never toFixed(2) — OMR carries three decimals.
   price: { ...font.display, color: color.ink, textAlign: align.start },
 });

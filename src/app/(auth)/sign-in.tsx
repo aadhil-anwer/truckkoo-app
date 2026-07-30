@@ -16,11 +16,12 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Body, Button, Field, Input, TextButton } from '@/components/primitives';
-import { PageTitle, Screen } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { sendPasswordReset, signInWithEmail, signInWithProvider } from '@/lib/auth';
-import { color, font, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, hairline, space } from '@/theme/tokens';
+import { Body, Button, Field, Input, PageTitle, TextButton } from '@/components/legacy';
+import { face } from '@/theme/faces';
 
 export default function SignIn() {
   const router = useRouter();
@@ -75,7 +76,7 @@ export default function SignIn() {
   }
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -184,13 +185,13 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: space.xxxl },
-  brandWrap: { paddingHorizontal: GUTTER, paddingTop: space.lg },
-  brand: { fontSize: 13, fontWeight: '900', letterSpacing: 3, color: color.orange },
-  form: { paddingHorizontal: GUTTER, gap: space.lg },
+  brandWrap: { paddingHorizontal: GUTTER_INK, paddingTop: space.lg },
+  brand: { fontFamily: face.archivo800, fontSize: 12, letterSpacing: 3.4, color: color.accent },
+  form: { paddingHorizontal: GUTTER_INK, gap: space.lg },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
-  notice: { ...font.bodySmall, color: color.inkSoft, textAlign: align.start },
+  notice: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
   orRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
-  orRule: { flex: 1, height: 1, backgroundColor: color.line },
-  orText: { ...font.smallPrint, color: color.inkSoft, letterSpacing: 1.6 },
+  orRule: { flex: 1, height: 1, backgroundColor: hairline.onCream },
+  orText: { ...font.caption, color: color.mutedText, letterSpacing: 1.6 },
   switch: { alignItems: 'center', paddingTop: space.sm },
 });

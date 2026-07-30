@@ -135,6 +135,34 @@ describe('text on the cream ground', () => {
   });
 });
 
+/**
+ * Error text.
+ *
+ * The handoff specifies no error colour, so this pair was added — and a colour
+ * added without a measurement is how the 3.47:1 button happened. One red cannot
+ * serve both grounds, which is why there are two.
+ */
+describe('error text', () => {
+  it('danger clears AA on cream, which is the ground it exists for', () => {
+    expect(ratio(color.danger, color.cream)).toBeGreaterThanOrEqual(AA_NORMAL);
+  });
+
+  it('danger is NOT used on ink — it fails there, which is why dangerLight exists', () => {
+    expect(ratio(color.danger, color.ink)).toBeLessThan(AA_NORMAL);
+  });
+
+  it('dangerLight clears AA on ink and on a surface', () => {
+    expect(ratio(color.dangerLight, color.ink)).toBeGreaterThanOrEqual(AA_NORMAL);
+    expect(ratio(color.dangerLight, color.surface)).toBeGreaterThanOrEqual(AA_NORMAL);
+  });
+
+  it('is distinguishable from the accent, so an error never reads as the action', () => {
+    // Not a WCAG rule — a legibility one. Two warm tones this close would be
+    // indistinguishable in sunlight, and one of them means "stop".
+    expect(ratio(color.dangerLight, color.accentLight)).toBeGreaterThan(1.1);
+  });
+});
+
 describe('the type scale floor', () => {
   it('never goes below the 12.5px body floor', () => {
     for (const [name, style] of Object.entries(font)) {

@@ -14,14 +14,14 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Button, Stamp } from '@/components/primitives';
-import { EmptyState, ListRow, PageTitle, RowGroup, Screen, Segmented } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { directionArrow, localized, t, type StringKey } from '@/i18n';
 import { formatWindow } from '@/lib/format';
 import { cityIndex, useCities, useMyLoads, useTruckTypes } from '@/lib/queries';
-import { color, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, space } from '@/theme/tokens';
 
 import { LIVE, LoadCard, TONE } from './customer';
+import { Button, EmptyState, ListRow, PageTitle, RowGroup, Segmented, Stamp } from '@/components/legacy';
 
 type LoadView = 'live' | 'past';
 
@@ -66,7 +66,7 @@ export default function LoadsTab() {
 
       {loads.isPending ? (
         <View style={styles.center}>
-          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
         </View>
       ) : loads.isError ? (
         <EmptyState icon="alert" title={t('common.error.title')} explain={t('common.error.explain')}>
@@ -90,7 +90,7 @@ export default function LoadsTab() {
               onRefresh={() => {
                 loads.refetch();
               }}
-              tintColor={color.orange}
+              tintColor={color.accent}
             />
           }
         >
@@ -150,6 +150,6 @@ const styles = StyleSheet.create({
   scroll: { paddingTop: space.lg, paddingBottom: space.xxxl },
   center: { paddingVertical: space.huge, alignItems: 'center' },
   emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
-  cards: { paddingHorizontal: GUTTER, gap: space.md },
-  group: { paddingHorizontal: GUTTER },
+  cards: { paddingHorizontal: GUTTER_INK, gap: space.md },
+  group: { paddingHorizontal: GUTTER_INK },
 });

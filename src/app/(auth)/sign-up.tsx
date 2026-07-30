@@ -27,13 +27,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Body, Button, Choice, Field, Input, TextButton } from '@/components/primitives';
-import { ActionBar, PageTitle, Screen, TopBar } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { createProfile, createTruck, signUpWithEmail } from '@/lib/auth';
 import { useTruckTypes } from '@/lib/queries';
 import { useSession } from '@/lib/session';
-import { color, font, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, space } from '@/theme/tokens';
+import { ActionBar, Body, Button, Choice, Field, Input, PageTitle, TextButton, TopBar } from '@/components/legacy';
 
 type Step = 'account' | 'role' | 'details';
 type Role = 'shipper' | 'driver';
@@ -180,7 +180,7 @@ export default function SignUp() {
           : t('auth.name');
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -309,7 +309,7 @@ export default function SignUp() {
                         product to strand someone. */}
                     {truckTypesPending ? (
                       <View style={styles.choicesBusy}>
-                        <ActivityIndicator color={color.orange} />
+                        <ActivityIndicator color={color.accent} />
                       </View>
                     ) : truckOptions.length === 0 ? (
                       <View style={styles.choices}>
@@ -382,13 +382,13 @@ export default function SignUp() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: space.xl },
-  form: { paddingHorizontal: GUTTER, gap: space.lg },
-  stepMark: { ...font.label, color: color.inkSoft },
+  form: { paddingHorizontal: GUTTER_INK, gap: space.lg },
+  stepMark: { ...font.value, color: color.mutedText },
   choices: { gap: space.sm },
   // Reserves roughly the height the options would occupy, so the step does not
   // jump under the reader's thumb when they arrive.
   choicesBusy: { minHeight: 140, alignItems: 'center', justifyContent: 'center' },
-  help: { ...font.smallPrint, color: color.inkSoft, textAlign: align.start, marginTop: -space.md },
+  help: { ...font.caption, color: color.mutedText, textAlign: align.start, marginTop: -space.md },
   notice: { ...font.bodySmall, color: color.ink, textAlign: align.start },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
   switch: { alignItems: 'center', paddingTop: space.sm },

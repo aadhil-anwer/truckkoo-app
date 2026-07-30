@@ -16,8 +16,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Body, Button, Stamp } from '@/components/primitives';
-import { EmptyState, FactChips, PageTitle, RouteLine, Screen } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, getLanguage, localized, t } from '@/i18n';
 import { formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
@@ -29,7 +28,8 @@ import {
   useRespondToOffer,
   useVisibleLoads,
 } from '@/lib/queries';
-import { color, elevation, font, GUTTER, radius, space } from '@/theme/tokens';
+import { GUTTER_INK, color, elevation, font, radius, space } from '@/theme/tokens';
+import { Body, Button, EmptyState, FactChips, PageTitle, RouteLine, Stamp } from '@/components/legacy';
 
 export default function OffersTab() {
   const cities = useCities();
@@ -90,7 +90,7 @@ export default function OffersTab() {
 
       {busy ? (
         <View style={styles.center}>
-          <ActivityIndicator color={color.orange} accessibilityLabel={t('common.loading')} />
+          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
         </View>
       ) : failed ? (
         <EmptyState icon="alert" title={t('common.error.title')} explain={t('common.error.explain')}>
@@ -106,7 +106,7 @@ export default function OffersTab() {
             <RefreshControl
               refreshing={offers.isRefetching || loads.isRefetching}
               onRefresh={refetchAll}
-              tintColor={color.orange}
+              tintColor={color.accent}
             />
           }
         >
@@ -211,22 +211,22 @@ export default function OffersTab() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: GUTTER, paddingBottom: space.xxxl, gap: space.lg },
+  scroll: { paddingHorizontal: GUTTER_INK, paddingBottom: space.xxxl, gap: space.lg },
   center: { paddingVertical: space.huge, alignItems: 'center' },
   emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
 
   card: {
-    backgroundColor: color.paper,
+    backgroundColor: color.creamCard,
     borderRadius: radius.card,
     padding: space.lg,
     gap: space.md,
-    ...elevation.card,
+    ...elevation.cardCream,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  reference: { ...font.micro, color: color.inkFaint },
+  reference: { ...font.tabLabel, color: color.mutedText },
 
   pay: { gap: 2, paddingTop: space.xs },
-  payLabel: { ...font.label, color: color.inkSoft, textAlign: align.start },
-  payAmount: { ...font.hero, color: color.ink, textAlign: align.start },
+  payLabel: { ...font.value, color: color.mutedText, textAlign: align.start },
+  payAmount: { ...font.statement, color: color.ink, textAlign: align.start },
   error: { ...font.bodySmall, color: color.danger, textAlign: align.start },
 });

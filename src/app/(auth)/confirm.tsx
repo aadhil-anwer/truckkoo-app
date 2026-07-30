@@ -20,11 +20,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Button } from '@/components/primitives';
-import { ActionBar, EmptyState, Screen } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { t } from '@/i18n';
 import { completeEmailConfirmation } from '@/lib/auth';
 import { color, font, space } from '@/theme/tokens';
+import { ActionBar, Button, EmptyState } from '@/components/legacy';
 
 export default function ConfirmEmail() {
   const router = useRouter();
@@ -52,7 +52,7 @@ export default function ConfirmEmail() {
 
   if (error) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <View style={styles.flex}>
           <EmptyState icon="alert" title={t('auth.confirm.title')} explain={error} />
         </View>
@@ -64,9 +64,9 @@ export default function ConfirmEmail() {
   }
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <View style={styles.busy} accessibilityLiveRegion="polite">
-        <ActivityIndicator color={color.orange} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.working}>{t('auth.confirm.working')}</Text>
       </View>
     </Screen>
@@ -76,5 +76,5 @@ export default function ConfirmEmail() {
 const styles = StyleSheet.create({
   flex: { flex: 1, justifyContent: 'center' },
   busy: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
-  working: { ...font.body, color: color.inkSoft },
+  working: { ...font.body, color: color.mutedText },
 });

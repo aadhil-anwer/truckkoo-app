@@ -1,10 +1,8 @@
 import { render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
 
 import { RouteRail } from '@/components/ui';
 import { color, radius } from '@/theme/tokens';
-
-const flat = (s: unknown) => StyleSheet.flatten(s) ?? {};
+import { flat } from '../helpers/style';
 
 /**
  * The handoff calls this distinction load-bearing: origin is a RING, destination

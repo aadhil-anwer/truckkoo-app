@@ -1,10 +1,8 @@
 import { render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
 
 import { Timeline } from '@/components/ui';
 import { color } from '@/theme/tokens';
-
-const flat = (s: unknown) => StyleSheet.flatten(s) ?? {};
+import { flat } from '../helpers/style';
 
 const steps = [
   { label: 'Picked up', state: 'complete' as const },

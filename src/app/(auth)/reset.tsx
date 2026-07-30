@@ -15,11 +15,11 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Button, Field, Input } from '@/components/primitives';
-import { ActionBar, EmptyState, PageTitle, Screen } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { completePasswordReset } from '@/lib/auth';
-import { color, font, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, space } from '@/theme/tokens';
+import { ActionBar, Button, EmptyState, Field, Input, PageTitle } from '@/components/legacy';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -55,7 +55,7 @@ export default function ResetPassword() {
 
   if (!code) {
     return (
-      <Screen tone="surface" edges={['top', 'bottom']}>
+      <Screen>
         <View style={styles.flex}>
           <EmptyState
             icon="alert"
@@ -71,7 +71,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -118,6 +118,6 @@ export default function ResetPassword() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: space.xl },
-  form: { paddingHorizontal: GUTTER, gap: space.lg },
+  form: { paddingHorizontal: GUTTER_INK, gap: space.lg },
   formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
 });

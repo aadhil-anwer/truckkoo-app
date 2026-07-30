@@ -1,10 +1,8 @@
-import { StyleSheet } from 'react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import { SelectRow, SelectCard } from '@/components/primitives';
 import { color } from '@/theme/tokens';
-
-const flat = (s: unknown) => StyleSheet.flatten(s) ?? {};
+import { flat } from '../helpers/style';
 
 /**
  * Selection is signalled THREE ways at once — border, fill, and a filled radio.

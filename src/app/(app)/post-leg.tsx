@@ -19,12 +19,12 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Body, Button, Choice } from '@/components/primitives';
 import { nextDays, PickerField, type PickerOption } from '@/components/picker';
-import { ActionBar, PageTitle, Screen, TopBar } from '@/components/ui';
+import { Screen } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { useCities, usePostLeg } from '@/lib/queries';
-import { color, font, GUTTER, space } from '@/theme/tokens';
+import { GUTTER_INK, color, font, space } from '@/theme/tokens';
+import { ActionBar, Body, Button, Choice, PageTitle, TopBar } from '@/components/legacy';
 
 type Step = 'route' | 'when';
 const STEPS: Step[] = ['route', 'when'];
@@ -94,7 +94,7 @@ export default function PostLeg() {
   const stepNumber = STEPS.indexOf(step) + 1;
 
   return (
-    <Screen tone="surface" edges={['top', 'bottom']}>
+    <Screen>
       <TopBar
         onBack={back}
         action={
@@ -188,15 +188,15 @@ export default function PostLeg() {
 
 const styles = StyleSheet.create({
   scroll: { paddingBottom: space.xl },
-  form: { paddingHorizontal: GUTTER, gap: space.xl },
+  form: { paddingHorizontal: GUTTER_INK, gap: space.xl },
   question: { gap: space.md },
   choices: { gap: space.sm },
-  stepMark: { ...font.label, color: color.inkSoft },
+  stepMark: { ...font.value, color: color.mutedText },
   formError: {
     ...font.bodySmall,
     color: color.danger,
     textAlign: align.start,
-    paddingHorizontal: GUTTER,
+    paddingHorizontal: GUTTER_INK,
     paddingTop: space.md,
   },
 });

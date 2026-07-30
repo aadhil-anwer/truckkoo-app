@@ -108,6 +108,20 @@ export const SHAPES: Record<string, ReactNode> = {
       <Path d="M3.5 9.5h17M8 3v4M16 3v4" />
     </>
   ),
+  /** A hanging balance — weight, not a dumbbell. */
+  weight: (
+    <>
+      <Path d="M12 5.6v2.9M5.5 8.5h13M8 8.5l-2.5 8a4.5 4.5 0 009 0l-2.5-8" />
+      <Circle cx="12" cy="4" r="1.7" />
+    </>
+  ),
+  /** A document reference — a page with a corner turned. */
+  reference: (
+    <>
+      <Path d="M6 3.5h7.5L18.5 8v12.5H6z" />
+      <Path d="M13.5 3.5V8h5M9 12.5h6M9 16h4" />
+    </>
+  ),
   clock: (
     <>
       <Circle cx="12" cy="12" r="8.5" />
