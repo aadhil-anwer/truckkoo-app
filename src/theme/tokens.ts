@@ -375,6 +375,30 @@ export const scrim = {
   },
 } as const;
 
+/**
+ * Map layers.
+ *
+ * The map's only jobs are country/city orientation and carrying the corridor.
+ * Everything else is suppressed — no POIs, no terrain, no water labels, no roads.
+ *
+ * These live here rather than inline in `src/map/` so the map cannot drift away
+ * from the rest of the palette. `sea` is the same ink as the working ground,
+ * deliberately: the map is not a panel on a screen, it *is* the screen, with the
+ * land drawn on it.
+ */
+export const map = {
+  sea: color.ink,
+  omanLand: '#1A1E24',
+  omanCoast: 'rgba(255,255,255,.06)',
+  /** A shade under Oman, so "here" reads as distinct from "next door". */
+  neighbourLand: '#14171A',
+  /** Without a visible border, neighbouring land reads as sea. */
+  neighbourBorder: 'rgba(247,245,242,.17)',
+  countryLabel: 'rgba(247,245,242,.4)',
+  cityLabelMajor: 'rgba(247,245,242,.85)',
+  cityLabelMinor: 'rgba(247,245,242,.32)',
+} as const;
+
 export const motion = {
   /** Primary press down. */
   press: 90,
