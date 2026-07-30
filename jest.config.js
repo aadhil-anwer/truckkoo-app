@@ -13,8 +13,11 @@ module.exports = {
   testMatch: ['<rootDir>/tests/**/*.test.ts', '<rootDir>/tests/**/*.test.tsx'],
 
   // Ship dependencies as ESM; they must be transformed rather than skipped.
+  // `d3-geo` (and its `d3-array`/`internmap` deps) ship ESM only, so they must
+  // be transformed rather than ignored — otherwise the map's projection cannot
+  // be imported in a test at all.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@supabase/.*|@tanstack/.*)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@supabase/.*|@tanstack/.*|d3-geo|d3-array|internmap)',
   ],
 
   moduleNameMapper: {
