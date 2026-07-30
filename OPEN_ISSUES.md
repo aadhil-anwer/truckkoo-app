@@ -394,8 +394,26 @@ in `signInWithProvider` reads `?code=` and calls `exchangeCodeForSession`, which
 only exists under PKCE, while supabase-js defaults to implicit — but the fix was
 reasoned, not observed. The whole Google/Apple sign-in path is unexercised.
 
-**Done when:** Google and Apple sign-in both complete on a development build
-(not Expo Go — native provider sign-in needs a dev build).
+**Updated 2026-07-30.** Two corrections to the assumption above, and one real fix.
+
+- **Google does not need a dev build.** It is a browser flow
+  (`WebBrowser.openAuthSessionAsync`), which works in Expo Go. The `exp://`
+  redirect just has to be allow-listed alongside `truckkoo://`.
+- **Apple on iOS is now native**, via `expo-apple-authentication` and
+  `signInWithIdToken`. It was a browser flow, which Apple rejects at review once
+  another social login is offered. `expo-apple-authentication` is bundled in
+  Expo Go, so this does not need a dev build either. The button is now hidden on
+  Android, where Apple does not require it.
+- `exchangeReturnedUrl` now handles a fragment response as well as `?code=`. PKCE
+  should always give the code, but if a dashboard setting or provider puts the
+  flow on the implicit path, the previous code returned "something went wrong"
+  and looked exactly like a dead button.
+
+**Still unproven:** no provider sign-in has completed end to end, because the
+consoles are not configured yet. `AUTH_SETUP.md` is the checklist.
+
+**Done when:** Google completes on Android, and Apple completes on a real iOS
+device or EAS build.
 
 ### 2b. PKCE email links only work on the device that asked for them — MEDIUM
 

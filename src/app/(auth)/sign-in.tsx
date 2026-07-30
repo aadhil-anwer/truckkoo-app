@@ -157,15 +157,19 @@ export default function SignIn() {
               disabled={!!busy && busy !== 'google'}
             />
 
-            {/* Apple sign-in is mandatory once Google is offered (App Store 4.8),
-                so it is never conditionally hidden on iOS. */}
-            <Button
-              label={t('auth.apple')}
-              variant="secondary"
-              onPress={() => onProvider('apple')}
-              loading={busy === 'apple'}
-              disabled={!!busy && busy !== 'apple'}
-            />
+            {/* iOS only. App Store 4.8 requires Apple sign-in alongside other
+                social logins on APPLE platforms — it does not ask for it on
+                Android, and offering it there would mean configuring a second
+                web flow (Services ID, return URL) to reach the same account. */}
+            {Platform.OS === 'ios' && (
+              <Button
+                label={t('auth.apple')}
+                variant="secondary"
+                onPress={() => onProvider('apple')}
+                loading={busy === 'apple'}
+                disabled={!!busy && busy !== 'apple'}
+              />
+            )}
 
             <View style={styles.switch}>
               <Body muted>{t('auth.toSignUp')}</Body>

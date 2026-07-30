@@ -8,6 +8,8 @@
  * never reach the UI.
  */
 
+import { Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -17,8 +19,31 @@ import { supabase } from './supabase';
 
 export type AuthResult = { ok: true } | { ok: false; message: string };
 
-/** Redirect back into the app after the provider's browser flow. */
+/**
+ * Redirect back into the app after the provider's browser flow.
+ *
+ * This resolves DIFFERENTLY depending on how the app is running, and both forms
+ * have to be allow-listed in Supabase → Authentication → URL Configuration or the
+ * provider returns a redirect the app never receives:
+ *
+ *   Expo Go        exp://192.168.x.x:8081/--/...   (host changes with your LAN)
+ *   dev/standalone truckkoo://
+ *
+ * A mismatch here is the single most common reason a provider button appears to
+ * do nothing: the browser opens, the user signs in, and the hand-back is dropped.
+ */
 const redirectTo = AuthSession.makeRedirectUri({ scheme: 'truckkoo' });
+
+/**
+ * Closes the auth session popup on web. A no-op on native, and harmless to call
+ * at module scope — but without it the web build hangs on an orphaned popup.
+ */
+WebBrowser.maybeCompleteAuthSession();
+
+/** The redirect this build will actually use. Surfaced so a screen can show it. */
+export function authRedirectUri(): string {
+  return redirectTo;
+}
 
 /** Where a password-reset email lands: the in-app screen that sets a new one. */
 const resetRedirectTo = AuthSession.makeRedirectUri({ scheme: 'truckkoo', path: 'reset' });
@@ -122,31 +147,99 @@ export async function completeEmailConfirmation(code: string): Promise<AuthResul
  * rather than leaving them tapping a dead button.
  */
 export async function signInWithProvider(provider: 'google' | 'apple'): Promise<AuthResult> {
+  // On iOS, Apple sign-in must be NATIVE. Apple requires it (and App Store
+  // review enforces it) once any other social login is offered, and the native
+  // sheet is a single tap against a browser round-trip. Everywhere else — Apple
+  // on Android, Google anywhere — falls through to the browser flow below.
+  if (provider === 'apple' && Platform.OS === 'ios') return signInWithAppleNative();
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: { redirectTo, skipBrowserRedirect: true },
   });
 
-  if (error || !data?.url) {
+  // The overwhelmingly likely cause here is that the provider is switched off in
+  // the Supabase dashboard, so the message points at that rather than saying
+  // "something went wrong" to a user who cannot act on it.
+  if (error || !data?.url) return { ok: false, message: t('error.oauth.unavailable') };
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+  // `dismiss` is the user backing out, and `cancel` is the sheet being closed.
+  // Neither is a failure worth shouting about — an empty message tells the
+  // caller to show nothing at all.
+  if (result.type !== 'success') return { ok: false, message: '' };
+
+  return exchangeReturnedUrl(result.url);
+}
+
+/**
+ * Native Sign in with Apple, exchanged for a Supabase session.
+ *
+ * Uses the identity token directly rather than a browser round-trip, so there is
+ * no redirect URI involved and nothing to allow-list.
+ */
+async function signInWithAppleNative(): Promise<AuthResult> {
+  if (!(await AppleAuthentication.isAvailableAsync())) {
     return { ok: false, message: t('error.oauth.unavailable') };
   }
 
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  if (result.type !== 'success') {
-    // User dismissed the sheet. Not an error worth shouting about.
-    return { ok: false, message: '' };
+  let identityToken: string | null = null;
+  try {
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    });
+    identityToken = credential.identityToken;
+  } catch (e) {
+    // ERR_REQUEST_CANCELED is the user dismissing the sheet — silent, like the
+    // browser flow's dismissal.
+    const code = (e as { code?: string })?.code;
+    if (code === 'ERR_REQUEST_CANCELED') return { ok: false, message: '' };
+    return { ok: false, message: t('error.oauth.unavailable') };
   }
 
-  // Exchange the returned code for a session. Tokens arrive in the URL fragment
-  // or query depending on flow; both are handled by the SDK's code exchange.
-  const url = new URL(result.url);
-  const code = url.searchParams.get('code');
-  if (!code) return { ok: false, message: t('error.generic') };
+  if (!identityToken) return { ok: false, message: t('error.oauth.unavailable') };
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-  if (exchangeError) return { ok: false, message: t('error.generic') };
-
+  const { error } = await supabase.auth.signInWithIdToken({
+    provider: 'apple',
+    token: identityToken,
+  });
+  if (error) return { ok: false, message: t('error.oauth.unavailable') };
   return { ok: true };
+}
+
+/**
+ * Turn the URL the provider handed back into a session.
+ *
+ * PKCE returns a `code` in the query string, which is the configured flow
+ * (`flowType: 'pkce'` in supabase.ts). Implicit returns tokens in the fragment
+ * instead — handled too, because a provider or a dashboard setting can put us on
+ * that path without the app changing, and silently failing there looks identical
+ * to "the button does nothing".
+ */
+async function exchangeReturnedUrl(returnedUrl: string): Promise<AuthResult> {
+  const url = new URL(returnedUrl);
+
+  const code = url.searchParams.get('code');
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    return error ? { ok: false, message: t('error.generic') } : { ok: true };
+  }
+
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ''));
+  const access_token = fragment.get('access_token');
+  const refresh_token = fragment.get('refresh_token');
+  if (access_token && refresh_token) {
+    const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+    return error ? { ok: false, message: t('error.generic') } : { ok: true };
+  }
+
+  // The provider handed back an error rather than a credential — most often
+  // `redirect_uri_mismatch`, which is a configuration problem, not a user one.
+  return { ok: false, message: t('error.oauth.unavailable') };
 }
 
 /**

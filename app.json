@@ -16,7 +16,8 @@
         "CFBundleAllowMixedLocalizations": true,
         "NSCameraUsageDescription": "Truckkoo uses the camera so you can photograph proof of delivery when a load is dropped off.",
         "NSPhotoLibraryUsageDescription": "Truckkoo needs access to your photos so you can attach proof of delivery to a trip."
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.truckkoo.app",
@@ -44,6 +45,7 @@
       "expo-router",
       "expo-localization",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {
@@ -65,7 +67,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "_comment": "No secrets here. app.json ships inside the bundle — see SECURITY.md §9.",
+      "_comment": "No secrets here. app.json ships inside the bundle \u2014 see SECURITY.md \u00a79.",
       "router": {},
       "eas": {
         "projectId": "f3a98e44-b748-4e57-a722-43aad8dfd2e6"
