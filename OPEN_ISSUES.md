@@ -44,20 +44,25 @@ and a human resolves it — never a dead end (`CLAUDE.md` #6).
 
 **Done when:** a designer has looked at the state, or it has survived real use.
 
-### The ops console has not been run against the reordered schema
+### The ops console is caught up in source, but has not been deployed
 
-`~/truckkoo-ops` is a separate deployment this repo cannot update in the same
-commit, which is why P4's backend landed first. That window is now open and
-nobody has walked through it. Two things changed under it:
+`~/truckkoo-ops` has now been run against the reordered schema and updated:
+`LoadStatus` and the status filter carry `quoted` and `accepted`,
+`nextLoadStatuses` mirrors 0027, and the stamp map no longer renders an
+`accepted` load as `done` (see below). 72 tests, build clean.
 
-- **`quoted` and `accepted` are new statuses** it does not know. Additive, so an
-  un-updated console keeps working — it just cannot act on them.
-- **`ops_set_price` now refuses a load the shipper has accepted** (0026), with a
-  new error, `price already accepted by the shipper`. A console that reports raw
-  errors will show that string to a dispatcher.
+**It has not been deployed**, and it is a separate Cloudflare deployment this
+repo cannot push. Until it is, the live console is running the old bundle
+against the new database — which is survivable (the new statuses are additive
+and `ops_queue` already returns them) but means a dispatcher sees loads they
+cannot filter for and cannot move.
 
-**Done when:** the console renders the two new statuses in its queue and handles
-the refusal as a sentence rather than a stack trace.
+**Done when:** `~/truckkoo-ops` is built and deployed, and a dispatcher has
+moved a real load out of `quoted`.
+
+**Not a problem, checked:** `writeError` already shows domain messages as-is, so
+0026's `price already accepted by the shipper` reaches a dispatcher as a
+sentence. Only `errorMessage`, used for failed *reads*, rewrites codes.
 
 ### The tracking screen dropped "Get a price", and nothing replaces the button
 

@@ -563,6 +563,46 @@ select assert_raises(
                                       'matched', 'already there')$$,
   'a no-op transition is an error, not a silent success');
 
+-- 0027. `quoted` and `accepted` arrived in 0022 and the matrix ended in
+-- `else false`, so for four migrations a dispatcher could not move a load out of
+-- either — not to finding_truck, not even to cancelled. Those are the two states
+-- a load is MOST likely to be stuck in: a shipper who never answered a price, and
+-- an agreed price no driver has taken. Asserted at the matrix rather than through
+-- ops_set_load_status so the failure names the rule rather than a rate limit or a
+-- missing reason.
+select act_as_reset();
+
+select assert_true(
+  private.load_transition_ok('quoted', 'cancelled'),
+  'a shipper who never answered their price can have the load cancelled');
+select assert_true(
+  private.load_transition_ok('quoted', 'finding_truck'),
+  'or taken back into the hunt');
+select assert_true(
+  private.load_transition_ok('accepted', 'finding_truck'),
+  'an agreed load with no driver can go back to the hunt');
+select assert_true(
+  private.load_transition_ok('accepted', 'cancelled'),
+  'and can be cancelled');
+
+-- Forward by hand is exactly what the reorder exists to prevent: it would put a
+-- load in front of drivers at a price nobody agreed to. Only `accept_quote`
+-- leaves `quoted` forwards, and only the shipper can call it.
+select assert_true(
+  not private.load_transition_ok('quoted', 'assigned'),
+  'but a dispatcher cannot walk a quoted load forward past the shipper');
+select assert_true(
+  not private.load_transition_ok('quoted', 'accepted'),
+  'and cannot accept a price on the shipper''s behalf');
+
+-- `posted` describes a load nobody has agreed to. An accepted one is past that,
+-- and putting it back would lose the fact that somebody said yes.
+select assert_true(
+  not private.load_transition_ok('accepted', 'posted'),
+  'an accepted load does not go back to posted — that would discard the yes');
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
 -- A reason is mandatory, and "x" is not a reason.
 select assert_raises(
   $$select public.ops_set_load_status('e0e0e0e0-0000-4000-8000-000000000001',
