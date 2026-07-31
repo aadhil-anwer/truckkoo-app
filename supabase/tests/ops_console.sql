@@ -1456,6 +1456,53 @@ select assert_true(
     where a.action = 'ops_delete_rate_card'),
   'and the audit keeps what it was before it went');
 
+-- ─── 9c. the driver's commission (0028) ─────────────────────────────────────
+-- This rate decides what a person is paid for a day's work, so it gets the same
+-- treatment as a rate band: bounded, reasoned, audited, and ops-only.
+
+select act_as_reset();
+
+-- THE STATE WE SHIP IN. A commission invented in a migration is a number quoted
+-- to a driver the first time somebody forgets it was a placeholder.
+select assert_equals(private.payout_for(96000), 96000,
+  'at 0 percent the driver keeps the whole price — the state the product ships in');
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_raises($$select public.ops_set_commission(50, 'too much')$$,
+  'a commission over 40 percent is refused — that is a slipped decimal, not a rate');
+select assert_raises($$select public.ops_set_commission(-5, 'negative')$$,
+  'and a negative one is refused too');
+select assert_raises($$select public.ops_set_commission(15, ' ')$$,
+  'a rate change with no reason is refused, like every other audited write');
+
+select public.ops_set_commission(18.75, 'Board rate, July 2026');
+select act_as_reset();
+
+select assert_equals(private.payout_for(96000), 78000,
+  'at 18.75 percent, a 96.000 OMR load pays the driver 78.000');
+
+select assert_true(
+  (select a.after->>'pct' = '18.75' and a.reason like 'Board rate%'
+     from private.ops_audit a where a.action = 'ops_set_commission'),
+  'and the change is audited with its reason and its old value');
+
+-- ROUNDING NEVER INVENTS MONEY. The driver's share plus the margin must equal
+-- the price exactly — a payout rounded up hands over a baisa the shipper never
+-- paid, and across enough loads that is real money from nowhere.
+select assert_true(
+  (select bool_and(private.payout_for(p) <= p)
+     from generate_series(1, 100000, 997) p),
+  'a payout never exceeds the price it came from, at any price');
+
+-- A shipper is not a dispatcher, whatever they call.
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select assert_raises($$select public.ops_set_commission(5, 'helping myself')$$,
+  'a shipper cannot set the commission');
+select assert_raises($$select public.ops_commission()$$,
+  'nor read it — it is not their business what a driver is paid');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;
