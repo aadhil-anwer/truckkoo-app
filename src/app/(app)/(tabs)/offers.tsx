@@ -1,40 +1,46 @@
 /**
- * Loads offered to this driver.
+ * The offers tab — every load addressed to this driver.
  *
- * Drivers do **not** browse a load board — `SECURITY.md` and CLAUDE.md are
+ * Drivers do **not** browse a load board. `SECURITY.md` and CLAUDE.md are
  * explicit, and it is a business decision before it is a security one: a board
  * would expose every shipper's cargo to anyone who signed up as a driver. What
  * lands here is only what dispatch (or the auto-dispatcher) addressed to this
- * person, and RLS is what makes that true rather than this screen.
+ * person, and `driver_offers()` is what makes that true rather than this screen.
  *
- * Each offer is a full card with both answers on it. Accepting is a commitment
- * made in a moving vehicle against a clock, so the pay, the deadline and the
- * decline are all on screen at once — a driver should never have to scroll to
- * find out what they are agreeing to, or tap twice to say no.
+ * Same card as D1, compressed. The home screen leads with one offer at hero
+ * size; this is the full book, so the payout drops a size and everything else
+ * stays — both answers on every card, because accepting is a commitment made in
+ * a moving vehicle against a clock and nobody should have to scroll to find out
+ * what they are agreeing to, or tap twice to say no.
  */
 
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Screen } from '@/components/ui';
-import { align, getLanguage, localized, t } from '@/i18n';
-import { formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
-import { formatMoney, type Currency } from '@/lib/money';
-import { safeText } from '@/lib/safe-text';
+import { OfferCard } from '@/components/driver/OfferCard';
+import { PressableSurface } from '@/components/primitives';
+import { arabicIfNeeded } from '@/components/text-direction';
+import { QuestionHeading, SectionLabel, Skeleton } from '@/components/ui';
+import { align, localized, t } from '@/i18n';
+import { cityIndex, useCities, useDriverOffers, useRespondToOffer } from '@/lib/queries';
 import {
-  cityIndex,
-  useCities,
-  useMyOffers,
-  useRespondToOffer,
-  useVisibleLoads,
-} from '@/lib/queries';
-import { GUTTER_INK, color, elevation, font, radius, space } from '@/theme/tokens';
-import { Body, Button, EmptyState, FactChips, PageTitle, RouteLine, Stamp } from '@/components/legacy';
+  GUTTER_INK,
+  TABBAR_CLEARANCE_3,
+  alpha,
+  color,
+  font,
+  hairline,
+  radius,
+  space,
+} from '@/theme/tokens';
 
 export default function OffersTab() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const cities = useCities();
-  const offers = useMyOffers();
-  const loads = useVisibleLoads();
+  const offers = useDriverOffers();
   const respond = useRespondToOffer();
   const [error, setError] = useState<string | null>(null);
 
@@ -44,17 +50,12 @@ export default function OffersTab() {
     return c ? localized(c) : '—';
   };
 
-  const loadById = useMemo(
-    () => new Map((loads.data ?? []).map((l) => [l.id, l])),
-    [loads.data],
-  );
+  const pending = offers.data ?? [];
 
   /**
-   * Answer an offer.
-   *
-   * The decline path needs the same error handling as the accept path: since
-   * 0013 a decline is what returns the shipper's load to the dispatcher, so
-   * silently losing one strands the load.
+   * Answer an offer. The decline path carries the same error handling as the
+   * accept path: since 0013 a decline is what returns the shipper's load to the
+   * dispatcher, so one that fails silently strands it.
    */
   function answer(offerId: string, accept: boolean) {
     setError(null);
@@ -62,10 +63,6 @@ export default function OffersTab() {
       { offerId, accept },
       {
         onError: (e: unknown) => {
-          // The race, made recognisable. 0013 raises a domain error instead of a
-          // constraint violation precisely so this line can exist: "something
-          // went wrong" reads as a broken app on the one screen where a driver
-          // earns.
           const msg = e instanceof Error ? e.message : '';
           setError(
             msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
@@ -75,158 +72,91 @@ export default function OffersTab() {
     );
   }
 
-  const pending = offers.data ?? [];
-  const busy = offers.isPending || loads.isPending;
-  const failed = offers.isError || loads.isError;
-
-  function refetchAll() {
-    offers.refetch();
-    loads.refetch();
-  }
-
   return (
-    <Screen>
-      <PageTitle detail={t('offers.hint')}>{t('offers.title')}</PageTitle>
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={offers.isRefetching}
+            onRefresh={offers.refetch}
+            tintColor={color.lightText}
+          />
+        }
+      >
+        <SectionLabel>{t('tab.offers')}</SectionLabel>
 
-      {busy ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
-        </View>
-      ) : failed ? (
-        <EmptyState icon="alert" title={t('common.error.title')} explain={t('common.error.explain')}>
-          <View style={styles.emptyAction}>
-            <Button label={t('common.retry')} variant="secondary" onPress={refetchAll} />
+        {!!error && <Text style={styles.error}>{error}</Text>}
+
+        {offers.isPending && (
+          <View style={styles.skeletons}>
+            <Skeleton height={220} round={radius.offer} />
+            <Skeleton height={220} round={radius.offer} />
           </View>
-        </EmptyState>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={offers.isRefetching || loads.isRefetching}
-              onRefresh={refetchAll}
-              tintColor={color.accent}
-            />
-          }
-        >
-          {pending.length === 0 ? (
-            <EmptyState
-              icon="offers"
-              title={t('driver.offers.none.title')}
-              explain={t('driver.offers.none.explain')}
-            />
-          ) : (
-            pending.map((offer) => {
-              const load = loadById.get(offer.load_id);
-              if (!load) return null;
+        )}
 
-              const acceptingThis =
-                respond.isPending &&
-                respond.variables?.offerId === offer.id &&
-                respond.variables?.accept === true;
-              const decliningThis =
-                respond.isPending &&
-                respond.variables?.offerId === offer.id &&
-                respond.variables?.accept === false;
+        {offers.isError && (
+          <PressableSurface
+            onPress={() => offers.refetch()}
+            accessibilityLabel={`${t('common.error.title')} ${t('common.retry')}`}
+            style={styles.retry}
+          >
+            <Text style={styles.retryText}>{t('common.error.title')}</Text>
+            <Text style={styles.retryAction}>{t('common.retry')}</Text>
+          </PressableSurface>
+        )}
 
-              return (
-                <View key={offer.id} style={styles.card}>
-                  <View style={styles.cardHead}>
-                    <Stamp tone="pending">{t('status.posted')}</Stamp>
-                    <Text style={styles.reference}>{reference(load.id)}</Text>
-                  </View>
+        {!offers.isPending && !offers.isError && pending.length === 0 && (
+          <View style={styles.empty}>
+            {/* The same argument D3 makes, because it is the same problem: an
+                empty book is an empty truck, and only a declared route fills it. */}
+            <QuestionHeading ground="ink" size="question">
+              {t('drv.none.title')}
+            </QuestionHeading>
+            <Text style={styles.body}>{t('drv.none.body')}</Text>
+          </View>
+        )}
 
-                  <RouteLine
-                    from={cityName(load.origin_city)}
-                    to={cityName(load.dest_city)}
-                    labelFrom={t('label.from')}
-                    labelTo={t('label.to')}
-                  />
-
-                  <Body>{safeText(load.goods_description)}</Body>
-
-                  <FactChips
-                    facts={[
-                      {
-                        icon: 'calendar',
-                        label: t('label.pickup'),
-                        value: formatWindow(load.pickup_from, load.pickup_to),
-                      },
-                      {
-                        icon: 'weight',
-                        label: t('label.weight'),
-                        value: formatWeight(load.weight_kg, t('weight.unset')),
-                      },
-                      // The offer does not wait. Saying when it stops waiting is
-                      // the difference between a decision and a nag.
-                      {
-                        icon: 'clock',
-                        label: t('label.replyBy'),
-                        value: formatDeadline(offer.expires_at),
-                      },
-                    ]}
-                  />
-
-                  <View style={styles.pay}>
-                    <Text style={styles.payLabel}>{t('driver.pay')}</Text>
-                    {load.price_baisa != null ? (
-                      <Text style={styles.payAmount}>
-                        {formatMoney(load.price_baisa, load.currency as Currency, getLanguage())}
-                      </Text>
-                    ) : (
-                      <Body muted>{t('driver.pay.pending')}</Body>
-                    )}
-                  </View>
-
-                  <Button
-                    label={t('driver.accept')}
-                    loading={acceptingThis}
-                    disabled={respond.isPending && !acceptingThis}
-                    onPress={() => answer(offer.id, true)}
-                  />
-                  {/* Declining is quiet, never a second orange — but it is a real
-                      44pt target, because "no" must be as easy to hit as "yes". */}
-                  <Button
-                    label={t('driver.decline')}
-                    variant="quiet"
-                    loading={decliningThis}
-                    disabled={respond.isPending && !decliningThis}
-                    onPress={() => answer(offer.id, false)}
-                  />
-
-                  {!!error && (
-                    <Text style={styles.error} accessibilityLiveRegion="polite">
-                      {error}
-                    </Text>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </ScrollView>
-      )}
-    </Screen>
+        {pending.map((offer) => (
+          <OfferCard
+            key={offer.offer_id}
+            offer={offer}
+            origin={cityName(offer.origin_city)}
+            destination={cityName(offer.dest_city)}
+            compact
+            onPress={() => router.push(`/offer/${offer.offer_id}`)}
+            onTake={() => answer(offer.offer_id, true)}
+            onPass={() => answer(offer.offer_id, false)}
+            busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
+          />
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: GUTTER_INK, paddingBottom: space.xxxl, gap: space.lg },
-  center: { paddingVertical: space.huge, alignItems: 'center' },
-  emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
+  screen: { flex: 1, backgroundColor: color.ink },
+  scroll: { paddingHorizontal: GUTTER_INK, gap: space.lg },
 
-  card: {
-    backgroundColor: color.creamCard,
-    borderRadius: radius.card,
+  empty: { gap: space.sm, marginTop: space.xl, maxWidth: 320 },
+  body: { ...arabicIfNeeded(font.body), color: alpha.onInk.body, textAlign: align.start },
+
+  skeletons: { gap: space.lg },
+  error: { ...arabicIfNeeded(font.body), color: color.dangerLight, textAlign: align.start },
+
+  retry: {
     padding: space.lg,
-    gap: space.md,
-    ...elevation.cardCream,
+    borderRadius: radius.row,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: hairline.card,
+    gap: 2,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
-  reference: { ...font.tabLabel, color: color.mutedText },
-
-  pay: { gap: 2, paddingTop: space.xs },
-  payLabel: { ...font.value, color: color.mutedText, textAlign: align.start },
-  payAmount: { ...font.statement, color: color.ink, textAlign: align.start },
-  error: { ...font.bodySmall, color: color.danger, textAlign: align.start },
+  retryText: { ...arabicIfNeeded(font.body), color: color.lightText, textAlign: align.start },
+  retryAction: { ...font.caption, color: color.accentLight, textAlign: align.start },
 });

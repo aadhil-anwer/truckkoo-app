@@ -1,0 +1,163 @@
+/**
+ * One offer, as the driver has to judge it.
+ *
+ * THE PAYOUT LEADS. A driver deciding in a cab against a clock has one question
+ * — what do I get, and what does it cost me to get it — so the card is ordered
+ * as that question: money, then the detour, then the route, then the cargo.
+ * Everything below the money is what they already half-know, because they
+ * declared the leg it matched.
+ *
+ * ONE ACCENT, and it belongs to `Take it`. So the `FITS YOUR TRUCK` pill is
+ * neutral: a pill and a button both in orange leaves the screen with no primary
+ * action, only two loud things.
+ *
+ * The detour is stated up front and prefixed "about". It is great-circle
+ * distance between city centres on roads that are neither straight nor centred,
+ * and a number drawn as a fact it is not would be the first thing a driver
+ * caught the app lying about.
+ */
+
+import { StyleSheet, Text, View } from 'react-native';
+
+import { DriverMoney } from './Money';
+import { Icon } from '@/components/icon';
+import { PressableSurface, PrimaryButton } from '@/components/primitives';
+import { arabicIfNeeded } from '@/components/text-direction';
+import { Chip, RouteRail, StatusPill } from '@/components/ui';
+import { align, formatNumber, t } from '@/i18n';
+import { formatDeadline, formatWeight } from '@/lib/format';
+import { formatMoney, type Currency } from '@/lib/money';
+import type { DriverOffer } from '@/lib/queries';
+import { safeText } from '@/lib/safe-text';
+import { alpha, color, elevation, font, hairline, radius, space } from '@/theme/tokens';
+
+export function OfferCard({
+  offer,
+  origin,
+  destination,
+  compact = false,
+  onPress,
+  onTake,
+  onPass,
+  busy = false,
+}: {
+  offer: DriverOffer;
+  origin: string;
+  destination: string;
+  /** In the offers list, where the card is one of several. */
+  compact?: boolean;
+  onPress?: () => void;
+  onTake: () => void;
+  onPass?: () => void;
+  busy?: boolean;
+}) {
+  const amount = formatMoney(offer.payout_baisa, offer.currency as Currency);
+  // The label carries the amount, so the thing a driver is agreeing to is in the
+  // thing they press — and a screen reader announces it rather than "Take it".
+  const takeLabel = amount ? `${t('drv.offer.take')} — ${amount}` : t('drv.offer.take');
+
+  return (
+    <View style={[styles.card, compact && styles.cardCompact]}>
+      <View style={styles.head}>
+        {/* Neutral. The accent on this card is the button. */}
+        <StatusPill label={t('drv.offer.fits')} tone="neutral" />
+        <Text style={styles.expiry}>
+          {`${t('drv.offer.expires')} ${formatDeadline(offer.expires_at)}`}
+        </Text>
+      </View>
+
+      <DriverMoney
+        payout={offer.payout_baisa}
+        collect={offer.collect_baisa}
+        owed={offer.owed_baisa}
+        currency={offer.currency}
+        size={compact ? 'row' : 'hero'}
+      />
+
+      <View style={styles.route}>
+        <RouteRail origin={origin} destination={destination} compact labelled={false} />
+
+        {offer.detour_km != null && (
+          <View style={styles.detour}>
+            <Icon name="routes" size={16} tint={alpha.onInk.tertiary} />
+            <Text style={styles.detourText}>
+              {`${t('drv.offer.about')} ${formatNumber(Math.round(offer.detour_km))} km ${t(
+                'drv.offer.detour',
+              )}`}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.chips}>
+        <Chip label={safeText(offer.goods)} />
+        {offer.weight_kg != null && <Chip label={formatWeight(offer.weight_kg, '')} />}
+        {offer.free_after_kg != null && (
+          <Chip
+            label={`${formatWeight(offer.free_after_kg, '')} ${t('drv.offer.freeAfter')}`}
+          />
+        )}
+      </View>
+
+      <PrimaryButton label={takeLabel} onPress={onTake} loading={busy} />
+
+      <View style={styles.secondary}>
+        {!!onPress && (
+          <PressableSurface onPress={onPress} accessibilityLabel={t('drv.offer.details')}>
+            <Text style={styles.secondaryText}>{t('drv.offer.details')}</Text>
+          </PressableSurface>
+        )}
+        {!!onPass && (
+          // Saying no must be as easy to hit as saying yes. A 16pt "no" beside a
+          // 44pt "yes" is a design that lies about the choice.
+          <PressableSurface
+            onPress={onPass}
+            accessibilityLabel={t('drv.offer.pass')}
+            style={styles.pass}
+          >
+            <Text style={styles.secondaryText}>{t('drv.offer.pass')}</Text>
+          </PressableSurface>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: color.surface,
+    borderRadius: radius.offer,
+    borderWidth: 1,
+    borderColor: 'rgba(241,85,31,.32)',
+    padding: space.xl,
+    gap: space.lg,
+    ...elevation.cardInk,
+  },
+  cardCompact: { padding: space.lg, gap: space.md },
+
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  expiry: { ...arabicIfNeeded(font.caption), color: alpha.onInk.tertiary },
+
+  // Hairlines divide rows INSIDE a surface, which is exactly what this is.
+  route: {
+    gap: space.sm,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: hairline.inner,
+  },
+  detour: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  detourText: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.secondary, textAlign: align.start },
+
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+
+  secondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pass: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.md },
+  secondaryText: {
+    ...arabicIfNeeded(font.buttonSecondary),
+    color: alpha.onInk.body,
+    textAlign: align.start,
+    minHeight: 44,
+    lineHeight: 44,
+  },
+});

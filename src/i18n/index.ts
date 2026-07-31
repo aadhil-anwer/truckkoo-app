@@ -78,6 +78,9 @@ const en = {
   'track.again': 'Send this route again',
   'track.home': 'Back to home',
   // ── P5 · the driver (D1–D7) ──────────────────────────────────────────────
+  // Prefixed by a count. Singular and plural are separate keys because "1 loads
+  // want your truck" is the first sentence a new driver reads.
+  'drv.home.greeting.one': 'load wants your truck',
   'drv.home.greeting.some': 'loads want your truck',
   'drv.home.greeting.none': 'Nothing offered yet',
   'drv.home.week': 'this week',
@@ -89,6 +92,9 @@ const en = {
   'drv.offer.take': 'Take it',
   'drv.offer.details': 'See details',
   'drv.offer.pass': 'Pass',
+  // "about", because a detour is great-circle distance between city centres on
+  // roads that are neither straight nor centred. Same honesty rule as T4.
+  'drv.offer.about': 'about',
   'drv.offer.detour': 'extra on your route',
   'drv.offer.freeAfter': 'free after this load',
   'drv.offer.gone': 'That offer has gone',
@@ -569,6 +575,7 @@ const ar: Partial<Record<StringKey, string>> = {
   'track.again': 'أرسل هذا المسار مرة أخرى',
   'track.home': 'العودة للرئيسية',
   // ── P5 · the driver (D1–D7) ──────────────────────────────────────────────
+  'drv.home.greeting.one': 'شحنة تريد شاحنتك',
   'drv.home.greeting.some': 'شحنات تريد شاحنتك',
   'drv.home.greeting.none': 'لا توجد عروض بعد',
   'drv.home.week': 'هذا الأسبوع',
@@ -580,6 +587,7 @@ const ar: Partial<Record<StringKey, string>> = {
   'drv.offer.take': 'خذها',
   'drv.offer.details': 'التفاصيل',
   'drv.offer.pass': 'تجاوز',
+  'drv.offer.about': 'حوالي',
   'drv.offer.detour': 'إضافية على مسارك',
   'drv.offer.freeAfter': 'متبقية بعد هذه الشحنة',
   'drv.offer.gone': 'هذا العرض لم يعد متاحاً',

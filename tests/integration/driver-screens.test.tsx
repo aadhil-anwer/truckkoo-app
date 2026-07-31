@@ -14,7 +14,10 @@
 import {
   FAILED,
   LOAD_ID,
+  OFFER_ID,
+  driverOffer,
   load,
+  mockParams,
   mockPush,
   mockRespondMutate,
   ok,
@@ -24,6 +27,7 @@ import {
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import DriverHome from '@/app/(app)/(tabs)/driver';
+import OfferDetail from '@/app/(app)/offer/[id]';
 import OffersTab from '@/app/(app)/(tabs)/offers';
 import RoutesTab from '@/app/(app)/(tabs)/routes';
 import * as queries from '@/lib/queries';
@@ -65,189 +69,223 @@ const withOffer = () => {
   (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
 };
 
+/** One composed offer, as `driver_offers()` returns it. */
+const withDriverOffer = () => {
+  (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([driverOffer()]));
+};
+
 const withTrip = (status: Trip['status'] = 'assigned') => {
   (queries.useMyTrips as jest.Mock).mockReturnValue(ok([{ ...trip, status }]));
   (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
 };
 
-/* ─── the trip ───────────────────────────────────────────────────────────── */
+/* ─── D1 / D3 · the driver's home ────────────────────────────────────────── */
 
 describe('DriverHome', () => {
-  it('makes declaring a route the action when there is no trip', async () => {
-    // The matching engine is worth nothing until drivers declare legs, so the
-    // emptiest screen in the app is the one that has to sell the habit hardest.
+  it('names the consequence, not the empty state', async () => {
+    // "No offers yet" tells a driver nothing they can act on. The matching
+    // engine is worth nothing until drivers declare legs, so the emptiest screen
+    // in the app is the one that has to sell the habit hardest.
     await render(<DriverHome />);
-    expect(screen.getByText('No trip right now')).toBeTruthy();
+    expect(screen.getByText('An empty book here means an empty truck.')).toBeTruthy();
     expect(screen.getByLabelText('Add a trip you are making')).toBeTruthy();
   });
 
-  it('routes to post-leg from that action', async () => {
+  it('leads with the payout, not the route', async () => {
+    withDriverOffer();
     await render(<DriverHome />);
-    await fireEvent.press(screen.getByLabelText('Add a trip you are making'));
-    expect(mockPush).toHaveBeenCalledWith('/post-leg');
+    expect(screen.getByText('78.000')).toBeTruthy();
   });
 
-  it('shows the active trip with its one action', async () => {
-    withTrip();
+  it('states the detour up front, because it is the driver\u2019s cost', async () => {
+    withDriverOffer();
     await render(<DriverHome />);
-    expect(screen.getByLabelText('I have collected it')).toBeTruthy();
+    expect(screen.getByText(/16 km/)).toBeTruthy();
   });
 
-  it('switches the trip action once the load is collected', async () => {
-    withTrip('in_transit');
+  it('says the detour is approximate, because it is', async () => {
+    // Great-circle distance between city centres, on roads that are neither.
+    withDriverOffer();
     await render(<DriverHome />);
-    expect(screen.getByLabelText('Mark delivered')).toBeTruthy();
+    expect(screen.getByText(/^about /)).toBeTruthy();
   });
 
-  it('routes both transitions to the trip screen, never firing a state change inline', async () => {
-    // Delivery needs a photo, so neither transition may complete from here.
-    withTrip();
+  it('carries the amount in the take button', async () => {
+    withDriverOffer();
     await render(<DriverHome />);
-    await fireEvent.press(screen.getByLabelText('I have collected it'));
+    expect(screen.getByLabelText('Take it — 78.000 OMR')).toBeTruthy();
+  });
+
+  it('counts the offers in the greeting, in the right grammar for one', async () => {
+    withDriverOffer();
+    await render(<DriverHome />);
+    expect(screen.getByText('1 load wants your truck')).toBeTruthy();
+  });
+
+  it('shows no earnings line before anything has been earned', async () => {
+    // Rule #5: absent, never zeroed. "0.000 OMR this week" reads as failure.
+    (queries.useDriverEarnings as jest.Mock).mockReturnValue(
+      ok({ week_baisa: 0, week_trips: 0, all_time_trips: 0 }),
+    );
+    await render(<DriverHome />);
+    expect(screen.queryByText(/this week/)).toBeNull();
+  });
+
+  it('shows the week once there is a week to show', async () => {
+    (queries.useDriverEarnings as jest.Mock).mockReturnValue(
+      ok({ week_baisa: 78000, week_trips: 1, all_time_trips: 1 }),
+    );
+    await render(<DriverHome />);
+    expect(screen.getByText('78.000 OMR this week')).toBeTruthy();
+  });
+
+  it('keeps a delivery in progress one tap away', async () => {
+    // There is no jobs tab: home / offers / routes / account. Without this a
+    // driver mid-delivery has no route back to D7.
+    (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
+    await render(<DriverHome />);
+    await fireEvent.press(screen.getByLabelText('Truck assigned'));
     expect(mockPush).toHaveBeenCalledWith('/trip/trip-1');
   });
 
-  it('shows what the trip pays, in full OMR decimals', async () => {
-    (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
-    (queries.useVisibleLoads as jest.Mock).mockReturnValue(
-      ok([load({ price_baisa: 150000, currency: 'OMR' })]),
-    );
+  it('opens the offer in full rather than deciding on a card alone', async () => {
+    withDriverOffer();
     await render(<DriverHome />);
-    expect(screen.getByText(/150\.000 OMR/)).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('See details'));
+    expect(mockPush).toHaveBeenCalledWith(`/offer/${OFFER_ID}`);
   });
 
-  it('offers a retry when a query fails', async () => {
-    (queries.useMyTrips as jest.Mock).mockReturnValue(FAILED);
+  it('takes an offer through the RPC, never by setting a status', async () => {
+    withDriverOffer();
     await render(<DriverHome />);
-    expect(screen.getByText('We could not load that')).toBeTruthy();
-  });
-});
-
-/* ─── offers ─────────────────────────────────────────────────────────────── */
-
-describe('OffersTab', () => {
-  it('tells a driver with no offers how to get some', async () => {
-    await render(<OffersTab />);
-    expect(screen.getByText('No offers yet')).toBeTruthy();
-  });
-
-  it('does not show a driver any load they have no offer for', async () => {
-    // Driver legs and shipper cargo are the crown jewels. There is no load board.
-    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
-    (queries.useMyOffers as jest.Mock).mockReturnValue(ok([]));
-    await render(<OffersTab />);
-    expect(screen.queryByText('Building materials')).toBeNull();
-  });
-
-  it('gives every pending offer its own card', async () => {
-    (queries.useMyOffers as jest.Mock).mockReturnValue(
-      ok([offer, { ...offer, id: 'off-2' }, { ...offer, id: 'off-3' }]),
-    );
-    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
-    await render(<OffersTab />);
-    expect(screen.getAllByLabelText('Accept this load')).toHaveLength(3);
-  });
-
-  it('shows when an offer stops waiting', async () => {
-    withOffer();
-    await render(<OffersTab />);
-    // The deadline rides in the chip's accessible name, since the visible text
-    // is a formatted date the test should not pin.
-    expect(screen.getByLabelText(/^Reply by:/)).toBeTruthy();
-  });
-
-  describe('the pay on an offer', () => {
-    /**
-     * REGRESSION. The offer sheet showed route, goods, dates and weight —
-     * everything the driver already knew, because they declared the leg — and
-     * withheld the one variable. `price_baisa` was fetched, held in `loadById`,
-     * and never rendered.
-     *
-     * PRODUCT.md's entire supply-side thesis is that the driver earns more on a
-     * trip they were already making. Asking an owner-driver to commit a truck
-     * against an unknown return, in a cab, against a deadline, invites the one
-     * answer the supply side cannot afford.
-     */
-    it('shows what the trip pays, in full OMR decimals', async () => {
-      (queries.useMyOffers as jest.Mock).mockReturnValue(ok([offer]));
-      (queries.useVisibleLoads as jest.Mock).mockReturnValue(
-        ok([load({ price_baisa: 150000, currency: 'OMR' })]),
-      );
-      await render(<OffersTab />);
-
-      expect(screen.getByText(/150\.000 OMR/)).toBeTruthy();
-      expect(screen.getByText('You will be paid')).toBeTruthy();
-    });
-
-    it('never shows a blank where the pay goes', async () => {
-      // No rate is the normal case until the card is loaded (OPEN_ISSUES 13). A
-      // blank reads as "the app is broken"; this names who owns the next step.
-      (queries.useMyOffers as jest.Mock).mockReturnValue(ok([offer]));
-      (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load({ price_baisa: null })]));
-      await render(<OffersTab />);
-
-      expect(screen.getByText(/confirm the rate with you before pickup/)).toBeTruthy();
-    });
-  });
-
-  it('accepts an offer', async () => {
-    withOffer();
-    await render(<OffersTab />);
-
-    await fireEvent.press(screen.getByLabelText('Accept this load'));
+    await fireEvent.press(screen.getByLabelText('Take it — 78.000 OMR'));
     expect(mockRespondMutate).toHaveBeenCalledWith(
-      { offerId: 'off-1', accept: true },
+      { offerId: OFFER_ID, accept: true },
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
 
-  it('declines an offer', async () => {
-    withOffer();
-    await render(<OffersTab />);
-
-    await fireEvent.press(screen.getByLabelText('Not this one'));
+  it('makes passing as easy to hit as taking', async () => {
+    // "No" on a 16pt target and "yes" on a 44pt one is a design that lies.
+    withDriverOffer();
+    await render(<DriverHome />);
+    await fireEvent.press(screen.getByLabelText('Pass'));
     expect(mockRespondMutate).toHaveBeenCalledWith(
-      { offerId: 'off-1', accept: false },
+      { offerId: OFFER_ID, accept: false },
       // Declining carries handlers: since 0013 a decline is what returns the
       // shipper's load to the dispatcher, so one that fails silently strands it.
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
 
-  it('tells the driver when a decline failed, instead of nothing at all', async () => {
-    withOffer();
-    mockRespondMutate.mockImplementation((_vars, opts) => opts?.onError?.(new Error('boom')));
-    await render(<OffersTab />);
-
-    await fireEvent.press(screen.getByLabelText('Not this one'));
-    expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy();
-  });
-
   it('says another driver took the load, rather than blaming the app', async () => {
-    // The payoff for 0013 locking the load row: the loser of the accept race gets
-    // a domain error, so this screen can say what actually happened.
-    withOffer();
+    withDriverOffer();
     mockRespondMutate.mockImplementation((_vars, opts) =>
       opts?.onError?.(new Error('load already assigned')),
     );
-    await render(<OffersTab />);
-
-    await fireEvent.press(screen.getByLabelText('Accept this load'));
+    await render(<DriverHome />);
+    await fireEvent.press(screen.getByLabelText('Take it — 78.000 OMR'));
     expect(screen.getByText('Another driver took this load.')).toBeTruthy();
   });
 
-  it('makes declining as easy to hit as accepting', async () => {
-    // "No" on a 16pt target and "yes" on a 44pt one is a design that lies.
-    withOffer();
+  it('offers a retry when a query fails', async () => {
+    (queries.useDriverOffers as jest.Mock).mockReturnValue(FAILED);
+    await render(<DriverHome />);
+    expect(screen.getByText('We could not load that')).toBeTruthy();
+  });
+
+  it('never renders a load nobody offered them', async () => {
+    // Drivers do not browse a load board. There is no path from this screen to a
+    // load that is not in `driver_offers()`, and RLS is what makes that true.
+    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
+    (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([]));
+    await render(<DriverHome />);
+    expect(screen.queryByText('Building materials')).toBeNull();
+  });
+});
+
+/* ─── D2 · the offer in full ─────────────────────────────────────────────── */
+
+describe('OfferDetail', () => {
+  beforeEach(() => {
+    mockParams.current = { id: OFFER_ID };
+  });
+
+  it('draws the detour as a dashed spur, not a committed line', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer()));
+    (queries.useMyLegs as jest.Mock).mockReturnValue(ok([leg]));
+    const { getByTestId } = await render(<OfferDetail />);
+    expect(getByTestId('detour-spur').props.strokeDasharray).toBeTruthy();
+  });
+
+  it('says what room is left, so a second load is a decision not a guess', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer()));
+    await render(<OfferDetail />);
+    expect(screen.getByText(/2,000 kg/)).toBeTruthy();
+  });
+
+  it('says nothing about remaining room when capacity is unknown', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(
+      ok(driverOffer({ free_after_kg: null })),
+    );
+    await render(<OfferDetail />);
+    expect(screen.queryByText(/free after/)).toBeNull();
+  });
+
+  it('tells a driver plainly when the offer has already gone', async () => {
+    // The common case, not an error: offers expire in 48 hours and another
+    // driver may have taken it.
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(null));
+    await render(<OfferDetail />);
+    expect(screen.getByText('That offer has gone')).toBeTruthy();
+  });
+
+  it('takes the offer through respond_to_offer, by offer id', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer()));
+    await render(<OfferDetail />);
+    await fireEvent.press(screen.getByLabelText('Take it — 78.000 OMR'));
+    expect(mockRespondMutate).toHaveBeenCalledWith(
+      { offerId: OFFER_ID, accept: true },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+});
+
+/* ─── the offers tab ─────────────────────────────────────────────────────── */
+
+describe('OffersTab', () => {
+  it('makes the same argument as D3 when there is nothing to answer', async () => {
+    await render(<OffersTab />);
+    expect(screen.getByText('An empty book here means an empty truck.')).toBeTruthy();
+  });
+
+  it('does not show a driver any load they have no offer for', async () => {
+    // Driver legs and shipper cargo are the crown jewels. There is no load board.
+    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
+    (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([]));
+    await render(<OffersTab />);
+    expect(screen.queryByText('Building materials')).toBeNull();
+  });
+
+  it('gives every offer its own card, each carrying its own amount', async () => {
+    (queries.useDriverOffers as jest.Mock).mockReturnValue(
+      ok([
+        driverOffer(),
+        driverOffer({ offer_id: 'off-2' }),
+        driverOffer({ offer_id: 'off-3' }),
+      ]),
+    );
+    await render(<OffersTab />);
+    expect(screen.getAllByLabelText('Take it — 78.000 OMR')).toHaveLength(3);
+  });
+
+  it('tells the driver when a decline failed, instead of nothing at all', async () => {
+    (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([driverOffer()]));
+    mockRespondMutate.mockImplementation((_vars, opts) => opts?.onError?.(new Error('boom')));
     await render(<OffersTab />);
 
-    const decline = screen.getByLabelText('Not this one');
-    const raw = decline.props.style;
-    const flat = Object.assign(
-      {},
-      ...(Array.isArray(raw) ? (raw as unknown[]).flat(Infinity) : [raw]).filter(Boolean),
-    );
-    expect(Number(flat.minHeight)).toBeGreaterThanOrEqual(44);
+    await fireEvent.press(screen.getByLabelText('Pass'));
+    expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy();
   });
 });
 

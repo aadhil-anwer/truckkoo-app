@@ -11,7 +11,7 @@
  * module for a test that also imports the screen under test.
  */
 
-import type { City, Load, TruckType } from '@/lib/queries';
+import type { City, DriverOffer, Load, TruckType } from '@/lib/queries';
 
 /**
  * An explicit safe-area mock rather than the library's shipped one.
@@ -106,6 +106,12 @@ jest.mock('@/lib/queries', () => {
     useAcceptQuote: jest.fn(),
     useRateTrip: jest.fn(),
     useDriverSummary: jest.fn(),
+    // P5. The driver stops reading `loads` and reads composed answers instead:
+    // payout, collect, owed, detour and remaining capacity all arrive already
+    // computed. Mocked for the same reason as everything above it.
+    useDriverOffers: jest.fn(),
+    useDriverOffer: jest.fn(),
+    useDriverEarnings: jest.fn(),
   };
 });
 
@@ -175,6 +181,37 @@ export function load(over: Partial<Load> = {}): Load {
   } as Load;
 }
 
+export const OFFER_ID = 'dddddddd-0000-4000-8000-0000000000ca';
+
+/**
+ * One offer as `driver_offers()` composes it.
+ *
+ * Priced at 96.000 with an 18.75% commission — the arithmetic of the plan's own
+ * worked example — so a test asserting 78.000 is asserting the split, not a
+ * number someone typed twice.
+ */
+export function driverOffer(over: Partial<DriverOffer> = {}): DriverOffer {
+  return {
+    offer_id: OFFER_ID,
+    expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    leg_id: 'leg-1',
+    origin_city: 1,
+    dest_city: 2,
+    pickup_from: '2026-08-01',
+    pickup_to: '2026-08-01',
+    goods: 'Building materials',
+    weight_kg: 8000,
+    truck_type_code: '10t',
+    collect_baisa: 96000,
+    payout_baisa: 78000,
+    owed_baisa: 18000,
+    currency: 'OMR',
+    detour_km: 16,
+    free_after_kg: 2000,
+    ...over,
+  };
+}
+
 /**
  * The default world: two cities, one truck type, nothing owned by anyone.
  * Call from `beforeEach`, then override the one hook the test is about.
@@ -194,6 +231,12 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useMyOffers').mockReturnValue(ok([]));
   m('useMyTrips').mockReturnValue(ok([]));
   m('useVisibleLoads').mockReturnValue(ok([]));
+  // DEFAULT: NOTHING OFFERED, NOTHING EARNED. That is the state the product
+  // launches in, so it is what a fresh test renders — D3, not D1 — and it is why
+  // the empty state cannot rot untested.
+  m('useDriverOffers').mockReturnValue(ok([]));
+  m('useDriverOffer').mockReturnValue(ok(null));
+  m('useDriverEarnings').mockReturnValue(ok(null));
   m('useRespondToOffer').mockReturnValue({
     mutate: mockRespondMutate,
     isPending: false,
