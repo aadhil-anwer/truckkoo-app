@@ -3,7 +3,7 @@
  * a date range or a reference number looks like.
  */
 
-import { getLanguage, toArabicIndic } from '@/i18n';
+import { formatNumber, getLanguage, t, toArabicIndic } from '@/i18n';
 
 /** Locale for dates and numbers. Oman, in the active language. */
 function locale(): string {
@@ -96,4 +96,29 @@ export function reference(id: string): string {
 export function formatWeight(kg: number | null | undefined, fallback: string): string {
   if (!kg) return fallback;
   return localizeDigits(`${new Intl.NumberFormat(locale()).format(kg)} kg`);
+}
+
+/**
+ * How long ago, in the coarsest unit that is still useful.
+ *
+ * Returns null for a missing time — absent, never zeroed (CLAUDE.md #5). "Seen
+ * 0 minutes ago" for a truck nobody has heard from is exactly the claim P6
+ * exists to stop making.
+ *
+ * Coarse on purpose: a shipper reading "Seen 2h ago" knows what to do with it,
+ * and "Seen 127 minutes ago" is arithmetic they have to perform.
+ */
+export function formatAge(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+
+  const mins = Math.max(0, Math.floor((Date.now() - then) / 60_000));
+  if (mins < 1) return t('pos.now');
+  if (mins < 60) return `${formatNumber(mins)} ${t('pos.min')}`;
+
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${formatNumber(hours)} ${t('pos.hour')}`;
+
+  return `${formatNumber(Math.floor(hours / 24))} ${t('pos.day')}`;
 }

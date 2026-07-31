@@ -18,6 +18,7 @@ process.env.TZ = 'America/New_York';
 
 import { initLanguage } from '@/i18n';
 import {
+  formatAge,
   formatDeadline,
   formatLongDay,
   formatWeight,
@@ -239,5 +240,30 @@ describe('Arabic-Indic wiring', () => {
     const out = formatWeight(8000, 'Not given');
     expect(out).toBe('٨,٠٠٠ kg');
     expect(out).not.toMatch(/[0-9]/);
+  });
+});
+
+describe('formatAge', () => {
+  beforeEach(() => initLanguage('en'));
+
+  it('says nothing about an absent time rather than saying zero', () => {
+    // Rule #5: absent, never zeroed. "Seen 0 minutes ago" for a truck nobody
+    // has heard from is the exact lie this phase exists to delete.
+    expect(formatAge(null)).toBeNull();
+  });
+
+  it('reads in minutes inside an hour', () => {
+    const iso = new Date(Date.now() - 4 * 60_000).toISOString();
+    expect(formatAge(iso)).toMatch(/4/);
+  });
+
+  it('reads in hours past one', () => {
+    const iso = new Date(Date.now() - 3 * 3600_000).toISOString();
+    expect(formatAge(iso)).toMatch(/3/);
+  });
+
+  it('reads in days past one', () => {
+    const iso = new Date(Date.now() - 50 * 3600_000).toISOString();
+    expect(formatAge(iso)).toMatch(/2/);
   });
 });
