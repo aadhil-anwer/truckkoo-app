@@ -69,6 +69,14 @@ cities, and truck types.
   inside. Without that it is an IDOR into driver identities.
 - **Fetch scoped to the actor**, never fetch-then-check. Return "not found", not
   "forbidden" — 403 confirms existence.
+- **Drivers read composed answers, not tables.** `driver_offers()`,
+  `driver_offer()`, `driver_trip()` and `driver_earnings()` (0030, 0031) each
+  scope to `auth.uid()` *inside* the definer and return payout, collect, owed,
+  detour and remaining capacity already computed. The payout comes from
+  `private.payout_for()`, which applies `commission_pct` — **never compute a
+  payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
+  A driver seeing the margin on *their own* load is deliberate: they collect the
+  price in cash and remit the difference.
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who
@@ -173,7 +181,9 @@ only check that matters, which is whether a pin is in the right town.
 design system but built none of the 32 screens, so the old vocabulary lives there
 on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
 the list of screens still awaiting their phase; when it is empty, delete the file.
-**Nothing new may import from it.**
+**Nothing new may import from it.** After P5 that list is the four auth screens,
+`post-load.tsx`, `loads.tsx` and `account.tsx` — every driver and tracking screen
+is off it.
 
 **Navigation is a floating tab bar** (`src/app/(app)/(tabs)/`), role-aware — a
 pill at the thumb, not a bar welded to the bottom edge. Tabs are hidden with
@@ -243,8 +253,8 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 325 tests
-npm run test:db   # 157 SQL assertions (isolation + pricing) — needs `npx supabase start`
+npm run verify    # typecheck + lint + 418 tests
+npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
 ```
 
 `tests/README.md` says what the suite does *not* cover. `OPEN_ISSUES.md` is the

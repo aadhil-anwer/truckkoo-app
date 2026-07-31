@@ -18,14 +18,14 @@ map spur is the one new drawing primitive and it lives in `src/map/`.
 
 ## Where this stands (2026-07-31)
 
-**Done and committed:** Tasks 1, 1b, **2, 3, 4, 5, 6 and 7**. Tasks 1/1b were
-verified in a browser, not only by tests — the commission panel was driven end to
-end and the rate reached `private.app_settings` with an audit row. Tasks 2–7 are
-verified by tests only; nothing has been seen on a device.
+**Done and committed: every task.** Tasks 1/1b were verified in a browser — the
+commission panel was driven end to end and the rate reached
+`private.app_settings` with an audit row. **Tasks 2–12 are verified by tests
+only; no driver screen has been seen on a device or in Arabic** (OPEN_ISSUES 30).
 
-**Next:** Task 8. Both repos are clean and green (391 JS tests, 3 SQL suites).
+Green at 418 JS tests and three SQL suites.
 
-**Five decisions taken while doing 2–7 that depart from the plan as written:**
+**Seven decisions taken while building that depart from the plan as written:**
 
 1. **`post_leg` gained `p_free_kg` in 0029, not in Task 4.** The plan had Task 4
    editing an already-applied 0029. The old six-argument signature is dropped in
@@ -51,8 +51,23 @@ verified by tests only; nothing has been seen on a device.
    deleting it in Task 4 would have left the tree not typechecking across four
    commits. It carries a `@deprecated` warning and goes with the last call site.
 
+6. **A sixth migration, 0031 `driver_trip`.** D7 states what the driver earns.
+   `payout_for` is private, so without a composed read the screen either shows
+   the shipper's price as the driver's wage or applies the commission in
+   TypeScript — the second is the pricing formula leaving SQL. It also removed
+   the last reader of `useVisibleLoads`, which is now deleted as the plan asked.
+7. **D1 keeps the live trip.** The driver tabs are home / offers / routes /
+   account, so with no jobs tab, home is the only route to a delivery in
+   progress. It is a compact row above the offers, not a second decision.
+
 Task 7 was also pulled ahead of Task 5: `t()` is typed by `StringKey`, so a
-screen cannot reference a string that does not exist yet.
+screen cannot reference a string that does not exist yet. Three small additions
+the plan did not list: `drv.home.greeting.one` (so one offer does not read "1
+loads want your truck"), `drv.offer.about` (the detour is an estimate and the
+copy must say so), and `PrimaryButton tall` / `CTA_TALL` for D7's 64px action.
+`MapStepShell` / `QuestionShell` now take `step`/`total` as numbers rather than a
+booking step name, so the driver's two-step flow reuses the same chrome instead
+of growing a second copy of it.
 
 **Two things learned while doing Tasks 1/1b, worth carrying forward:**
 
@@ -1011,7 +1026,7 @@ git commit -m "Add the driver's words, in both languages"
 
 ---
 
-## Task 8: D1 + D3 — the driver's home
+## Task 8: D1 + D3 — the driver's home ✅ DONE (`f06624f`)
 
 **Files:**
 - Create: `src/components/driver/OfferCard.tsx`
@@ -1104,7 +1119,7 @@ git commit -m "Open the driver's app on money, not on an empty state (D1, D3)"
 
 ---
 
-## Task 9: D2 — the offer in full
+## Task 9: D2 — the offer in full ✅ DONE (`b473788`)
 
 **Files:**
 - Create: `src/app/(app)/offer/[id].tsx`
@@ -1172,7 +1187,7 @@ git commit -m "Show the detour on the map before a driver commits to it (D2)"
 
 ---
 
-## Task 10: D4 + D5 — declaring a route
+## Task 10: D4 + D5 — declaring a route ✅ DONE (`d7ce6c5`)
 
 **Files:**
 - Create: `src/app/(app)/leg/_layout.tsx`, `src/app/(app)/leg/route.tsx`,
@@ -1237,7 +1252,7 @@ git commit -m "Ask a driver for a route in their own words (D4, D5)"
 
 ---
 
-## Task 11: D6 + D7 — routes, and the job
+## Task 11: D6 + D7 — routes, and the job ✅ DONE (`6054d8e`)
 
 **Files:**
 - Modify: `src/app/(app)/(tabs)/routes.tsx`, `src/app/(app)/trip/[id].tsx`
@@ -1304,7 +1319,7 @@ git commit -m "Give the driver their routes and their job (D6, D7)"
 
 ---
 
-## Task 12: Close the phase
+## Task 12: Close the phase ✅ DONE (`3007a83`)
 
 **Files:**
 - Modify: `SENSITIVE_FIELDS.md`, `OPEN_ISSUES.md`, `CLAUDE.md`

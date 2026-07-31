@@ -1059,3 +1059,67 @@ the button.
 
 **Done when:** `pg_cron` runs the sweep, or the dispatcher's routine formally
 includes it.
+
+---
+
+## P5 · the driver (2026-07-31)
+
+### 28. There is no remittance ledger — MEDIUM
+
+The driver collects the shipper's price **in cash** at the gate and owes Truckkoo
+the difference. D1, D2 and D7 all say what that difference is, per load, which is
+the whole of what P5 does about it: nothing records that a remittance happened,
+so a driver who collects and never remits is invisible to the app.
+
+This was named in the spec (E8) and left undone deliberately. Collecting money is
+an operations problem, and a screen that implied the app was tracking a debt it
+cannot see would be worse than a screen that says nothing.
+
+**Done when:** either a ledger exists (`driver_balances`, credited on delivery,
+debited by an ops-recorded remittance, visible to the driver) or the settlement
+model changes so the driver is never holding Truckkoo's money.
+
+### 29. The detour is great-circle × the road factor, between city centres — LOW
+
+`private.detour_km` (0029) costs the whole loop — leg origin → pickup → dropoff →
+leg destination, minus the direct leg — which is the honest shape. The inputs are
+not: each hop is `private.route_km`, which is a great-circle distance between two
+city *centres* scaled by `road_factor_pct`. Oman's roads are neither straight nor
+centred.
+
+The copy says "about" everywhere the number appears, which is the mitigation, not
+a fix. A driver who knows the road will notice.
+
+**Done when:** a real distance matrix (or Phase 3's PostGIS work, `STACK.md` §8)
+replaces `route_km`. Both the detour and the price improve at once, because they
+share it.
+
+### 30. D1–D7 have not been seen on a device, or in Arabic — MEDIUM
+
+The whole driver surface is verified by tests only. Two specific risks that tests
+cannot reach:
+
+- **Arabic, RTL.** The strings exist in both languages and every screen uses
+  `arabicIfNeeded` and `align.start`, but nobody has looked at a driver screen in
+  Arabic. DoD 7 asks for exactly this and it cannot be automated. The one place
+  it is most likely to be wrong is `OfferCard`'s detour line, which composes four
+  fragments (`about`, a number, `km`, `extra on your route`) — a word order that
+  is correct in English and merely plausible in Arabic.
+- **The 64px delivery button and the photo step**, which is the only part of the
+  product that touches the camera and a private bucket at the same time.
+
+**Done when:** a driver account is driven end to end on a real Android phone, in
+both languages.
+
+### 31. `driver_earnings` counts a trip from its delivery event — LOW
+
+The week's total buckets on `max(trip_events.occurred_at) where type =
+'delivered'`, falling back to `trips.created_at` when there is no such event. The
+fallback exists because a trip can reach `closed` through an ops path that writes
+no delivery event, and dropping those would understate a driver's week.
+
+It means a trip closed without an event is dated by when it *started*. For a
+long-haul closed weeks later, that is the wrong week.
+
+**Done when:** every terminal transition writes a `trip_events` row, at which
+point the fallback can be deleted rather than merely documented.

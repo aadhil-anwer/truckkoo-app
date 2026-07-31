@@ -85,7 +85,15 @@ Client may write on UPDATE: **nothing.** Edits and cancellation go through RPCs.
 | `created_at` | Audit integrity | Nobody |
 
 Client may write: `truck_id`, `origin_city`, `dest_city`, `depart_from`,
-`depart_to`, `is_empty` (on own rows).
+`depart_to`, `is_empty`, `free_kg` (on own rows).
+
+`free_kg` (0029) is **not** sensitive and is recorded here so this file stays a
+complete list rather than a list of exceptions. It is supply information the
+driver volunteers about their own truck, it never leaves driver-owned rows, and
+it is bounded by `legs_free_kg_sane` (1–60,000 kg) like every other number a
+client can send. NULL means "empty, or did not say" — `post_leg` drops it
+entirely when `is_empty`, because two answers to one question disagree
+eventually.
 
 ## `offers`
 
@@ -193,6 +201,23 @@ of a price will eventually disagree, and the disagreement surfaces as money; a
 client-side formula would also ship the shape of the card in the app bundle,
 which §9 says is public forever. `tests/security/schema-invariants.test.ts` fails
 the build if one appears.
+
+## `private.app_settings` — the commission rate
+
+| Field | Why it's locked | Who may change it |
+|---|---|---|
+| `commission_pct` (0028) | **It decides what a driver is paid.** The share Truckkoo keeps of a load's price, and the input to `private.payout_for()`. A driver who could edit it pays themselves the margin; anyone who could read it arbitrarily learns the take rate. | `public.ops_set_commission()` only |
+
+Client may write: **nothing.** Client may *read*: **nothing** — the table has no
+grant to `anon` or `authenticated` and lives in `private`. `commission_pct()` and
+`payout_for()` are revoked from every client role; a driver sees the *result* on
+their own offer, which is deliberate (P5 spec §2: they collect the price in cash,
+so the per-load margin cannot be a secret from them), but never the rate itself
+and never a rate applied to somebody else's load.
+
+`ops_set_commission` bounds the value at 0–40 percent — anything higher is a
+slipped decimal, not a policy — demands a reason, and writes both to
+`private.ops_audit`. Same rule as a rate band, for the same reason.
 
 ## Reference tables — `cities`, `truck_types`
 
