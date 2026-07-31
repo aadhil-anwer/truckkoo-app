@@ -43,17 +43,32 @@ export function formatMoney(
   currency: Currency = DEFAULT_CURRENCY,
   locale = 'en',
 ): string | null {
+  const amount = formatAmount(minorUnits, currency, locale);
+  return amount == null ? null : `${amount} ${currency}`;
+}
+
+/**
+ * The amount alone, with no currency after it.
+ *
+ * For hero numbers, where the unit is set separately and smaller — D1 and D2 set
+ * the payout in Instrument Serif at 44–52px, and "OMR" at that size is a shout.
+ * It is the same arithmetic as `formatMoney`, which is why it is the thing
+ * `formatMoney` is built from rather than a second copy of it.
+ */
+export function formatAmount(
+  minorUnits: number | null | undefined,
+  currency: Currency = DEFAULT_CURRENCY,
+  locale = 'en',
+): string | null {
   if (minorUnits == null) return null;
 
   const digits = exponentFor(currency);
   const major = minorUnits / 10 ** digits;
 
-  const formatted = new Intl.NumberFormat(locale === 'ar' ? 'ar-OM' : 'en-OM', {
+  return new Intl.NumberFormat(locale === 'ar' ? 'ar-OM' : 'en-OM', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(major);
-
-  return `${formatted} ${currency}`;
 }
 
 /**
