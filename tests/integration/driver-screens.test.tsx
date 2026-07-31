@@ -13,6 +13,7 @@
 
 import {
   FAILED,
+  mockPostLegMutate,
   LOAD_ID,
   OFFER_ID,
   driverOffer,
@@ -28,9 +29,12 @@ import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import DriverHome from '@/app/(app)/(tabs)/driver';
 import OfferDetail from '@/app/(app)/offer/[id]';
+import LegRoute from '@/app/(app)/leg/route';
+import LegWhen from '@/app/(app)/leg/when';
 import OffersTab from '@/app/(app)/(tabs)/offers';
 import RoutesTab from '@/app/(app)/(tabs)/routes';
 import * as queries from '@/lib/queries';
+import { clearLegDraft } from '@/lib/leg-draft';
 import type { Leg, Offer, Trip } from '@/lib/queries';
 
 const offer: Offer = {
@@ -62,6 +66,9 @@ const leg: Leg = {
 
 beforeEach(() => {
   resetQueries(queries as unknown as Record<string, unknown>);
+  // The leg draft lives in module scope, so it survives between tests unless it
+  // is cleared — a route chosen in one test would otherwise leak into the next.
+  clearLegDraft();
 });
 
 const withOffer = () => {
@@ -289,6 +296,77 @@ describe('OffersTab', () => {
   });
 });
 
+/* ─── D4 / D5 · declaring a route ────────────────────────────────────────── */
+
+describe('DeclareRoute', () => {
+  it('asks the driver\u2019s question, not the shipper\u2019s', async () => {
+    // The booking flow asks where the cargo is. This asks where the truck goes.
+    await render(<LegRoute />);
+    expect(screen.getByText('Where are you driving?')).toBeTruthy();
+  });
+
+  it('says what answering buys, because declaring a leg has no obvious payoff', async () => {
+    await render(<LegRoute />);
+    expect(screen.getByText('We only send you loads that sit on this line.')).toBeTruthy();
+  });
+
+  it('suggests only corridors the driver has actually driven', async () => {
+    // Never a fabricated suggestion: the list is their own declared legs.
+    (queries.useMyLegs as jest.Mock).mockReturnValue(ok([leg]));
+    await render(<LegRoute />);
+    expect(screen.getByText('YOU DRIVE THESE OFTEN')).toBeTruthy();
+    expect(screen.getByText('Muscat → Salalah')).toBeTruthy();
+  });
+
+  it('suggests nothing at all to a driver with no history', async () => {
+    await render(<LegRoute />);
+    expect(screen.queryByText('YOU DRIVE THESE OFTEN')).toBeNull();
+  });
+
+  it('offers a part-loaded truck a way to say how much room is left', async () => {
+    await render(<LegWhen />);
+    expect(screen.getByText('Part loaded — some space left')).toBeTruthy();
+  });
+
+  it('lets a driver skip the amount, because NULL is a real answer', async () => {
+    // Same affordance as loads.truck_type_code: not answering must stay possible.
+    await render(<LegWhen />);
+    await fireEvent.press(screen.getByLabelText('Part loaded — some space left. Tell us roughly how much'));
+    await fireEvent.press(screen.getByText('Today'));
+    expect(screen.getByLabelText('Add this route')).toBeTruthy();
+  });
+
+  it('asks for the room only once the truck is not empty', async () => {
+    await render(<LegWhen />);
+    expect(screen.queryByLabelText('Tell us roughly how much')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Part loaded — some space left. Tell us roughly how much'));
+    expect(screen.getByLabelText('Tell us roughly how much')).toBeTruthy();
+  });
+
+  it('posts the leg through post_leg, carrying the room it was told about', async () => {
+    await render(<LegWhen />);
+    await fireEvent.press(screen.getByText('Today'));
+    await fireEvent.press(screen.getByLabelText('Part loaded — some space left. Tell us roughly how much'));
+    await fireEvent.changeText(screen.getByLabelText('Tell us roughly how much'), '4000');
+    await fireEvent.press(screen.getByLabelText('Add this route'));
+
+    expect(mockPostLegMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ isEmpty: false, freeKg: 4000 }),
+    );
+  });
+
+  it('sends no number at all for an empty truck', async () => {
+    // is_empty and a free_kg are two contradictory answers to one question.
+    await render(<LegWhen />);
+    await fireEvent.press(screen.getByText('Today'));
+    await fireEvent.press(screen.getByLabelText('Add this route'));
+
+    expect(mockPostLegMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ isEmpty: true, freeKg: null }),
+    );
+  });
+});
+
 /* ─── routes ─────────────────────────────────────────────────────────────── */
 
 describe('RoutesTab', () => {
@@ -307,6 +385,6 @@ describe('RoutesTab', () => {
     (queries.useMyLegs as jest.Mock).mockReturnValue(ok([leg]));
     await render(<RoutesTab />);
     await fireEvent.press(screen.getByLabelText('Add a trip you are making'));
-    expect(mockPush).toHaveBeenCalledWith('/post-leg');
+    expect(mockPush).toHaveBeenCalledWith('/leg/route');
   });
 });

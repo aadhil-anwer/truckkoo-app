@@ -17,7 +17,7 @@ import { PrimaryButton, PressableSurface } from '@/components/primitives';
 import { Chip, Notice, QuestionHeading, RouteRail, SectionLabel } from '@/components/ui';
 import { Icon } from '@/components/icon';
 import { CityPin, Corridor, roadKm } from '@/map';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities, useMyLoads } from '@/lib/queries';
 import { align, formatNumber, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -57,7 +57,8 @@ export default function Destination() {
 
   return (
     <MapStepShell
-      step="destination"
+      step={stepNumber('destination')}
+      total={TOTAL_STEPS}
       framing={framing}
       onBack={() => router.back()}
       overlay={() => (

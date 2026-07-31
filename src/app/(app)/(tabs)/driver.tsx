@@ -217,7 +217,7 @@ export default function DriverHome() {
             <PrimaryButton
               label={t('drv.none.add')}
               icon="plus"
-              onPress={() => router.push('/post-leg')}
+              onPress={() => router.push('/leg/route')}
             />
           </View>
         )}

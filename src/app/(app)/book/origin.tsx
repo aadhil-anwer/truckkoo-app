@@ -13,7 +13,7 @@ import { CityList } from '@/components/booking/CityList';
 import { PrimaryButton } from '@/components/primitives';
 import { QuestionHeading } from '@/components/ui';
 import { CityPin } from '@/map';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities } from '@/lib/queries';
 import { align, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -31,7 +31,8 @@ export default function Origin() {
 
   return (
     <MapStepShell
-      step="origin"
+      step={stepNumber('origin')}
+      total={TOTAL_STEPS}
       framing="domestic"
       onBack={() => router.back()}
       overlay={() =>

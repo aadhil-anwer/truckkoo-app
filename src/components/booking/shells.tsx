@@ -24,7 +24,14 @@ import { MapCanvas, Scrim, type Framing } from '@/map';
 import { GUTTER_CREAM, GUTTER_INK, color, font, space } from '@/theme/tokens';
 import { align } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
-import { TOTAL_STEPS, type Step, stepNumber } from '@/lib/booking';
+/**
+ * The step counter is a plain `n of total` rather than a booking step name.
+ *
+ * The driver's route flow (D4/D5) is two steps in the same two shapes, and a
+ * shell that could only count the shipper's six would have forced a second
+ * implementation of the same chrome — which is the thing this file exists to
+ * prevent.
+ */
 
 /**
  * A cream question: one question, its helper, the answer, and a pinned action.
@@ -36,6 +43,7 @@ import { TOTAL_STEPS, type Step, stepNumber } from '@/lib/booking';
  */
 export function QuestionShell({
   step,
+  total,
   question,
   helper,
   onBack,
@@ -47,7 +55,9 @@ export function QuestionShell({
   children,
   above,
 }: {
-  step: Step;
+  /** 1-based position in the flow. */
+  step: number;
+  total: number;
   question: string;
   helper?: string;
   onBack: () => void;
@@ -68,12 +78,7 @@ export function QuestionShell({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.creamGutter}>
-          <StepHeader
-            step={stepNumber(step)}
-            total={TOTAL_STEPS}
-            onBack={onBack}
-            ground="cream"
-          />
+          <StepHeader step={step} total={total} onBack={onBack} ground="cream" />
         </View>
 
         <ScrollView
@@ -113,12 +118,15 @@ export function QuestionShell({
  */
 export function MapStepShell({
   step,
+  total,
   framing,
   onBack,
   children,
   overlay,
 }: {
-  step: Step;
+  /** 1-based position in the flow. */
+  step: number;
+  total: number;
   framing: Framing;
   onBack: () => void;
   /** Sheet contents. */
@@ -149,12 +157,7 @@ export function MapStepShell({
         )}
 
         <View style={[styles.inkHeader, { paddingTop: insets.top + space.sm }]}>
-          <StepHeader
-            step={stepNumber(step)}
-            total={TOTAL_STEPS}
-            onBack={onBack}
-            ground="ink"
-          />
+          <StepHeader step={step} total={total} onBack={onBack} ground="ink" />
         </View>
       </View>
 

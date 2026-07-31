@@ -14,7 +14,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
 import { Chip, StatusPill } from '@/components/ui';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { align, formatNumber, t } from '@/i18n';
 import { color, elevation, font, radius, space } from '@/theme/tokens';
 
@@ -37,7 +37,8 @@ export default function Weight() {
 
   return (
     <QuestionShell
-      step="weight"
+      step={stepNumber('weight')}
+      total={TOTAL_STEPS}
       question={t('book.weight.q')}
       helper={t('book.weight.help')}
       above={

@@ -53,6 +53,7 @@ export const mockRespondMutate = jest.fn();
 export const mockQuoteMutate = jest.fn();
 export const mockAcceptMutate = jest.fn();
 export const mockRateMutate = jest.fn();
+export const mockPostLegMutate = jest.fn();
 /** Mutable so a detail-screen test can say which load it opened. */
 export const mockParams: { current: Record<string, string> } = { current: {} };
 
@@ -112,6 +113,7 @@ jest.mock('@/lib/queries', () => {
     useDriverOffers: jest.fn(),
     useDriverOffer: jest.fn(),
     useDriverEarnings: jest.fn(),
+    usePostLeg: jest.fn(),
   };
 });
 
@@ -222,6 +224,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   mockRespondMutate.mockReset();
   mockAcceptMutate.mockReset();
   mockRateMutate.mockReset();
+  mockPostLegMutate.mockReset();
+  mockPostLegMutate.mockResolvedValue('leg-new');
   mockParams.current = {};
 
   m('useCities').mockReturnValue(ok([MUSCAT, SALALAH]));
@@ -237,6 +241,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverOffers').mockReturnValue(ok([]));
   m('useDriverOffer').mockReturnValue(ok(null));
   m('useDriverEarnings').mockReturnValue(ok(null));
+  m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useRespondToOffer').mockReturnValue({
     mutate: mockRespondMutate,
     isPending: false,

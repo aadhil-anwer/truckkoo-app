@@ -13,7 +13,7 @@ import { View } from 'react-native';
 import { QuestionShell } from '@/components/booking/shells';
 import { SelectCard, SelectRow } from '@/components/primitives';
 import { SectionLabel } from '@/components/ui';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { useTruckTypes } from '@/lib/queries';
 import { localized, t } from '@/i18n';
 import { space } from '@/theme/tokens';
@@ -27,7 +27,8 @@ export default function TruckSize() {
 
   return (
     <QuestionShell
-      step="truck"
+      step={stepNumber('truck')}
+      total={TOTAL_STEPS}
       question={t('book.truck.q')}
       helper={t('book.truck.help')}
       onBack={() => router.back()}

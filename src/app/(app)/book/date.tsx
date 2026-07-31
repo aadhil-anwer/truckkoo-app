@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 
 import { QuestionShell } from '@/components/booking/shells';
 import { SelectRow, TertiaryButton } from '@/components/primitives';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { formatLongDay, isoToday } from '@/lib/format';
 import { t } from '@/i18n';
 
@@ -45,7 +45,8 @@ export default function CollectionDate() {
 
   return (
     <QuestionShell
-      step="date"
+      step={stepNumber('date')}
+      total={TOTAL_STEPS}
       question={t('book.date.q')}
       onBack={() => router.back()}
       cta={t('action.continue')}

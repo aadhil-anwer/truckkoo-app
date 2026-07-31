@@ -97,7 +97,7 @@ export default function RoutesTab() {
       )}
 
       <ActionBar>
-        <Button label={t('driver.postLeg')} icon="plus" onPress={() => router.push('/post-leg')} />
+        <Button label={t('driver.postLeg')} icon="plus" onPress={() => router.push('/leg/route')} />
       </ActionBar>
     </Screen>
   );

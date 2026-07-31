@@ -11,7 +11,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
 import { Chip, SectionLabel } from '@/components/ui';
-import { useBookingDraft } from '@/lib/booking';
+import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { align, t } from '@/i18n';
 import { color, elevation, font, radius, space } from '@/theme/tokens';
 
@@ -36,7 +36,8 @@ export default function Cargo() {
 
   return (
     <QuestionShell
-      step="cargo"
+      step={stepNumber('cargo')}
+      total={TOTAL_STEPS}
       question={t('book.cargo.q')}
       helper={t('book.cargo.help')}
       onBack={() => router.back()}
