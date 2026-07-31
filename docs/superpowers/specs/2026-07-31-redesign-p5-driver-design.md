@@ -23,26 +23,26 @@ would hand every shipper's cargo to anyone who signs up as a driver.
 ## 2. The thing that shapes this phase
 
 P5 introduces a **margin**: the shipper pays 96, the driver keeps 78, and the
-driver owes Truckkoo the difference. That single decision drives most of the
-design, because the commission rate is business-model information and the driver
-is now the one person who must not be able to compute it.
+driver owes Truckkoo the difference.
 
-Today a driver can. `public.loads` carries a table-level `grant select to
-authenticated`, and **a column grant cannot tell a shipper from a driver — both
-are the same Postgres role.** RLS restricts *which rows* a driver sees, not which
-columns. So an offered driver reads `price_baisa` directly.
+**The per-load margin is visible to the driver, necessarily, and that is correct.**
+They collect 96 in cash at the gate and keep 78; both numbers have to be on their
+screen or they cannot do the job. Anyone can subtract. An earlier draft of this
+spec tried to hide `price_baisa` from drivers *and* show them what to collect —
+those are the same number, and the contradiction is recorded here rather than
+quietly dropped, because it is the kind of thing that survives into code as a
+guard everyone believes in and nothing enforces.
 
-**And hiding that column is not enough on its own.** `quote_route` and
-`estimate_route` are granted to `authenticated`. A driver's own offer card gives
-them origin, destination, truck type and weight — every argument both functions
-take. One call returns the shipper's price. Subtract the payout and the rate falls
-out. Closing the column while leaving those two open would be security theatre.
+**What is genuinely worth protecting is the rate card, not the margin.** The
+margin on one load is one data point. The ability to price *any corridor at any
+weight* is the pricing model — crown jewel #1 (`SECURITY.md` §1) — and a driver
+has that today: `quote_route` and `estimate_route` are granted to `authenticated`,
+and a driver's own offer card carries every argument they take. A driver could
+enumerate the card corridor by corridor. That is the hole this phase closes.
 
-**Honest limit, stated once so nobody assumes more:** the commission rate is
-protected against casual discovery, not made secret. Anyone who holds both a
-shipper account and a driver account can price a corridor on one and read a payout
-on the other. That is not fixable by grants, and pretending otherwise would be
-the kind of claim this project does not make.
+**Honest limit, stated once so nobody assumes more:** a driver who has carried
+several loads knows the commission rate. Nothing here prevents that, nothing
+should, and no test in this phase claims otherwise.
 
 ---
 
@@ -51,8 +51,8 @@ the kind of claim this project does not make.
 | # | Decision | Why |
 |---|---|---|
 | E1 | **Driver payout is derived from the shipper's price by a commission rate**, and the rate lives in `private.app_settings` — ungranted, edited only through an audited ops RPC. | Same rule as the rate card: the formula lives in SQL and never ships in a bundle. Deriving rather than storing a payout per offer means it cannot drift from the price it came from. |
-| E2 | **Drivers stop reading `public.loads`.** All driver-facing load data comes from `driver_offers()` / `driver_offer(id)`, which never select `price_baisa`. | The only way to hide a column from one role and not another when both are `authenticated`. Consistent with `candidates_for` being private: the driver's view of a load is a *composed answer*, not a table. |
-| E3 | **`quote_route` and `estimate_route` refuse a caller whose profile role is not `shipper`**, raising `no_data_found` — "not found", never "forbidden". | §2. Both are already definer functions, so the check is internal and cheap. A driver has no legitimate reason to price a corridor, and a distinct "forbidden" would confirm the function prices something. |
+| E2 | **Drivers stop reading `public.loads`.** All driver-facing load data comes from `driver_offers()` / `driver_offer(p_offer_id)`. | **Not a margin defence** — see §2. It is where payout, collect, owed, detour and remaining capacity are computed, server-side, next to the price they derive from. It also stops incidental columns reaching a driver as the table grows, which a table-level `grant select` guarantees will happen eventually. Consistent with `candidates_for` being private: a driver's view of a load is a composed answer, not a table. |
+| E3 | **`quote_route` and `estimate_route` refuse a caller whose profile role is not `shipper`**, raising `no_data_found` — "not found", never "forbidden". | **The actual security change in this phase.** Both are granted to `authenticated` today, so any driver can price any corridor at any weight and enumerate the rate card — crown jewel #1. Both are already definer functions, so the check is internal and cheap, and a shipper loses nothing. A distinct "forbidden" would confirm the function prices something. |
 | E4 | **Every money surface shows all three numbers: collect, keep, owe.** | The driver is handed 96 and keeps 78. Showing 78 beside "cash from the shipper on delivery" — the handoff's literal D1 copy — is misleading at the exact moment money changes hands. **This is a deliberate deviation from the handoff**, the second one in the project after `font.button`. |
 | E5 | **Detour is `(origin → pickup → dropoff → dest) − (origin → dest)`** — the true extra distance driven — computed in SQL, reusing 0021's road distance. | One distance implementation, server-side, same as the price. Two implementations of a distance disagree eventually, and this one is shown next to money. |
 | E6 | **Detour is informational and does not feed payout.** | Tier matching (`candidates_for`) already decides *whether* a load is offered. Detour tells the driver what accepting costs them. Feeding it into pay would make the payout unexplainable to the person receiving it. |
@@ -111,7 +111,8 @@ Arabic before anyone reviews them in English.
 
 | Risk | Mitigation |
 |---|---|
-| **The margin leaks and drivers discover it by arithmetic.** | E2 and E3 together. Asserted by impersonating an offered driver and confirming `price_baisa` is unreachable through the table, through `driver_offers`, and through both pricing RPCs. This is the assertion the phase rests on. |
+| **A driver enumerates the rate card** corridor by corridor through the pricing RPCs. | E3. Asserted by impersonating a driver and confirming both `quote_route` and `estimate_route` refuse them, and that a shipper is unaffected. This is the assertion the phase rests on. |
+| Someone reads E4 and assumes the margin is secret | §2 says plainly that it is not, and no test claims it is. A guard everyone believes in and nothing enforces is worse than no guard. |
 | Moving drivers off `loads` breaks the screens that read it today | Those screens are exactly the ones P5 replaces. `useVisibleLoads` dies with them; nothing else may adopt it. |
 | A driver is handed 96, keeps 78, and never remits | Real, and **not solved by this phase** (E8). P5 makes the obligation visible per load. Collecting it is an operations problem, and pretending an app screen fixes it would be worse than naming it. |
 | Detour is an estimate drawn as a fact | Same honesty rule as T4. Straight-line distance × 1.20 between city centres, on corridors that are neither straight nor centred. The copy says "about". |
@@ -123,9 +124,10 @@ Arabic before anyone reviews them in English.
 ## 7. Definition of done
 
 1. `npm run verify` and `npm run test:db` green.
-2. An offered driver cannot reach `price_baisa` — through `loads`, through
-   `driver_offers`, or through `quote_route` / `estimate_route`. Asserted four
-   ways in `supabase/tests/tenant_isolation.sql`.
+2. A driver cannot price an arbitrary corridor: `quote_route` and
+   `estimate_route` both refuse them, a shipper is unaffected, and a driver
+   still cannot read a load they hold no offer on. Asserted in
+   `supabase/tests/tenant_isolation.sql`.
 3. A driver with no declared route sees D3, not an error and not an empty list.
 4. Payout, collect and owe are consistent with each other and with the shipper's
    T2 to the baisa, asserted in SQL.
