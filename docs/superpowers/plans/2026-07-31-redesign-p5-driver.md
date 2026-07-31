@@ -206,6 +206,60 @@ git commit -m "Derive the driver's payout from the shipper's price (0028)"
 
 ---
 
+## Task 1b: The commission rate, editable from the dashboard
+
+**Repo:** `~/truckkoo-ops` (separate deployment, separate commit, branch first)
+
+**Files:**
+- Modify: `src/queries/mutations.ts`, `src/queries/rpc.ts` (read), `src/routes/System.tsx`
+- Test: `src/queries/mutations.test.ts`
+
+**Interfaces:**
+- Consumes: `public.ops_set_commission(p_pct numeric, p_reason text)` (Task 1)
+- Produces: `useSetCommission()`, and a commission panel on the System screen
+
+- [ ] **Step 1: Read how the rate card panel does it** in `src/routes/System.tsx`
+      and follow it exactly — the same `ConfirmAction` reason prompt, the same
+      `writeError` surfacing. A second pattern for the same kind of act is how
+      two screens end up disagreeing about what an audited change looks like.
+
+- [ ] **Step 2: Add the mutation**
+
+```ts
+/**
+ * The share Truckkoo keeps of a load's price. Whole percent, 0–40, refused
+ * outside that as a slipped decimal. Every change needs a reason and lands in
+ * ops_audit — the same rule as a rate band, for the same reason: it decides
+ * what a driver is paid.
+ */
+export function useSetCommission() {
+  return useOpsMutation(({ pct, reason }: { pct: number; reason: string }) =>
+    rpc('ops_set_commission', { p_pct: pct, p_reason: reason }),
+  );
+}
+```
+
+- [ ] **Step 3: Show the current rate and what it means**
+
+The panel states the rate AND a worked example in real money, because a
+percentage is not a number anyone checks by eye: "18.75% — on a 96.000 OMR load
+the driver keeps 78.000 and owes 18.000." A dispatcher setting this is deciding
+somebody's wage.
+
+- [ ] **Step 4: Run**
+
+Run: `cd ~/truckkoo-ops && npm run verify`
+Expected: green.
+
+- [ ] **Step 5: Commit on a branch**
+
+```bash
+cd ~/truckkoo-ops && git checkout -b p5/commission
+git add -A && git commit -m "Set the driver's commission from the dashboard"
+```
+
+---
+
 ## Task 2: 0029 — detour, and the space left on a truck
 
 **Files:**
