@@ -1509,6 +1509,29 @@ select assert_raises($$select public.ops_commission()$$,
   'nor read it — it is not their business what a driver is paid');
 select act_as_reset();
 
+-- ─── 9d. position retention (0032) ──────────────────────────────────────────
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- a driver
+select assert_raises($$select public.ops_sweep_positions(30, 'tidy')$$,
+  'a driver cannot sweep the position trail');
+select assert_raises($$select * from public.ops_position_health()$$,
+  'nor ask how much of it there is');
+select act_as_reset();
+
+select act_as('33333333-0000-4000-8000-00000000cccc');  -- the dispatcher
+select assert_raises($$select public.ops_sweep_positions(0, 'nonsense')$$,
+  'a retention of zero days is refused, not obeyed');
+select assert_raises($$select public.ops_sweep_positions(4000, 'forever')$$,
+  'and neither is eleven years');
+select assert_true((select public.ops_sweep_positions(30, 'Routine retention') >= 0),
+  'a dispatcher sweeps, and is told how many rows went');
+select act_as_reset();
+
+select assert_true(
+  (select a.after->>'days' = '30' and a.reason = 'Routine retention'
+     from private.ops_audit a where a.action = 'ops_sweep_positions'),
+  'and the sweep is audited with its reason, like every privileged write');
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;

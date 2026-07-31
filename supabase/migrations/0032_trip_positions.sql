@@ -278,3 +278,73 @@ $$;
 
 revoke all on function public.trip_position(uuid) from public, anon;
 grant execute on function public.trip_position(uuid) to authenticated;
+
+-- ═══ retention ══════════════════════════════════════════════════════════════
+-- 30 days, swept by a dispatcher. pg_cron is not enabled on this project, and
+-- the alternative — deleting on every write — was considered and not chosen.
+--
+-- THE KNOWN WEAKNESS, WRITTEN DOWN: this is the same shape as
+-- ops_sweep_expired_offers, which OPEN_ISSUES 27 records going stale because
+-- nothing runs it. ops_position_health() exists to make that visible rather
+-- than silent — the console shows the age of the oldest stored point, so a
+-- forgotten sweep is a number on a screen instead of an invisible pile.
+
+create or replace function public.ops_sweep_positions(
+  p_days   integer default 30,
+  p_reason text    default null
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_deleted integer;
+begin
+  perform private.require_ops();
+
+  if p_days is null or p_days < 1 or p_days > 365 then
+    raise exception 'retention must be between 1 and 365 days'
+      using errcode = 'check_violation';
+  end if;
+
+  with gone as (
+    delete from public.trip_positions
+     where seen_at < now() - make_interval(days => p_days)
+    returning 1
+  )
+  select count(*) into v_deleted from gone;
+
+  perform private.log_ops(
+    'ops_sweep_positions', 'table', 'trip_positions',
+    null,
+    jsonb_build_object('deleted', v_deleted, 'days', p_days),
+    p_reason);
+
+  return v_deleted;
+end;
+$$;
+
+revoke all on function public.ops_sweep_positions(integer, text) from public, anon;
+grant execute on function public.ops_sweep_positions(integer, text) to authenticated;
+
+create or replace function public.ops_position_health()
+returns table (rows bigint, oldest_seen_at timestamptz, oldest_days integer)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_ops();
+
+  return query
+  select
+    count(*)::bigint,
+    min(p.seen_at),
+    coalesce(extract(day from (now() - min(p.seen_at)))::int, 0)
+  from public.trip_positions p;
+end;
+$$;
+
+revoke all on function public.ops_position_health() from public, anon;
+grant execute on function public.ops_position_health() to authenticated;
