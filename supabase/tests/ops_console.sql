@@ -1462,6 +1462,12 @@ select assert_true(
 
 select act_as_reset();
 
+-- Set explicitly rather than assumed. The rest of this suite leans on a fresh
+-- `db reset`, but a commission is a value someone changes in dev — through the
+-- console, on purpose — and an assertion that silently depends on it being
+-- untouched fails later for a reason that has nothing to do with the code.
+update private.app_settings set value = '0'::jsonb where key = 'commission_pct';
+
 -- THE STATE WE SHIP IN. A commission invented in a migration is a number quoted
 -- to a driver the first time somebody forgets it was a placeholder.
 select assert_equals(private.payout_for(96000), 96000,
