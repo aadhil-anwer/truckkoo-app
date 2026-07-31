@@ -60,7 +60,7 @@ everything else. Add structure when the pain is real, not in anticipation of it.
 | Maps, Places, geocoding | City dropdowns instead — see §4 |
 | PostGIS | Not needed until matching is proximity-based rather than city-based |
 | Routing / detour API | Phase 3. Also a billing account you don't need yet |
-| Background location | The single hardest thing in the whole product, and it gates store review. Phase 3 |
+| Background location | The single hardest thing in the whole product, and it gates store review. Phase 3. **P6 ships foreground-only reporting; the table, the RLS posture and `trip_position()` are already what background tracking needs, so it is a client change** |
 | Arabic strings | Structure is RTL-safe from day one; translation waits — see §5 |
 | Phone / SMS OTP | Sender-ID registration with Gulf regulators takes weeks |
 | Push notifications | Phase 2. Email or WhatsApp is enough at MVP volume |

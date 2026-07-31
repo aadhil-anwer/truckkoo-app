@@ -132,6 +132,34 @@ Client may write: `trip_id`, `type`, `note`, `photo_path` — insert only, no
 update or delete grant, because a proof-of-delivery trail that can be edited is
 not a trail.
 
+## `public.trip_positions` — where the truck is
+
+| Field | Why it's locked | Who may change it |
+|---|---|---|
+| every column | A driver's location is personal data under Oman's PDPL, and the accumulated rows are a movement history. | `report_position()` only |
+
+Client may write: **nothing.** Client may *read*: **nothing.** The table has **no
+grant of any kind** to `anon` or `authenticated`; RLS is enabled and forced with
+no policies, so a grant added by accident later still fails closed.
+
+- `report_position()` stores a fix only when `trips.driver_id = auth.uid()` **and**
+  `trips.status = 'in_transit'`. Tracking that stops when a trip ends is a promise
+  if the client does it and a fact if the function does. It returns `false`
+  rather than raising for a finished trip — the delivery and the last queued ping
+  race by seconds.
+- `trip_position()` returns **the latest fix only**, to the trip's driver, the
+  load's shipper, or ops. **No client ever reads the trail.** The difference
+  between "where is my truck" and "where has this driver been for a month" is
+  that `limit 1`, and it is the reason the read is a function rather than a
+  policy.
+- `ops_sweep_positions()` deletes past a retention window, requires
+  `private.require_ops()`, and lands in `private.ops_audit` with the row count
+  and the reason. `ops_position_health()` reports the oldest surviving point so a
+  forgotten sweep is visible.
+
+Coordinates are bounded twice — in the RPC and again by `trip_positions_in_region`
+— like every other client-supplied number (`SECURITY.md` §6).
+
 ## `public.quotes`
 
 Client may write: **nothing.** Quotes are issued by `quote_load()` and

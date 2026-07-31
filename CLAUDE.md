@@ -77,6 +77,13 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+- **A position is only ever one row.** `trip_positions` (0032) has no client
+  grant of any kind. `report_position` stores nothing outside an `in_transit`
+  trip owned by the caller, so tracking stopping when a trip ends is a database
+  fact rather than a client promise; `trip_position` returns the **latest fix
+  only**, and the trail is ops-only and swept by hand. **Nothing computes a
+  position** — `progressOf` and `interpolate` were deleted in P6, and a marker on
+  a map without a reported fix behind it is a bug.
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who
@@ -253,7 +260,7 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 418 tests
+npm run verify    # typecheck + lint + 447 tests
 npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
 ```
 

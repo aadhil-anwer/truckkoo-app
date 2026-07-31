@@ -1,5 +1,9 @@
 # P6 · Live GPS — Implementation Plan
 
+> **Status: complete (2026-07-31).** All nine tasks landed on
+> `redesign/p0-foundations`. 447 JS tests, three SQL suites. Four departures from
+> the plan as written are recorded at the end of this file.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace T4's invented truck position with one the driver's phone
@@ -84,7 +88,7 @@ map, Jest + RNTL.
 
 ---
 
-## Task 1: 0032 — the table and the write path
+## Task 1: 0032 — the table and the write path ✅ DONE (`7527904`)
 
 **Files:**
 - Create: `supabase/migrations/0032_trip_positions.sql`
@@ -341,7 +345,7 @@ git commit -m "Record where the truck is, only while it is carrying something (0
 
 ---
 
-## Task 2: 0032 — the read path and the ETA
+## Task 2: 0032 — the read path and the ETA ✅ DONE (`776e570`)
 
 **Files:**
 - Modify: `supabase/migrations/0032_trip_positions.sql` (append — it is not
@@ -614,7 +618,7 @@ git commit -m "Return the latest fix and an ETA measured from it, never the trai
 
 ---
 
-## Task 3: 0032 — the ops sweep and its visibility
+## Task 3: 0032 — the ops sweep and its visibility ✅ DONE (`996813a`)
 
 **Files:**
 - Modify: `supabase/migrations/0032_trip_positions.sql` (append)
@@ -747,7 +751,7 @@ git commit -m "Sweep the position trail on purpose, and show when nobody has"
 
 ---
 
-## Task 4: The client query layer
+## Task 4: The client query layer ✅ DONE (`3185571`)
 
 **Files:**
 - Modify: `src/lib/queries.ts`
@@ -965,7 +969,7 @@ git commit -m "Read one position, and never a string where a coordinate goes"
 
 ---
 
-## Task 5: `formatAge`, the marker's stale state, and the strings
+## Task 5: `formatAge`, the marker's stale state, and the strings ✅ DONE (`42bb3ea`)
 
 **Files:**
 - Modify: `src/lib/format.ts`, `src/map/TruckMarker.tsx`, `src/i18n/index.ts`
@@ -1193,7 +1197,7 @@ git commit -m "Say how old a position is, and dim the marker when it is"
 
 ---
 
-## Task 6: The reporter
+## Task 6: The reporter ✅ DONE (`9802158`)
 
 **Files:**
 - Create: `src/lib/position.ts`
@@ -1455,7 +1459,7 @@ git commit -m "Report position while the driver is on the job, and only then"
 
 ---
 
-## Task 7: D7 — the driver sends, and is told so
+## Task 7: D7 — the driver sends, and is told so ✅ DONE (`9506033`)
 
 **Files:**
 - Modify: `src/app/(app)/trip/[id].tsx`
@@ -1664,7 +1668,7 @@ git commit -m "Send the driver's position while they are on the job, and say so 
 
 ---
 
-## Task 8: T4 — a real truck, or none
+## Task 8: T4 — a real truck, or none ✅ DONE (`7e25517`)
 
 **Files:**
 - Modify: `src/app/(app)/load/[id].tsx`
@@ -1881,7 +1885,7 @@ git commit -m "Draw the truck where it was reported, or not at all (T4)"
 
 ---
 
-## Task 9: Close the phase
+## Task 9: Close the phase ✅ DONE (`25e57ce`)
 
 **Files:**
 - Modify: `SENSITIVE_FIELDS.md`, `OPEN_ISSUES.md`, `CLAUDE.md`, `STACK.md`
@@ -1971,3 +1975,34 @@ columns in Task 2 exactly (`lat`, `lng`, `seen_at`, `accuracy_m`,
 `usePositionReporter(tripId, active)` has the same signature in Task 6, its test,
 and both screens. `TruckMarker` takes `at` and `stale` in Task 5 and both call
 sites. `formatAge` returns `string | null` everywhere it is used.
+
+---
+
+## What actually happened
+
+Four departures from the plan, all found by running it rather than reading it.
+
+1. **T4's map had to move off `onLayout`.** The plan assumed the marker would be
+   assertable; it was not, because `onLayout` never fires under RNTL and
+   `mapSize.width` stayed 0. T4 now takes its width from `useWindowDimensions`
+   with a fixed `MAP_HEIGHT`, which is the pattern D2 and D7 already used since
+   P5. It also removes a frame where the coastline is not drawn yet.
+2. **`react-hooks/refs` rejected the reporter's ref write.** `reportRef.current =
+   report` during render is forbidden — correctly, because it makes the value
+   read depend on render order. The assignment moved into its own effect. Caught
+   by `npm run verify`, not by the tests.
+3. **The DoD greps had to be tightened.** `grep "interpolate"` matches prose in
+   `safe-text.ts` and `i18n/index.ts`, and the reporter's own comment named the
+   background-permission API it promises not to call — so both checks always
+   found themselves. The checks are now `\b(progressOf|interpolate|midpoint)\(`
+   and the comment no longer names the API.
+4. **One stale docblock survived the first pass.** `InTransit` still described a
+   position "interpolated from the collection time" after the code stopped doing
+   that. Nothing failed; the tests do not read comments. It is the reason DoD 3
+   is a grep and not a memory.
+
+**Not done, and filed rather than pretended away:** `OPEN_ISSUES` 32–35 — the
+backgrounded-app gap, the unswept trail, `avg_speed_kph` as a guess, and the fact
+that `expo-location` has never run on a device. The reporter's tests mock the
+module: they prove the wiring and the teardown, and nothing about whether a fix
+arrives on a cheap Android phone in a moving truck.

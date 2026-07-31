@@ -1123,3 +1123,60 @@ long-haul closed weeks later, that is the wrong week.
 
 **Done when:** every terminal transition writes a `trip_events` row, at which
 point the fallback can be deleted rather than merely documented.
+
+---
+
+## P6 · live GPS (2026-07-31)
+
+### 32. The app is backgrounded for most of a long haul, so few fixes arrive — MEDIUM
+
+Foreground-only reporting was chosen deliberately (spec F1): background location
+needs an App Store background-mode justification, an Android foreground service
+with a Play Console demo video, and a licensed library, and `STACK.md` calls it
+the single hardest thing in the product. The cost is that a driver's phone is in
+their pocket for most of an eleven-hour Muscat→Salalah run, so the shipper sees a
+correctly-stamped old position rather than a moving one.
+
+That is honest and it is also thin. The thing to watch is shippers phoning to ask
+where the truck is — which is the question T4 was supposed to answer.
+
+**Done when:** either background tracking ships — a **client** change, because
+`trip_positions`, the RLS posture and `trip_position()` are already what it needs
+— or the calls stop.
+
+### 33. Nothing runs the position sweep — MEDIUM
+
+`ops_sweep_positions()` is a dispatcher action, because `pg_cron` is not enabled
+on this project. This is the same shape as issue 27, which records the expired-
+offer sweep going stale for exactly that reason.
+
+`ops_position_health()` was added so a forgotten sweep is a number on the console
+rather than an invisible pile of driver movement. That makes it **visible**; it
+does not make it **happen**.
+
+**Done when:** `pg_cron` runs it, or the dispatcher's routine formally includes it
+and the console surfaces the oldest-point age where somebody looks daily.
+
+### 34. `avg_speed_kph` is a guess — LOW
+
+65 km/h across every corridor, ignoring terrain, border crossings, rest stops and
+the difference between the Batinah highway and the Salalah run. It is a setting
+in `private.app_settings` rather than a constant, so retuning it needs no
+migration — but nothing has tuned it, and the ETA on T4 is only as good as it is.
+
+**Done when:** there is enough delivered-trip history to fit a speed per corridor,
+at which point it should stop being one number.
+
+### 35. `expo-location` has never run on a device — MEDIUM
+
+`tests/unit/position-reporter.test.tsx` mocks the module. It proves the wiring —
+foreground permission only, the watcher starts on a live trip and is torn down
+when the trip ends, a fix reaches the RPC — and it proves none of: that a fix
+actually arrives on a cheap Android phone, that the 60s/500m interval behaves in
+a moving vehicle, or what the battery cost is over eleven hours.
+
+This compounds with issue 30: **no driver screen has been seen on a device at
+all.**
+
+**Done when:** a driver account is driven end to end on a real Android phone,
+including a trip that reports positions and one that is denied permission.
