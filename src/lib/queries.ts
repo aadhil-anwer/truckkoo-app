@@ -365,6 +365,12 @@ export function useMyOffers() {
  * Loads the driver may read. RLS restricts this to loads they hold an offer on
  * or are driving, so no filter is needed here — and adding one would be a
  * client-side control, which is not a control.
+ *
+ * @deprecated Superseded by `useDriverOffers` (0030), which composes payout,
+ * detour and remaining capacity beside the price rather than handing a driver a
+ * table read. **Nothing new may call this.** It survives only because
+ * `driver.tsx`, `offers.tsx` and `trip/[id].tsx` still read it and are rewritten
+ * later in P5; it is deleted with the last of them.
  */
 export function useVisibleLoads() {
   return useQuery({
@@ -375,6 +381,90 @@ export function useVisibleLoads() {
         .select(LOAD_COLUMNS);
       if (error) throw error;
       return data ?? [];
+    },
+  });
+}
+
+/**
+ * What a driver may know about an offer (0030).
+ *
+ * `collect_baisa` is the shipper's price and `payout_baisa` is what the driver
+ * keeps — both are on the card deliberately. A driver collects the first in cash
+ * and remits the difference, so hiding either would leave them guessing at the
+ * gate. See the P5 spec §2: the per-load margin is not a secret from the person
+ * carrying the load.
+ *
+ * Every field here is composed server-side. Drivers do not read `public.loads`:
+ * payout, detour and remaining capacity are computed beside the price they
+ * derive from, and a table read would hand them every column the table grows.
+ */
+export type DriverOffer = {
+  offer_id: string;
+  expires_at: string;
+  leg_id: string | null;
+  origin_city: number;
+  dest_city: number;
+  pickup_from: string;
+  pickup_to: string;
+  goods: string;
+  weight_kg: number | null;
+  truck_type_code: string | null;
+  collect_baisa: number | null;
+  payout_baisa: number | null;
+  owed_baisa: number | null;
+  currency: string;
+  /** NULL when the offer carries no leg, or a city has no coordinate. */
+  detour_km: number | null;
+  /** NULL when capacity or weight is unknown — never a guess. */
+  free_after_kg: number | null;
+};
+
+export function useDriverOffers() {
+  return useQuery({
+    queryKey: ['driver', 'offers'],
+    queryFn: async (): Promise<DriverOffer[]> => {
+      const { data, error } = await supabase.rpc('driver_offers');
+      if (error) throw error;
+      return (data ?? []) as DriverOffer[];
+    },
+  });
+}
+
+/**
+ * One offer, by OFFER id — never by load id. A driver holds no load id, and the
+ * function is scoped to the caller inside the definer, so an id belonging to
+ * somebody else returns nothing rather than a refusal.
+ */
+export function useDriverOffer(offerId: string | undefined) {
+  return useQuery({
+    queryKey: ['driver', 'offer', offerId],
+    enabled: !!offerId,
+    queryFn: async (): Promise<DriverOffer | null> => {
+      const { data, error } = await supabase.rpc('driver_offer', { p_offer_id: offerId });
+      if (error) throw error;
+      return ((data ?? []) as DriverOffer[])[0] ?? null;
+    },
+  });
+}
+
+/** The week starts on Sunday — Oman's weekend is Friday–Saturday. Server-side. */
+export type DriverEarnings = { week_baisa: number; week_trips: number; all_time_trips: number };
+
+export function useDriverEarnings() {
+  return useQuery({
+    queryKey: ['driver', 'earnings'],
+    queryFn: async (): Promise<DriverEarnings | null> => {
+      const { data, error } = await supabase.rpc('driver_earnings');
+      if (error) throw error;
+      const r = ((data ?? []) as Record<string, string | number>[])[0];
+      if (!r) return null;
+      // bigint arrives as a string over PostgREST. Number() here, not at the
+      // call site, so nothing downstream ever concatenates a payout.
+      return {
+        week_baisa: Number(r.week_baisa),
+        week_trips: Number(r.week_trips),
+        all_time_trips: Number(r.all_time_trips),
+      };
     },
   });
 }
@@ -409,6 +499,10 @@ export function useRespondToOffer() {
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
       qc.invalidateQueries({ queryKey: ['loads', 'visible'] });
       qc.invalidateQueries({ queryKey: ['legs', 'mine'] });
+      // Everything the driver reads about themselves: the offer they just
+      // answered is gone from their book, and if they accepted, the trip and the
+      // week's earnings both moved.
+      qc.invalidateQueries({ queryKey: ['driver'] });
     },
   });
 }
@@ -420,6 +514,13 @@ export type PostLegInput = {
   departTo: string;
   truckId?: string | null;
   isEmpty?: boolean;
+  /**
+   * Roughly how much room is left on a part-loaded truck. Undefined and null are
+   * the same answer — "did not say" — and `post_leg` drops it entirely when the
+   * truck is empty, because all of it is free and two answers to one question
+   * disagree eventually.
+   */
+  freeKg?: number | null;
 };
 
 export function usePostLeg() {
@@ -433,6 +534,7 @@ export function usePostLeg() {
         p_depart_to: input.departTo,
         p_truck_id: input.truckId ?? null,
         p_is_empty: input.isEmpty ?? true,
+        p_free_kg: input.freeKg ?? null,
       });
       if (error) throw error;
       return data as string;
