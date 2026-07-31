@@ -1520,6 +1520,18 @@ select assert_true(
      'Dy') = 'Sun'),
   'the earnings week begins on a Sunday');
 
+-- And it moves ACROSS the boundary, which is the case that matters: a Saturday
+-- and the Sunday after it must not share a week. An ISO Monday-start week gives
+-- them the same start date and shows every driver last week's total all Sunday.
+select assert_true(
+  (select date '2026-08-01' - (extract(isodow from date '2026-08-01')::int % 7)
+       = date '2026-07-26'),
+  'a Saturday still belongs to the week that began the Sunday before it');
+select assert_true(
+  (select date '2026-08-02' - (extract(isodow from date '2026-08-02')::int % 7)
+       = date '2026-08-02'),
+  'and the next day starts a new one, because that day is a Sunday');
+
 -- ─── 9e. the rate card is not a driver's to enumerate ───────────────────────
 -- Crown jewel #1 (SECURITY.md §1). Both functions are granted to `authenticated`
 -- and every argument they take is on a driver's own offer card, so without the
