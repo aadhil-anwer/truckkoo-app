@@ -31,7 +31,22 @@ const NORMALISED = SQL.toLowerCase();
  * of a function (search_path pinning, `immutable`, ownership re-checks) must read
  * `SQL` or `NORMALISED`, not this.
  */
-const DDL_ONLY = NORMALISED.replace(/\$\$[\s\S]*?\$\$/g, '\n/* body */\n');
+/**
+ * ANY dollar-quote tag, not just `$$`.
+ *
+ * This stripped `$$…$$` only, and 0023 onward reproduce live function
+ * definitions verbatim — which `pg_get_functiondef` prints delimited with
+ * `$function$`. So those bodies were never stripped, and every statement-level
+ * check silently started reading function *contents* as if they were migration
+ * DDL. That is how "ships no rates" went red: `ops_upsert_rate_card`'s body
+ * contains an `insert into private.rate_cards`, which is the entire purpose of
+ * the function and not a migration shipping a number.
+ *
+ * The tag is captured and back-referenced so an opening `$function$` can only be
+ * closed by `$function$` — matching it against the nearest `$anything$` would
+ * swallow the gap between two unrelated functions.
+ */
+const DDL_ONLY = NORMALISED.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, '\n/* body */\n');
 
 describe('migrations exist and are ordered', () => {
   it('finds the migration set', () => {
@@ -102,9 +117,18 @@ describe('security definer functions', () => {
   it('pins search_path on every one', () => {
     // An unpinned search path in a definer function is a privilege-escalation
     // primitive: the caller chooses which schema your identifiers resolve in.
+    //
+    // BOTH SPELLINGS. `set search_path = ''` is what a hand-written migration
+    // says; `SET search_path TO ''` is what `pg_get_functiondef` prints, and
+    // several migrations from 0023 on reproduce a live definition verbatim
+    // rather than paraphrasing it — deliberately, because paraphrasing a
+    // function that carries an ownership check is how the check gets lost.
+    // Postgres treats the two as identical. A regex that knew only one turned
+    // this assertion red for a spelling, and a security test that is red for a
+    // boring reason is a security test nobody reads.
     for (const body of definers) {
       const head = body.slice(0, body.indexOf('$'));
-      expect(head.replace(/\s+/g, ' ')).toMatch(/set search_path = ''/i);
+      expect(head.replace(/\s+/g, ' ')).toMatch(/set search_path (=|to) ''/i);
     }
   });
 });
@@ -218,7 +242,15 @@ describe('pricing', () => {
       .filter((s) =>
         /^grant execute on function public\.ops_(rate_cards|upsert_rate_card|delete_rate_card)/.test(s),
       );
-    expect(RATE_FNS.length).toBe(3);
+    // BY NAME, NOT BY COUNT. This asserted `=== 3` and went red the day
+    // `ops_upsert_rate_card` gained a `per_km_baisa` argument in 0024: the new
+    // eight-argument grant sits beside the old seven-argument one, so there are
+    // four grants for three functions. Counting rows was never the invariant —
+    // "each of these three is granted, and none of them to anon" is.
+    const GRANTED = new Set(
+      RATE_FNS.map((s) => /public\.ops_(\w+)/.exec(s)?.[1]).filter(Boolean),
+    );
+    expect([...GRANTED].sort()).toEqual(['delete_rate_card', 'rate_cards', 'upsert_rate_card']);
     for (const fn of RATE_FNS) {
       expect(fn).toContain('to authenticated');
       expect(fn).not.toContain('anon');

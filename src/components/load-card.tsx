@@ -26,6 +26,10 @@ import type { Load, LoadStatus } from '@/lib/queries';
 export const TONE: Record<LoadStatus, StampTone> = {
   posted: 'pending',
   finding_truck: 'active',
+  // A price waiting on the shipper is the most actionable state in the list, so
+  // it reads as live rather than pending.
+  quoted: 'active',
+  accepted: 'active',
   matched: 'active',
   assigned: 'active',
   in_transit: 'active',
@@ -35,7 +39,17 @@ export const TONE: Record<LoadStatus, StampTone> = {
 };
 
 /** Still working its way to a truck, rather than already finished. */
-export const LIVE: LoadStatus[] = ['posted', 'finding_truck', 'matched', 'assigned', 'in_transit'];
+export const LIVE: LoadStatus[] = [
+  'posted',
+  'finding_truck',
+  // Omitting these two would hide a load from the shipper's live list at exactly
+  // the moment it is asking them a question.
+  'quoted',
+  'accepted',
+  'matched',
+  'assigned',
+  'in_transit',
+];
 
 /* ─── one live load, as a card ───────────────────────────────────────────── */
 

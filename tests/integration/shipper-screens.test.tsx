@@ -25,7 +25,8 @@ import {
   load,
   mockParams,
   mockPush,
-  mockQuoteMutate,
+  mockAcceptMutate,
+  mockRateMutate,
   ok,
   PENDING,
   resetQueries,
@@ -36,7 +37,7 @@ import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import CustomerHome from '@/app/(app)/(tabs)/customer';
 import LoadsTab from '@/app/(app)/(tabs)/loads';
-import LoadDetail from '@/app/(app)/load/[id]';
+import TrackLoad from '@/app/(app)/load/[id]';
 import * as queries from '@/lib/queries';
 
 beforeEach(() => {
@@ -130,18 +131,6 @@ describe('CustomerHome', () => {
     expect(screen.queryByText('Nothing moving yet')).toBeNull();
   });
 
-  it('strips a bidi override out of a goods description before rendering it', async () => {
-    // SECURITY.md §7: the database rejects these, and the client still refuses to
-    // render one. Both layers on purpose. The shipper's own name goes through the
-    // same sanitiser on this screen.
-    const RLO = '‮'; // escaped: a literal override here would be unreviewable
-    (queries.useMyLoads as jest.Mock).mockReturnValue(
-      ok([load({ status: 'in_transit', goods_description: `furniture${RLO}bricks` })]),
-    );
-    openLoad();
-    await render(<LoadDetail />);
-    expect(screen.getByText('furniturebricks')).toBeTruthy();
-  });
 });
 
 /* ─── the ledger ─────────────────────────────────────────────────────────── */
@@ -178,14 +167,39 @@ describe('LoadsTab', () => {
   });
 });
 
-/* ─── the load itself ────────────────────────────────────────────────────── */
+/* ─── the load itself · T1–T5 ────────────────────────────────────────────── */
 
-describe('LoadDetail', () => {
+/**
+ * THESE ASSERTIONS WERE REWRITTEN FOR P4, NOT REPAIRED.
+ *
+ * The old suite encoded a screen where the shipper's only lever was a "Get a
+ * price" button and a load went from `posted` straight to `assigned` behind
+ * their back. P4 reversed that: a price now WAITS for the shipper, and their
+ * acceptance is what releases the load to drivers. A test asserting the old
+ * order is not a regression guard, it is a record of a decision that has since
+ * been taken the other way — so it is replaced deliberately rather than deleted
+ * to reach green.
+ *
+ * What survives unchanged, because none of it was about the ordering: not-found
+ * is not-yours, a hostile name is sanitised before it renders, the price carries
+ * three decimals, and there is a human reachable from every state.
+ */
+describe('TrackLoad', () => {
   beforeEach(openLoad);
 
-  it('renders the load in full', async () => {
+  const tripOn = (over: Record<string, unknown> = {}) => ({
+    id: 'trip-9',
+    load_id: LOAD_ID,
+    truck_id: 'truck-1',
+    driver_id: 'drv-1',
+    status: 'in_transit',
+    created_at: new Date().toISOString(),
+    ...over,
+  });
+
+  it('renders the cargo under every state', async () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load()]));
-    await render(<LoadDetail />);
+    await render(<TrackLoad />);
 
     expect(screen.getByText('Muscat')).toBeTruthy();
     expect(screen.getByText('Salalah')).toBeTruthy();
@@ -193,141 +207,158 @@ describe('LoadDetail', () => {
     expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
   });
 
-  it('renders an absent weight as "Not given"', async () => {
-    (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ weight_kg: null })]));
-    await render(<LoadDetail />);
-    expect(screen.getByText('Not given')).toBeTruthy();
-  });
-
   it('says the load is not ours rather than 403-ing it', async () => {
     // Not-found and not-yours are the same thing, exactly as they are in the
-    // database (SECURITY.md §3).
+    // database (SECURITY.md §3). A 403 would confirm the load exists.
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([]));
-    await render(<LoadDetail />);
+    await render(<TrackLoad />);
     expect(screen.getByText('We cannot find that job')).toBeTruthy();
   });
 
-  describe('the price', () => {
-    /**
-     * `load.submit` has said "Request a quote" since the first screen existed.
-     * These assert that the answer arrives, and — more importantly — that the
-     * three ways it can arrive without a number all read as "a person is on it"
-     * rather than as a broken field.
-     */
-    const quote = (over: Partial<queries.Quote> = {}): queries.Quote => ({
-      quote_id: 'q1',
-      price_baisa: 150000,
-      currency: 'OMR',
-      outcome: 'quoted',
-      expires_at: '2026-08-03T09:00:00.000Z',
-      ...over,
-    });
-
-    it('renders a quoted price with all three OMR decimals', async () => {
-      // 150000 baisa is 150.000 rial. Rendered as 150.00 it is a tenfold error
-      // that looks entirely plausible — the whole reason money.ts exists.
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ price_baisa: 150000 })]));
-      (queries.useCurrentQuote as jest.Mock).mockReturnValue(ok(quote()));
-      await render(<LoadDetail />);
-
-      expect(screen.getByText(/150\.000 OMR/)).toBeTruthy();
-    });
-
-    it('never implies an in-app charge', async () => {
-      // PRODUCT.md: no payment surfaces, permanently. Showing a price is the
-      // closest this app ever comes, so it says plainly what does not happen.
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ price_baisa: 150000 })]));
-      (queries.useCurrentQuote as jest.Mock).mockReturnValue(ok(quote()));
-      await render(<LoadDetail />);
-
-      expect(screen.getByText(/Nothing is charged in the app/)).toBeTruthy();
-    });
-
-    it('offers to fetch a price when none exists yet', async () => {
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load()]));
-      await render(<LoadDetail />);
-      expect(screen.getByLabelText('Get a price')).toBeTruthy();
-    });
-
-    it('asks the server for the price rather than computing one', async () => {
-      // The formula lives only in the database. A client that could price a load
-      // would be shipping the rate card — crown jewel #1 — in the app bundle.
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load()]));
-      await render(<LoadDetail />);
-
-      await fireEvent.press(screen.getByLabelText('Get a price'));
-      expect(mockQuoteMutate).toHaveBeenCalledWith(LOAD_ID);
-    });
-
-    it.each([
-      ['advise_me', /recommend the truck/],
-      ['no_rate', /price this route by hand/],
-      ['over_capacity', /heavier than the truck you chose/],
-    ] as const)('explains a %s outcome instead of showing a blank price', async (outcome, copy) => {
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ price_baisa: null })]));
-      (queries.useCurrentQuote as jest.Mock).mockReturnValue(
-        ok(quote({ outcome, price_baisa: null })),
-      );
-      await render(<LoadDetail />);
-
-      expect(screen.getByText(copy)).toBeTruthy();
-      // No dash, no empty field, and no retry button dressed up as a fix — a
-      // human is already handling it.
-      expect(screen.queryByLabelText('Get a price')).toBeNull();
-    });
-
-    it('does not offer a price once the load is already on a truck', async () => {
-      // quote_load() refuses anything past finding_truck, so the button must not
-      // appear where the server would reject it.
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'in_transit' })]));
-      await render(<LoadDetail />);
-      expect(screen.queryByLabelText('Get a price')).toBeNull();
-    });
+  it('strips a bidi override out of a goods description before rendering it', async () => {
+    // SECURITY.md §7: the database rejects these and the client still refuses to
+    // render one. Both layers on purpose.
+    const RLO = '‮'; // escaped: a literal override here would be unreviewable
+    (queries.useMyLoads as jest.Mock).mockReturnValue(
+      ok([load({ goods_description: `furniture${RLO}bricks` })]),
+    );
+    await render(<TrackLoad />);
+    expect(screen.getByText('furniturebricks')).toBeTruthy();
   });
 
-  describe('finding_truck — the no-dead-end promise', () => {
-    beforeEach(() => {
+  /* ─── T1 · the narrated wait ───────────────────────────────────────────── */
+
+  describe('T1 · waiting', () => {
+    it.each(['posted', 'finding_truck'] as const)(
+      'narrates the wait rather than spinning — %s',
+      async (status) => {
+        // "Any wait over ~3s is narrated with a Timeline carrying real
+        // information, not a spinner with a caption." This one runs to minutes.
+        (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status })]));
+        await render(<TrackLoad />);
+
+        expect(screen.getByText('LOOKING NOW')).toBeTruthy();
+        expect(screen.getByText(/no need to keep the app open/)).toBeTruthy();
+        expect(screen.getByText('Matching a truck')).toBeTruthy();
+      },
+    );
+
+    it('reads identically in finding_truck — never a dead end', async () => {
+      // To the shipper it is the same fact: we are looking. Which side of the
+      // auto-matcher the load sits on is our problem, not theirs.
       (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'finding_truck' })]));
-    });
-
-    it('explains the wait rather than showing a bare status', async () => {
-      await render(<LoadDetail />);
-      expect(screen.getByText(/We are looking for a truck/)).toBeTruthy();
-    });
-
-    it('offers a human', async () => {
-      await render(<LoadDetail />);
+      await render(<TrackLoad />);
+      expect(screen.queryByText(/no results/i)).toBeNull();
       expect(screen.getByLabelText('WhatsApp us')).toBeTruthy();
     });
 
     it('opens a properly encoded WhatsApp link carrying the reference', async () => {
       const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
-      await render(<LoadDetail />);
+      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'finding_truck' })]));
+      await render(<TrackLoad />);
       await fireEvent.press(screen.getByLabelText('WhatsApp us'));
 
       const url = openURL.mock.calls[0][0];
       expect(url.startsWith('https://wa.me/96875172824?text=')).toBe(true);
       expect(decodeURIComponent(url)).toContain('NO. AAAAAAAA');
     });
+
+    it('shows no price and no accept button before one exists', async () => {
+      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load()]));
+      await render(<TrackLoad />);
+      expect(screen.queryByText('YOUR PRICE')).toBeNull();
+      expect(screen.queryByLabelText(/^Accept/)).toBeNull();
+    });
   });
 
-  /**
-   * PRODUCT.md MVP: "see the assigned truck and driver". Product Principle #4:
-   * show the truck and the person. Both cross a tenant boundary through definer
-   * functions.
-   */
-  describe('once a truck is assigned', () => {
-    const assignedTrip = {
-      id: 'trip-9',
-      load_id: LOAD_ID,
-      truck_id: 'truck-1',
-      status: 'in_transit',
-      created_at: new Date().toISOString(),
-    };
+  /* ─── T2 · the price ───────────────────────────────────────────────────── */
 
+  describe('T2 · the price', () => {
+    const quoted = () => ok([load({ status: 'quoted', price_baisa: 150000 })]);
+
+    it('renders the price with all three OMR decimals', async () => {
+      // 150000 baisa is 150.000 rial. Rendered as 150.00 it is a tenfold error
+      // that looks entirely plausible — the whole reason money.ts exists.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+      expect(screen.getByText('150.000 OMR')).toBeTruthy();
+    });
+
+    it('carries the amount inside the accept button, not just above it', async () => {
+      // Someone agreeing to a price one-handed in a truck cab should not have to
+      // associate a button with a number further up the screen, and a screen
+      // reader announcing "Accept" alone announces nothing.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+      expect(screen.getByLabelText('Accept 150.000 OMR')).toBeTruthy();
+    });
+
+    it('sends the decision to the server rather than setting a status', async () => {
+      // No client sets a status. `accept_quote` re-checks ownership inside the
+      // definer function and is what releases the load to drivers.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+
+      await fireEvent.press(screen.getByLabelText('Accept 150.000 OMR'));
+      expect(mockAcceptMutate).toHaveBeenCalledWith(LOAD_ID);
+    });
+
+    it('never implies an in-app charge', async () => {
+      // No payment surfaces, permanently. Showing a price is the closest this
+      // app ever comes, so it says plainly what does not happen.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+      expect(screen.getByText(/Nothing is charged in the app/)).toBeTruthy();
+      expect(screen.getByText('Pay the driver on delivery')).toBeTruthy();
+    });
+
+    it('spends its accent on the decision, not on a second live marker', async () => {
+      // One accent per screen: here it is the button that commits money, so the
+      // timeline — whose active ring is also accent — must not be on this state.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+      expect(screen.queryByText('Matching a truck')).toBeNull();
+      expect(screen.queryByText('LOOKING NOW')).toBeNull();
+    });
+
+    it('hands over a human instead of a button that cancels the load', async () => {
+      // Declining a price is a conversation, not a state transition.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(quoted());
+      await render(<TrackLoad />);
+      expect(screen.getByLabelText('Ask a question')).toBeTruthy();
+    });
+  });
+
+  /* ─── T1b · the state the handoff never drew ───────────────────────────── */
+
+  describe('T1b · accepted', () => {
+    it('fills the gap between "you said yes" and "a driver said yes"', async () => {
+      // No screen in the 32 covers this, and it is where a shipper is most
+      // likely to sit wondering whether anything happened.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'accepted' })]));
+      await render(<TrackLoad />);
+
+      expect(screen.getByText('Finding your truck.')).toBeTruthy();
+      expect(screen.getByText('Your price, approved')).toBeTruthy();
+      expect(screen.getByText('Truck confirming')).toBeTruthy();
+    });
+
+    it('does not offer the price again once it is accepted', async () => {
+      // An accepted price is immutable; re-pricing is a new quote, decided again.
+      (queries.useMyLoads as jest.Mock).mockReturnValue(
+        ok([load({ status: 'accepted', price_baisa: 150000 })]),
+      );
+      await render(<TrackLoad />);
+      expect(screen.queryByLabelText(/^Accept/)).toBeNull();
+    });
+  });
+
+  /* ─── T3 · a named person ──────────────────────────────────────────────── */
+
+  describe('T3 · assigned', () => {
     beforeEach(() => {
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'in_transit' })]));
-      (queries.useMyTrips as jest.Mock).mockReturnValue(ok([assignedTrip]));
+      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'assigned' })]));
+      (queries.useMyTrips as jest.Mock).mockReturnValue(ok([tripOn({ status: 'assigned' })]));
       (queries.useTripCounterpart as jest.Mock).mockReturnValue(
         ok({ full_name: 'Salim Al-Hinai', phone: '+96890000000', role: 'driver' }),
       );
@@ -336,49 +367,59 @@ describe('LoadDetail', () => {
       );
     });
 
-    it('names the driver', async () => {
-      await render(<LoadDetail />);
-      expect(screen.getByText('Salim Al-Hinai')).toBeTruthy();
+    it('names the person, not "a truck was assigned"', async () => {
+      await render(<TrackLoad />);
+      expect(screen.getByText('Salim Al-Hinai is taking your load.')).toBeTruthy();
     });
 
-    it('shows the truck type and plate, so the shipper can recognise it arriving', async () => {
-      await render(<LoadDetail />);
-      expect(screen.getByText('A-1234')).toBeTruthy();
-      expect(screen.getAllByText('10-ton truck').length).toBeGreaterThan(0);
+    it('shows the vehicle and plate, so the shipper can recognise it arriving', async () => {
+      await render(<TrackLoad />);
+      expect(screen.getByText(/10-ton truck · A-1234 · Verified/)).toBeTruthy();
     });
 
-    it('shows the verified stamp — the public claim made concrete', async () => {
-      await render(<LoadDetail />);
-      expect(screen.getByText('VERIFIED')).toBeTruthy();
-    });
-
-    it('omits the verified stamp when the truck is not verified', async () => {
+    it('omits the verified mark when the truck is not verified', async () => {
       (queries.useTripTruck as jest.Mock).mockReturnValue(
         ok({ truck_type: '10t', plate: 'A-1234', is_verified: false }),
       );
-      await render(<LoadDetail />);
-      expect(screen.queryByText('VERIFIED')).toBeNull();
+      await render(<TrackLoad />);
+      expect(screen.queryByText(/Verified/)).toBeNull();
+    });
+
+    /**
+     * RULE #5, THE ONE THAT MATTERS MOST HERE. The handoff draws "4.9 · 212
+     * trips" on this card. With no history there is no 4.9 and no 212, and the
+     * card shows NEITHER — not "0.0", not "New driver ★", not five grey stars.
+     * A zero reads as a bad driver rather than a new one.
+     */
+    it('shows no rating and no trip count for a driver with no history', async () => {
+      // The harness default: `driver_summary` returned nothing.
+      await render(<TrackLoad />);
+      expect(screen.queryByText(/0\.0/)).toBeNull();
+      expect(screen.queryByText(/New driver/)).toBeNull();
+      expect(screen.queryByText(/trips/)).toBeNull();
+    });
+
+    it('shows a trip count without a rating when nobody has rated them yet', async () => {
+      (queries.useDriverSummary as jest.Mock).mockReturnValue(
+        ok({ trips: 2, avgStars: null, ratings: 0 }),
+      );
+      await render(<TrackLoad />);
+      // "2 trips", not a rounded flourish, and no star beside it.
+      expect(screen.getByText('2 trips')).toBeTruthy();
+    });
+
+    it('shows both once they are real', async () => {
+      (queries.useDriverSummary as jest.Mock).mockReturnValue(
+        ok({ trips: 212, avgStars: 4.9, ratings: 41 }),
+      );
+      await render(<TrackLoad />);
+      expect(screen.getByText('4.9')).toBeTruthy();
+      expect(screen.getByText('· 212 trips')).toBeTruthy();
     });
 
     it('offers a way to reach the driver', async () => {
-      await render(<LoadDetail />);
-      expect(screen.getByLabelText('Message your driver')).toBeTruthy();
-    });
-
-    it('does not offer to reach a driver who gave no phone number', async () => {
-      (queries.useTripCounterpart as jest.Mock).mockReturnValue(
-        ok({ full_name: 'Salim Al-Hinai', phone: null, role: 'driver' }),
-      );
-      await render(<LoadDetail />);
-      expect(screen.queryByLabelText('Message your driver')).toBeNull();
-    });
-
-    it('drops the driver contact once the job is finished', async () => {
-      // The job is over and the relationship is with Truckkoo, not the driver.
-      (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'delivered' })]));
-      await render(<LoadDetail />);
-      expect(screen.queryByLabelText('Message your driver')).toBeNull();
-      expect(screen.getByLabelText('Ask us about this job')).toBeTruthy();
+      await render(<TrackLoad />);
+      expect(screen.getByLabelText('Call the driver')).toBeTruthy();
     });
 
     it('sanitises the driver name before rendering it', async () => {
@@ -387,29 +428,79 @@ describe('LoadDetail', () => {
       (queries.useTripCounterpart as jest.Mock).mockReturnValue(
         ok({ full_name: `Salim${RLO}Hinai`, phone: null, role: 'driver' }),
       );
-      await render(<LoadDetail />);
-      expect(screen.getByText('SalimHinai')).toBeTruthy();
+      await render(<TrackLoad />);
+      expect(screen.getByText('SalimHinai is taking your load.')).toBeTruthy();
+    });
+  });
+
+  /* ─── T4 · on the road ─────────────────────────────────────────────────── */
+
+  describe('T4 · in transit', () => {
+    beforeEach(() => {
+      (queries.useMyLoads as jest.Mock).mockReturnValue(
+        ok([load({ status: 'in_transit', price_baisa: 150000 })]),
+      );
+      (queries.useMyTrips as jest.Mock).mockReturnValue(ok([tripOn()]));
     });
 
-    it('shows the milestone trail', async () => {
-      (queries.useTripEvents as jest.Mock).mockReturnValue(
-        ok([
-          {
-            id: 'e1',
-            trip_id: 'trip-9',
-            type: 'en_route',
-            note: null,
-            photo_path: null,
-            occurred_at: new Date().toISOString(),
-          },
-        ]),
+    it('shows what will be owed at the gate', async () => {
+      // Settlement is offline and the driver is about to ask for it. A shipper
+      // hunting for the number at the gate is a shipper arguing with a driver.
+      await render(<TrackLoad />);
+      expect(screen.getByText('To pay on delivery')).toBeTruthy();
+      expect(screen.getByText('150.000 OMR')).toBeTruthy();
+    });
+
+    it('narrates arrival without claiming a live fix', async () => {
+      // GPS is P6. Until then the position is interpolated and the copy says
+      // "arriving", never "the truck is here".
+      await render(<TrackLoad />);
+      expect(screen.getByText('ARRIVING')).toBeTruthy();
+      expect(screen.getByRole('progressbar')).toBeTruthy();
+    });
+
+    it('still offers a human', async () => {
+      await render(<TrackLoad />);
+      expect(screen.getByLabelText('WhatsApp us')).toBeTruthy();
+    });
+  });
+
+  /* ─── T5 · delivered ───────────────────────────────────────────────────── */
+
+  describe('T5 · delivered', () => {
+    beforeEach(() => {
+      (queries.useMyLoads as jest.Mock).mockReturnValue(
+        ok([load({ status: 'delivered', price_baisa: 150000 })]),
       );
-      await render(<LoadDetail />);
-      expect(screen.getByText('Progress')).toBeTruthy();
-      // "On the road" is also the headline for an in_transit load, so match the
-      // milestone row by its accessible name — which pairs the event with when
-      // it happened, and is the thing a shipper actually reads here.
-      expect(screen.getByLabelText(/^On the road\./)).toBeTruthy();
+      (queries.useMyTrips as jest.Mock).mockReturnValue(ok([tripOn({ status: 'delivered' })]));
+    });
+
+    it('is the receipt the business actually runs on', async () => {
+      // Settlement is offline, so the reference and the amount are what close an
+      // invoice and satisfy a cross-border paper trail.
+      await render(<TrackLoad />);
+      expect(screen.getByText('Delivered.')).toBeTruthy();
+      expect(screen.getByText('Paid to driver')).toBeTruthy();
+      expect(screen.getByText('150.000 OMR')).toBeTruthy();
+      expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
+    });
+
+    it('asks for a rating, and says why it matters', async () => {
+      await render(<TrackLoad />);
+      expect(screen.getByText('How did the driver do?')).toBeTruthy();
+      expect(screen.getByText('It decides who gets your next load.')).toBeTruthy();
+    });
+
+    it('sends the rating to the server, keyed on the trip', async () => {
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('4 stars'));
+      expect(mockRateMutate).toHaveBeenCalledWith({ tripId: 'trip-9', stars: 4 });
+    });
+
+    it('does not ask for a rating on a load that never became a trip', async () => {
+      (queries.useMyTrips as jest.Mock).mockReturnValue(ok([]));
+      await render(<TrackLoad />);
+      expect(screen.queryByText('How did the driver do?')).toBeNull();
     });
 
     it('shows the proof photo once one exists', async () => {
@@ -426,7 +517,7 @@ describe('LoadDetail', () => {
         ]),
       );
       (queries.usePodUrl as jest.Mock).mockReturnValue(ok('https://signed.example/1.jpg'));
-      await render(<LoadDetail />);
+      await render(<TrackLoad />);
       expect(screen.getByLabelText('Photograph taken at delivery')).toBeTruthy();
     });
 
@@ -444,16 +535,24 @@ describe('LoadDetail', () => {
         ]),
       );
       (queries.usePodUrl as jest.Mock).mockReturnValue(ok(null));
-      await render(<LoadDetail />);
+      await render(<TrackLoad />);
       expect(screen.queryByLabelText('Photograph taken at delivery')).toBeNull();
+    });
+
+    it('offers the route again rather than leaving the shipper at a full stop', async () => {
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Send this route again'));
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/post-load',
+        params: { origin: '1', dest: '2' },
+      });
     });
   });
 
   it('shows no carrier detail on a load with no trip yet', async () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load()]));
     (queries.useMyTrips as jest.Mock).mockReturnValue(ok([]));
-    await render(<LoadDetail />);
-    expect(screen.queryByText('Your driver')).toBeNull();
-    expect(screen.queryByText('Progress')).toBeNull();
+    await render(<TrackLoad />);
+    expect(screen.queryByText(/is taking your load/)).toBeNull();
   });
 });

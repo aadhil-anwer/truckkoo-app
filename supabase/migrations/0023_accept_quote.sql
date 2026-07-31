@@ -244,7 +244,7 @@ begin
     null
   );
 end;
-$function$
+$function$;
 
 -- `accepted` and everything after it are now closed to re-pricing, and
 -- `quoted` is open because a price nobody has agreed to yet may still move.
@@ -428,7 +428,7 @@ begin
 
   return v_id;
 end;
-$function$
+$function$;
 
 -- ═══ 8. the dispatcher must still see a load after it is priced ═════════════
 -- Once `ops_set_price` moves a load to `quoted`, it dropped straight out of the
@@ -467,4 +467,4 @@ begin
   where l.status in ('posted', 'finding_truck', 'quoted', 'accepted', 'matched')
   order by l.created_at asc;
 end;
-$function$
+$function$;

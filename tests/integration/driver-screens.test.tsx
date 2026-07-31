@@ -41,6 +41,7 @@ const trip: Trip = {
   id: 'trip-1',
   load_id: LOAD_ID,
   truck_id: null,
+  driver_id: null,
   status: 'assigned',
   created_at: new Date().toISOString(),
 };

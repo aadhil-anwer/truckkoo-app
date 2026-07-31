@@ -27,7 +27,7 @@ import { formatMoney } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
-import { alpha, color, font, hairline, radius, space } from '@/theme/tokens';
+import { alpha, color, font, hairline, space } from '@/theme/tokens';
 
 type Estimate = {
   low_baisa: number | null;

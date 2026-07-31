@@ -54,7 +54,15 @@ import {
 } from '@/theme/tokens';
 
 /** Still working its way to a truck, rather than already finished. */
-const LIVE: Load['status'][] = ['posted', 'finding_truck', 'matched', 'assigned', 'in_transit'];
+const LIVE: Load['status'][] = [
+  'posted',
+  'finding_truck',
+  'quoted',
+  'accepted',
+  'matched',
+  'assigned',
+  'in_transit',
+];
 
 export default function ShipperHome() {
   const router = useRouter();

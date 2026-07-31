@@ -43,8 +43,15 @@ export type TruckType = {
   capacity_kg: number;
 };
 
+/**
+ * `quoted` and `accepted` arrived with 0022 and reordered the flow: a price now
+ * waits for the shipper, and it is their acceptance — not `post_load` — that
+ * releases the load to drivers. Anything switching on this union has to handle
+ * both, and a list that filters for "still live" that predates them silently
+ * drops a load at exactly the moment the shipper is being asked a question.
+ */
 export type LoadStatus =
-  | 'posted' | 'finding_truck' | 'matched' | 'assigned'
+  | 'posted' | 'finding_truck' | 'quoted' | 'accepted' | 'matched' | 'assigned'
   | 'in_transit' | 'delivered' | 'closed' | 'cancelled';
 
 export type Load = {
@@ -84,6 +91,13 @@ export type Trip = {
   id: string;
   load_id: string;
   truck_id: string | null;
+  /**
+   * Readable because `trips` is row-restricted to its two participants — a
+   * shipper only ever sees the driver carrying their own load. It is here so T3
+   * and T5 can ask `driver_summary` for a rating, which is keyed on the driver
+   * rather than the trip.
+   */
+  driver_id: string | null;
   status: 'assigned' | 'in_transit' | 'delivered' | 'closed' | 'cancelled';
   created_at: string;
 };
@@ -286,6 +300,36 @@ export function useQuoteLoad() {
   });
 }
 
+/**
+ * The shipper says yes, and that is what sends the load to drivers.
+ *
+ * `accept_quote` is idempotent and re-checks ownership inside the definer
+ * function, which is what makes it safe to fire from a screen with a live
+ * countdown on a phone with bad signal: a double tap and a retry after a timeout
+ * both land on a load that is already accepted, and both come back a success.
+ * The screen therefore does not need to guard the button beyond `isPending`.
+ *
+ * It returns the resulting status rather than void — a load already `assigned`
+ * when the tap arrives answers `assigned`, and the screen re-renders into the
+ * state it is actually in instead of claiming a transition that never happened.
+ */
+export function useAcceptQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (loadId: string): Promise<LoadStatus> => {
+      const { data, error } = await supabase.rpc('accept_quote', { p_load_id: loadId });
+      if (error) throw error;
+      return data as LoadStatus;
+    },
+    onSuccess: (_status, loadId) => {
+      qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
+      qc.invalidateQueries({ queryKey: ['quote', loadId] });
+      // Acceptance is what triggers dispatch, so a trip can appear moments later.
+      qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
+    },
+  });
+}
+
 /* ─── driver ─────────────────────────────────────────────────────────────── */
 
 export function useMyLegs() {
@@ -341,7 +385,7 @@ export function useMyTrips() {
     queryFn: async (): Promise<Trip[]> => {
       const { data, error } = await supabase
         .from('trips')
-        .select('id, load_id, truck_id, status, created_at')
+        .select('id, load_id, truck_id, driver_id, status, created_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -458,6 +502,57 @@ export function useTripTruck(tripId: string | undefined) {
       if (error) throw error;
       return ((data ?? []) as TripTruck[])[0] ?? null;
     },
+  });
+}
+
+/**
+ * What a shipper may know about the driver carrying their load.
+ *
+ * `avgStars` is **null when nobody has rated them**, and that null is the whole
+ * point: with no history T3 shows the name and the vehicle and no rating at all
+ * — not "0.0", not "New driver ★". Inventing a score is fabricating proof
+ * (CLAUDE.md #5), and a zero reads as a *bad* driver rather than a new one.
+ *
+ * `driver_summary` refuses a driver the caller has no trip with, so this cannot
+ * become a directory of every driver's performance.
+ */
+export type DriverSummary = { trips: number; avgStars: number | null; ratings: number };
+
+export function useDriverSummary(driverId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['driver', driverId, 'summary'],
+    enabled: !!driverId,
+    queryFn: async (): Promise<DriverSummary | null> => {
+      const { data, error } = await supabase.rpc('driver_summary', { p_driver_id: driverId });
+      if (error) throw error;
+      const row = ((data ?? []) as { trips: number; avg_stars: number | null; ratings: number }[])[0];
+      if (!row) return null;
+      return {
+        trips: Number(row.trips),
+        // `numeric` arrives as a string from PostgREST; Number(null) is 0, which
+        // is exactly the fabricated score this must not produce.
+        avgStars: row.avg_stars == null ? null : Number(row.avg_stars),
+        ratings: Number(row.ratings),
+      };
+    },
+  });
+}
+
+/**
+ * One rating per trip, by the shipper who owned it, once it is delivered.
+ *
+ * Insert-once server-side: a second call on the same trip is silently a no-op
+ * rather than an error, so the screen can treat a submitted rating as final and
+ * show thanks rather than a form.
+ */
+export function useRateTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tripId, stars }: { tripId: string; stars: number }) => {
+      const { error } = await supabase.rpc('rate_trip', { p_trip_id: tripId, p_stars: stars });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['driver'] }),
   });
 }
 

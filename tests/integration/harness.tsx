@@ -51,6 +51,8 @@ export const mockReplace = jest.fn();
 export const mockBack = jest.fn();
 export const mockRespondMutate = jest.fn();
 export const mockQuoteMutate = jest.fn();
+export const mockAcceptMutate = jest.fn();
+export const mockRateMutate = jest.fn();
 /** Mutable so a detail-screen test can say which load it opened. */
 export const mockParams: { current: Record<string, string> } = { current: {} };
 
@@ -98,6 +100,12 @@ jest.mock('@/lib/queries', () => {
     // The price. Same reason as the four above.
     useCurrentQuote: jest.fn(),
     useQuoteLoad: jest.fn(),
+    // P4. The shipper's decision, the rating, and what may be known about a
+    // driver — all three reach the tracking screen and all three would otherwise
+    // call the real `useQuery` against a provider this harness does not build.
+    useAcceptQuote: jest.fn(),
+    useRateTrip: jest.fn(),
+    useDriverSummary: jest.fn(),
   };
 });
 
@@ -175,6 +183,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   const m = (name: string) => queries[name] as jest.Mock;
 
   mockRespondMutate.mockReset();
+  mockAcceptMutate.mockReset();
+  mockRateMutate.mockReset();
   mockParams.current = {};
 
   m('useCities').mockReturnValue(ok([MUSCAT, SALALAH]));
@@ -203,4 +213,19 @@ export function resetQueries(queries: Record<string, unknown>) {
     isPending: false,
     isError: false,
   });
+
+  m('useAcceptQuote').mockReturnValue({
+    mutate: mockAcceptMutate,
+    isPending: false,
+    isError: false,
+  });
+  m('useRateTrip').mockReturnValue({
+    mutate: mockRateMutate,
+    isPending: false,
+    isSuccess: false,
+  });
+  // DEFAULT: NO HISTORY. A driver nobody has rated is the state the product
+  // actually starts in, so it is the default here — a fixture that hands every
+  // test "4.9 · 212 trips" would let the absent-rating rule rot untested.
+  m('useDriverSummary').mockReturnValue(ok(null));
 }

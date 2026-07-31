@@ -206,7 +206,7 @@ begin
 
   return query select v_price, 'quoted'::text, v_rate.id, v_rate.currency;
 end;
-$function$
+$function$;
 
 -- ═══ 5. the dispatcher can set the per-km rate ══════════════════════════════
 -- `p_per_km_baisa` is added LAST and defaults to 0, so the ops console's

@@ -44,17 +44,49 @@ and a human resolves it — never a dead end (`CLAUDE.md` #6).
 
 **Done when:** a designer has looked at the state, or it has survived real use.
 
-### An accepted price is committed, and nothing yet enforces that
+### The ops console has not been run against the reordered schema
 
-If a load falls back to `finding_truck` after the shipper accepted a price, the
-price must not be quietly rewritten — that is the difference between a quote and
-a note. The intended behaviour is that ops issues a *new* quote and the shipper
-decides again, seeing T2 a second time.
+`~/truckkoo-ops` is a separate deployment this repo cannot update in the same
+commit, which is why P4's backend landed first. That window is now open and
+nobody has walked through it. Two things changed under it:
 
-**Not built.** `ops_set_price` can currently move a price on a load in any state.
+- **`quoted` and `accepted` are new statuses** it does not know. Additive, so an
+  un-updated console keeps working — it just cannot act on them.
+- **`ops_set_price` now refuses a load the shipper has accepted** (0026), with a
+  new error, `price already accepted by the shipper`. A console that reports raw
+  errors will show that string to a dispatcher.
 
-**Done when:** re-pricing a load the shipper has already accepted either requires
-a fresh shipper decision or is refused, and `supabase/tests/` asserts it.
+**Done when:** the console renders the two new statuses in its queue and handles
+the refusal as a sentence rather than a stack trace.
+
+### The tracking screen dropped "Get a price", and nothing replaces the button
+
+The old `load/[id]` carried a secondary "Get a price" that called `quote_load`.
+In the P4 order a price is not something the shipper asks for — it arrives, and
+T1 is the wait while it does. So the button is gone from the screen.
+
+`quote_load` itself is untouched and still granted; `post_load` and the ops
+console are its callers now. The exposure this closes is small, but the thing to
+watch is the opposite failure: a load that never gets priced now has **no
+shipper-facing way to nudge it**, only the WhatsApp backstop pinned to T1.
+
+**Done when:** either the auto-pricing path is reliable enough that the absence
+never shows, or T1 grows an explicit "still waiting?" affordance after some
+interval. Not before there is real data on which it is.
+
+### T4 draws a truck at a position nobody measured
+
+The marker on `in_transit` sits at a point interpolated between the two cities
+from the collection time and the road duration — a straight line at a constant
+speed, on a corridor that is neither. The copy is written to never claim
+otherwise ("arriving", never "the truck is here"), and the progress bar and the
+marker share one number so they cannot contradict each other on screen.
+
+It is still a guess drawn as a fact, and a shipper who watches it against a phone
+call from their driver will notice.
+
+**Done when:** P6 lands GPS. Until then, resist adding any copy to T4 that would
+read as a live fix.
 
 ### P0 shipped a design system nobody has seen on a phone
 

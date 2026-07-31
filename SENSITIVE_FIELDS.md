@@ -68,6 +68,7 @@ Client may write: `truck_type`, `plate`, `capacity_kg` (on own rows).
 | `price_baisa` | **Crown jewel #1.** Client-supplied prices are display data, never authority (`SECURITY.md` §5). | Server pricing path only |
 | `currency` | Paired with the above; a currency swap is a 1000× price change given OMR's three decimals | Server only |
 | `status` | Business state machine (`SECURITY.md` §8). Self-setting `assigned` binds a truck without dispatch. | RPC transitions only |
+| `accepted_at` | **The fact `status` cannot carry** (0026). `matched` is reachable both before acceptance (a dispatcher offering by hand) and after it (auto-dispatch inside `accept_quote`), so a status check cannot tell a commitment from an intention. This is what makes an accepted price immutable to `ops_set_price`. | `accept_quote()` only |
 | `shipper_id` | Ownership | Fixed at insert to `auth.uid()` |
 | `created_at` | Audit integrity | Nobody |
 
@@ -148,6 +149,26 @@ Client may **read** its own rows, by explicit column grant — with one exceptio
 `loads.price_baisa` gains a second defence in the same change: a
 `before update` trigger on `loads` nulls the price if any binding column moves,
 so a price can never outlive the thing it priced.
+
+## `public.ratings`
+
+Client may write: **nothing**, and client may read: **nothing.** The table has no
+grant to `anon` or `authenticated` at all. A rating is written by `rate_trip()`
+and read only in aggregate through `driver_summary()`.
+
+| Field | Why it's locked | Who may change it |
+|---|---|---|
+| `stars` | A driver who could write this rates themselves; a shipper who could update one holds a driver's score hostage after the fact. Insert-once — a rating that can be revised is a note. | `rate_trip()`, once per trip |
+| `driver_id` | Denormalised from the trip. Client-supplied, it would let anyone attach a score to any driver. | Derived inside `rate_trip()` |
+| `shipper_id` | Ownership | `auth.uid()` inside the definer |
+| `trip_id` | Primary key, and the thing `rate_trip()` checks the caller owns and has had delivered. | Fixed at insert |
+
+**No per-driver read grant, deliberately.** Individual scores are supply
+intelligence of the same kind as a driver's legs — a shipper who could read the
+`ratings` table would be reading every driver's performance. `driver_summary()`
+returns a count and an average, refuses a driver the caller has no trip with, and
+returns **NULL rather than 0** when nobody has rated them, so the screen shows
+nothing rather than inventing a score.
 
 ## `private.rate_cards` — the rate card itself
 

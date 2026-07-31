@@ -837,6 +837,44 @@ select assert_true(
     where a.action = 'ops_set_price'),
   'a price that was set does log, in integer baisa — 45000 is 45.000 OMR');
 
+-- ─── 6j2. an accepted price is immutable (0023) ─────────────────────────────
+--
+-- A price the shipper has agreed to is a COMMITMENT. Rewriting it silently is
+-- the difference between a quote and a note, and the shipper would find out at
+-- the gate. Re-pricing has to become a NEW quote that they decide on again.
+--
+-- This was filed as unbuilt in OPEN_ISSUES at P0 — "ops_set_price can currently
+-- move a price on a load in any state" — and closed by 0023. It is asserted here
+-- rather than in tenant_isolation because the caller is a dispatcher, and only
+-- this suite has one.
+--
+-- Worth knowing WHY the guard was nearly useless: the first attempt added a
+-- three-argument `ops_set_price` overload and left the real two-argument
+-- function untouched, so the guard sat beside an unguarded function of the same
+-- name and the console went on calling the unguarded one. That is why this
+-- assertion names the two-argument signature explicitly.
+
+-- a0a0a0a0…0002 is open and priced from the section above. Take it through the
+-- shipper's decision, then try to move the price under them.
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select public.accept_quote('a0a0a0a0-0000-4000-8000-000000000002');
+select act_as_reset();
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+select assert_raises(
+  $$select public.ops_set_price('a0a0a0a0-0000-4000-8000-000000000002', 99000)$$,
+  'ops_set_price refuses a load the shipper has already accepted');
+select act_as_reset();
+
+select assert_true(
+  (select price_baisa = 45000 from public.loads
+    where id = 'a0a0a0a0-0000-4000-8000-000000000002'),
+  'and the agreed price is still the agreed price');
+
+select assert_equals(
+  (select count(*) from private.ops_audit where action = 'ops_set_price'), 1,
+  'a refused re-price writes no audit row — a rejection is not a write');
+
 -- ─── 6k. the refactor did not break the driver's own path ───────────────────
 --
 -- respond_to_offer was recreated to delegate to private.accept_offer so trip

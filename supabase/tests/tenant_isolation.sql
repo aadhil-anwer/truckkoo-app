@@ -96,6 +96,18 @@ begin
   raise exception 'FAIL: % — statement succeeded but should have been denied', p_what;
 end $$;
 
+-- For assertions whose subject is a NULL rather than a count — `driver_summary`
+-- returning no rating is the case this exists for, and `assert_equals` cannot
+-- express it because NULL is precisely the value under test.
+create or replace function assert_true(p_cond boolean, p_what text)
+returns void language plpgsql as $$
+begin
+  if p_cond is not true then
+    raise exception 'FAIL: % — expected true, got %', p_what, coalesce(p_cond::text, 'null');
+  end if;
+  raise notice 'pass: %', p_what;
+end $$;
+
 -- Impersonate a user the way PostgREST does.
 create or replace function act_as(p_uid uuid)
 returns void language plpgsql as $$
@@ -1016,6 +1028,254 @@ begin
 end $$;
 
 do $$ begin raise notice 'city coordinates: present, in-region, and distinct'; end $$;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 7. P4 — the whole walk, and the ratings table (0022, 0023)
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- §6a above asserts the REORDER — that posting no longer dispatches and that
+-- accepting is what does. This section asserts the rest of the line: that a load
+-- can actually travel `posted → quoted → accepted → assigned → in_transit →
+-- delivered` end to end, and that the new `ratings` table denies by default like
+-- every other owned table.
+--
+-- The walk matters more than it looks. `advance_trip` pinned `search_path = ''`
+-- and then cast to a bare `'delivered'::load_status`, so the whole delivery flow
+-- was dead for months and nothing noticed, because no test ever called it. A
+-- suite that asserts each transition in isolation would not have caught it
+-- either — what catches it is walking the line.
+
+-- ─── 7a. posted → delivered, in one continuous walk ─────────────────────────
+
+do $$
+declare
+  v_muscat  bigint;
+  v_salalah bigint;
+begin
+  select id into v_muscat  from public.cities where name_en = 'Muscat';
+  select id into v_salalah from public.cities where name_en = 'Salalah';
+
+  -- A leg for driver A to be matched against, and a rate so the load prices.
+  insert into public.legs (id, driver_id, origin_city, dest_city, depart_from, depart_to, is_empty)
+  values ('bbbbbbbb-0000-4000-8000-0000000000f4', '33333333-3333-4333-8333-333333333333',
+          v_muscat, v_salalah, current_date + 20, current_date + 22, true)
+  on conflict (id) do nothing;
+end $$;
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select public.post_load(
+  (select id from public.cities where name_en = 'Muscat'),
+  (select id from public.cities where name_en = 'Salalah'),
+  current_date + 20, current_date + 22, 'The full walk', 9000, '10t');
+
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'The full walk' and status = 'quoted'),
+  1, 'walk: a priced load stops at quoted, waiting on the shipper');
+
+select public.accept_quote((select id from public.loads where goods_description = 'The full walk'));
+
+-- `accepted` is a state a load can pass STRAIGHT THROUGH. `create_offer` moves
+-- it to `matched` the moment an offer goes out, and auto-dispatch runs inside
+-- `accept_quote` — so with a tier-1 candidate waiting, the load is `matched`
+-- before the transaction ends and `accepted` is never observed from outside.
+-- That is correct, and it is why T1b renders `accepted` and `matched` as one
+-- screen. The shipper cannot tell them apart and should not have to.
+select assert_equals(
+  (select count(*) from public.loads
+    where goods_description = 'The full walk' and status = 'matched'),
+  1, 'walk: accepting dispatches, and an offer sent moves it to matched');
+select act_as_reset();
+
+-- With nothing dispatched, `accepted` is where a load RESTS — the state the
+-- handoff never drew and the one a shipper is most likely to sit in. The kill
+-- switch is the cleanest way to produce it: an empty-leg match is not bounded
+-- tightly enough by date to be reliably starved, and a test that depends on the
+-- matcher finding nothing would pass for the wrong reason the day it changed.
+update private.app_settings set value = 'false'::jsonb where key = 'auto_dispatch_enabled';
+
+select act_as('11111111-1111-4111-8111-111111111111');
+select public.post_load(
+  (select id from public.cities where name_en = 'Muscat'),
+  (select id from public.cities where name_en = 'Salalah'),
+  current_date + 300, current_date + 302, 'Accepted with nobody to ask', 9000, '10t');
+select public.accept_quote(
+  (select id from public.loads where goods_description = 'Accepted with nobody to ask'));
+select act_as_reset();
+
+update private.app_settings set value = 'true'::jsonb where key = 'auto_dispatch_enabled';
+
+select assert_equals(
+  (select count(*) from public.loads
+    where goods_description = 'Accepted with nobody to ask' and status = 'accepted'),
+  1, 'walk: with nothing dispatched the load rests at accepted rather than dead-ending');
+
+-- The driver takes the offer, which is what creates the trip.
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select public.respond_to_offer(
+  (select o.id from public.offers o join public.loads l on l.id = o.load_id
+    where l.goods_description = 'The full walk' and o.status = 'pending' limit 1),
+  true);
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'The full walk' and status = 'assigned'),
+  1, 'walk: a driver accepting assigns the load');
+
+-- IDEMPOTENCE, at the point it actually matters. The shipper's screen carries a
+-- committing button and a countdown on a phone with bad signal, so a second tap
+-- arrives on a load that is already assigned. It must be a success, not an error,
+-- and it must not move the load backwards.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_equals(
+  (select count(*) from (
+     select public.accept_quote(
+       (select id from public.loads where goods_description = 'The full walk')) as s
+   ) again where again.s = 'assigned'),
+  1, 'walk: a second accept on an assigned load answers assigned rather than raising');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select public.advance_trip(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'),
+  'in_transit');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'The full walk' and status = 'in_transit'),
+  1, 'walk: the driver setting out puts the load on the road');
+
+select act_as('33333333-3333-4333-8333-333333333333');
+-- Delivery requires proof. `advance_trip` refuses it without a photo path, which
+-- is the one place the paper trail is enforced rather than requested.
+select public.advance_trip(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'),
+  'delivered', null, 'trip-walk/1.jpg');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'The full walk' and status = 'delivered'),
+  1, 'walk: posted → quoted → accepted → assigned → in_transit → delivered, end to end');
+
+-- ─── 7b. an accepted price is immutable ─────────────────────────────────────
+-- A price the shipper has agreed to is a commitment. Rewriting it silently is
+-- the difference between a quote and a note; re-pricing has to become a NEW
+-- quote that the shipper decides on again.
+
+-- A FRESH UNPRICED LOAD, not the seed fixture. `A cargo — confidential` has been
+-- offered and assigned by §5 by the time this runs, so `accept_quote` answers it
+-- idempotently and succeeds — which is correct behaviour and the wrong subject.
+--
+-- And AS THE OWNER, deliberately. With no actor this passes for the wrong reason
+-- — "not authenticated" rather than "no price to accept" — and an assert_raises
+-- satisfied by the wrong rejection is worse than no test, because it reads green
+-- while checking nothing.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description)
+values ('aaaaaaaa-0000-4000-8000-0000000000f4', '11111111-1111-4111-8111-111111111111',
+        (select id from public.cities where name_en = 'Muscat'),
+        (select id from public.cities where name_en = 'Salalah'),
+        current_date + 1, current_date + 3, 'Never priced')
+on conflict (id) do nothing;
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_raises(
+  $$select public.accept_quote('aaaaaaaa-0000-4000-8000-0000000000f4')$$,
+  'a load with no price cannot be accepted into existence');
+select act_as_reset();
+
+select act_as('22222222-2222-4222-8222-222222222222');  -- Shipper B
+select assert_raises(
+  $$select public.accept_quote(
+      (select id from public.loads where goods_description = 'The full walk'))$$,
+  'a shipper cannot accept a price on somebody else''s load');
+select act_as_reset();
+
+-- ─── 7c. ratings deny by default ────────────────────────────────────────────
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_raises(
+  $$select count(*) from public.ratings$$,
+  'a shipper cannot read the ratings table directly');
+select assert_raises(
+  $$insert into public.ratings (trip_id, shipper_id, driver_id, stars)
+    values ((select t.id from public.trips t join public.loads l on l.id = t.load_id
+              where l.goods_description = 'The full walk'),
+            '11111111-1111-4111-8111-111111111111',
+            '33333333-3333-4333-8333-333333333333', 5)$$,
+  'and cannot write one around rate_trip');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_raises(
+  $$select count(*) from public.ratings$$,
+  'and a driver cannot read their own scores, let alone anyone else''s');
+select act_as_reset();
+
+-- ─── 7d. driver_summary — real or absent, never zero ────────────────────────
+-- THE ORDER OF THIS SECTION IS THE TEST. Driver A has just delivered a load for
+-- shipper A and nobody has rated them, which is exactly what T3 renders on the
+-- day the product launches. Asserting the NULL here, BEFORE any rating exists,
+-- is the only way to assert it at all — once a rating lands the case is gone.
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_true(
+  (select avg_stars is null and ratings = 0 and trips = 1
+     from public.driver_summary('33333333-3333-4333-8333-333333333333')),
+  'a delivered driver nobody has rated reports NULL stars, never 0.0');
+select act_as_reset();
+
+-- And it is not a directory. Shipper B has no trip with driver A, so asking is
+-- "not found" rather than a performance record readable by anyone who signs up.
+select act_as('22222222-2222-4222-8222-222222222222');
+select assert_raises(
+  $$select * from public.driver_summary('33333333-3333-4333-8333-333333333333')$$,
+  'a shipper cannot look up a driver they have never dealt with');
+select act_as_reset();
+
+-- ─── 7e. rate_trip — once, by the owner, after delivery ─────────────────────
+
+select act_as('22222222-2222-4222-8222-222222222222');  -- Shipper B
+select assert_raises(
+  $$select public.rate_trip(
+      (select t.id from public.trips t join public.loads l on l.id = t.load_id
+        where l.goods_description = 'The full walk'), 1::smallint)$$,
+  'a shipper cannot rate a trip that is not theirs');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_raises(
+  $$select public.rate_trip(
+      (select t.id from public.trips t join public.loads l on l.id = t.load_id
+        where l.goods_description = 'The full walk'), 9::smallint)$$,
+  'stars outside 1..5 are refused');
+
+select public.rate_trip(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'), 5::smallint);
+
+-- INSERT-ONCE. A rating that can be revised after the fact is a note, and the
+-- second call is a silent no-op rather than an error, because the screen treats
+-- a submitted rating as final and must not be shown a failure for saying so twice.
+select public.rate_trip(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'), 1::smallint);
+select act_as_reset();
+
+select assert_equals(
+  (select stars from public.ratings r
+    join public.trips t on t.id = r.trip_id
+    join public.loads l on l.id = t.load_id
+   where l.goods_description = 'The full walk'),
+  5, 'a rating is written once and the second call does not overwrite it');
+
+-- And now the number is real, so it may be shown.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_true(
+  (select avg_stars = 5.0 and ratings = 1 and trips = 1
+     from public.driver_summary('33333333-3333-4333-8333-333333333333')),
+  'once a real rating exists, it is what the driver card reports');
+select act_as_reset();
 
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
