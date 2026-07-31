@@ -483,6 +483,88 @@ export function useDriverTrip(tripId: string | undefined) {
   });
 }
 
+/**
+ * Where the truck is, and when it lands (0032).
+ *
+ * ALWAYS ONE ROW for a trip the caller may see. `eta_source` says which answer
+ * it is: `'fix'` means `lat`/`lng`/`seen_at` are a real position a phone
+ * reported, `'corridor'` means there has never been one and the ETA is the old
+ * corridor estimate — in which case the screen must say so.
+ *
+ * There is no third state and no trail. "Where is my truck" is the product;
+ * "where has this driver been" is a movement record, and the server never
+ * returns more than this row.
+ */
+export type TripPosition = {
+  lat: number | null;
+  lng: number | null;
+  seen_at: string | null;
+  accuracy_m: number | null;
+  remaining_km: number | null;
+  eta_at: string | null;
+  eta_source: 'fix' | 'corridor';
+};
+
+export function useTripPosition(tripId: string | undefined) {
+  return useQuery({
+    queryKey: ['trip', 'position', tripId],
+    enabled: !!tripId,
+    // A position is the one thing on T4 that changes without the shipper doing
+    // anything. Sixty seconds matches the driver's own reporting interval —
+    // asking faster cannot produce a newer fix.
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<TripPosition | null> => {
+      const { data, error } = await supabase.rpc('trip_position', { p_trip_id: tripId });
+      if (error) throw error;
+      const r = ((data ?? []) as Record<string, string | number | null>[])[0];
+      if (!r) return null;
+      // numeric arrives as a string over PostgREST. Number() here, once, so
+      // nothing downstream hands a string to the projection and wonders why the
+      // truck is in the corner of the map.
+      const num = (v: string | number | null) => (v == null ? null : Number(v));
+      return {
+        lat: num(r.lat),
+        lng: num(r.lng),
+        seen_at: (r.seen_at as string | null) ?? null,
+        accuracy_m: num(r.accuracy_m),
+        remaining_km: num(r.remaining_km),
+        eta_at: (r.eta_at as string | null) ?? null,
+        eta_source: r.eta_source === 'fix' ? 'fix' : 'corridor',
+      };
+    },
+  });
+}
+
+/**
+ * Report one fix. Resolves `false` when the trip is no longer live, which is not
+ * an error — the delivery transition and the last queued ping race by seconds,
+ * and the driver must not see a failure at the gate.
+ */
+export function useReportPosition() {
+  return useMutation({
+    mutationFn: async ({
+      tripId,
+      lat,
+      lng,
+      accuracyM,
+    }: {
+      tripId: string;
+      lat: number;
+      lng: number;
+      accuracyM?: number | null;
+    }): Promise<boolean> => {
+      const { data, error } = await supabase.rpc('report_position', {
+        p_trip_id: tripId,
+        p_lat: lat,
+        p_lng: lng,
+        p_accuracy_m: accuracyM ?? null,
+      });
+      if (error) throw error;
+      return data === true;
+    },
+  });
+}
+
 export function useMyTrips() {
   return useQuery({
     queryKey: ['trips', 'mine'],
