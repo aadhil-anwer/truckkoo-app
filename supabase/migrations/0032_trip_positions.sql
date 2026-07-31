@@ -123,3 +123,158 @@ revoke all on function public.report_position(uuid, numeric, numeric, numeric)
   from public, anon;
 grant execute on function public.report_position(uuid, numeric, numeric, numeric)
   to authenticated;
+
+-- ═══ how far is left ════════════════════════════════════════════════════════
+-- The point-to-city twin of private.route_km (0024), sharing its haversine and
+-- its road factor rather than restating either. One distance implementation,
+-- server-side, is the same rule the price follows.
+
+create or replace function private.point_km(
+  p_lat     numeric,
+  p_lng     numeric,
+  p_city_id bigint
+)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  c        public.cities;
+  v_factor numeric;
+  v_km     numeric;
+begin
+  select * into c from public.cities x where x.id = p_city_id;
+  if c.id is null or p_lat is null or p_lng is null then
+    return null;
+  end if;
+
+  v_km := 2 * 6371 * asin(
+    sqrt(
+      power(sin(radians(c.lat - p_lat) / 2), 2)
+      + cos(radians(p_lat)) * cos(radians(c.lat))
+        * power(sin(radians(c.lng - p_lng) / 2), 2)
+    )
+  );
+
+  select coalesce((value #>> '{}')::numeric, 120) into v_factor
+  from private.app_settings where key = 'road_factor_pct';
+
+  return round(v_km * v_factor / 100, 1);
+end;
+$$;
+
+revoke all on function private.point_km(numeric, numeric, bigint)
+  from public, anon, authenticated;
+
+-- ═══ what a screen may know about where the truck is ════════════════════════
+-- ONE ROW, ALWAYS — for any trip the caller may see, whether or not a fix
+-- exists. With no fix, lat/lng/seen_at are null and eta_source is 'corridor':
+-- the arrival time from the pickup event plus the full corridor duration, which
+-- is the estimate T4 shows today. With a fix, eta_source is 'fix'.
+--
+-- BOTH ETAs LIVE HERE. A client-side fallback would be a second arrival-time
+-- implementation, and two of those disagree eventually — the same reason there
+-- is no src/lib/pricing.ts.
+--
+-- THE LATEST FIX ONLY. The trail is never returned to a client: "where is my
+-- truck" is the product; "where has this driver been for a month" is a movement
+-- record, and the difference is this `limit 1`.
+
+create or replace function public.trip_position(p_trip_id uuid)
+returns table (
+  lat          numeric,
+  lng          numeric,
+  seen_at      timestamptz,
+  accuracy_m   numeric,
+  remaining_km numeric,
+  eta_at       timestamptz,
+  eta_source   text
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor    uuid := auth.uid();
+  v_trip     public.trips;
+  v_load     public.loads;
+  v_fix      public.trip_positions;
+  v_speed    numeric;
+  v_from     timestamptz;
+  v_km       numeric;
+begin
+  if v_actor is null then
+    raise exception 'not authenticated' using errcode = 'insufficient_privilege';
+  end if;
+
+  select * into v_trip from public.trips t where t.id = p_trip_id;
+  if v_trip.id is null then
+    return;
+  end if;
+
+  select * into v_load from public.loads l where l.id = v_trip.load_id;
+
+  -- Scoped INSIDE the definer, like match_load and driver_offers: the driver on
+  -- the trip, the shipper who owns the load, or ops. Anyone else gets no row —
+  -- "not found", never "forbidden", because a distinct refusal confirms the
+  -- trip exists.
+  if not (
+    v_trip.driver_id = v_actor
+    or private.owns_load(v_trip.load_id)
+    or private.is_ops()
+  ) then
+    return;
+  end if;
+
+  select * into v_fix
+  from public.trip_positions p
+  where p.trip_id = p_trip_id
+  order by p.seen_at desc
+  limit 1;
+
+  select coalesce((value #>> '{}')::numeric, 65) into v_speed
+  from private.app_settings where key = 'avg_speed_kph';
+  if v_speed is null or v_speed <= 0 then
+    v_speed := 65;
+  end if;
+
+  if v_fix.id is not null then
+    v_km := private.point_km(v_fix.lat, v_fix.lng, v_load.dest_city);
+    return query select
+      v_fix.lat,
+      v_fix.lng,
+      v_fix.seen_at,
+      v_fix.accuracy_m,
+      v_km,
+      -- From NOW, not from the fix: the remaining distance is what was left when
+      -- the phone last looked, and the truck has been driving since.
+      (now() + make_interval(secs => (v_km / v_speed * 3600)::int)),
+      'fix'::text;
+    return;
+  end if;
+
+  -- No fix. The corridor estimate, said to be one.
+  v_from := coalesce(
+    (select max(e.occurred_at) from public.trip_events e
+      where e.trip_id = p_trip_id and e.type = 'picked_up'),
+    v_trip.created_at);
+
+  v_km := private.route_km(v_load.origin_city, v_load.dest_city);
+
+  return query select
+    null::numeric,
+    null::numeric,
+    null::timestamptz,
+    null::numeric,
+    v_km,
+    case when v_km is null then null
+         else v_from + make_interval(secs => (v_km / v_speed * 3600)::int) end,
+    'corridor'::text;
+end;
+$$;
+
+revoke all on function public.trip_position(uuid) from public, anon;
+grant execute on function public.trip_position(uuid) to authenticated;

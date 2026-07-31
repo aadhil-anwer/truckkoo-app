@@ -1674,6 +1674,82 @@ select assert_equals(
 update public.trips set status = 'in_transit'::public.trip_status
  where load_id = (select id from public.loads where goods_description = 'The full walk');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 11. reading a position (0032)
+-- ════════════════════════════════════════════════════════════════════════════
+-- §10 left one fix on `The full walk`, and the trip back in transit.
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A, who owns it
+select assert_true(
+  (select eta_source = 'fix' and lat is not null
+     from public.trip_position(
+       (select t.id from public.trips t join public.loads l on l.id = t.load_id
+         where l.goods_description = 'The full walk'))),
+  'the shipper reads the real fix, and is told it is one');
+select assert_true(
+  (select remaining_km > 0
+     from public.trip_position(
+       (select t.id from public.trips t join public.loads l on l.id = t.load_id
+         where l.goods_description = 'The full walk'))),
+  'with a distance measured from where the truck actually is');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A, on the trip
+select assert_equals(
+  (select count(*) from public.trip_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  1, 'and so does the driver, about their own job');
+select act_as_reset();
+
+-- The whole point of scoping inside the definer.
+select act_as('22222222-2222-4222-8222-222222222222');  -- Shipper B
+select assert_equals(
+  (select count(*) from public.trip_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  0, 'another shipper holding that trip id reads nothing at all');
+select act_as_reset();
+
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_equals(
+  (select count(*) from public.trip_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  0, 'and neither does another driver');
+select act_as_reset();
+
+-- ONE ROW, NOT THE TRAIL. Two more fixes, and the shipper still gets one.
+select act_as('33333333-3333-4333-8333-333333333333');
+select public.report_position(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'), 22.500, 57.500, 8);
+select public.report_position(
+  (select t.id from public.trips t join public.loads l on l.id = t.load_id
+    where l.goods_description = 'The full walk'), 21.000, 56.000, 8);
+select act_as_reset();
+
+select assert_equals((select count(*) from public.trip_positions), 3,
+  'three fixes are stored');
+
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_equals(
+  (select count(*) from public.trip_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  1, 'and the shipper still reads exactly one — the trail is not theirs');
+select act_as_reset();
+
+-- A trip that has never reported still answers, with the corridor estimate.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_true(
+  (select eta_source = 'corridor' and lat is null and eta_at is not null
+     from public.trip_position(
+       (select t.id from public.trips t join public.loads l on l.id = t.load_id
+         where l.goods_description = 'A cargo — confidential'))),
+  'a trip with no fix returns a corridor estimate and no position');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;
