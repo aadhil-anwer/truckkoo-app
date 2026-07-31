@@ -76,6 +76,8 @@ export type Leg = {
   depart_from: string;
   depart_to: string;
   is_empty: boolean;
+  /** Room left on a part-loaded truck. NULL is "empty, or did not say" (0029). */
+  free_kg: number | null;
   status: 'open' | 'matched' | 'closed' | 'cancelled';
 };
 
@@ -338,7 +340,7 @@ export function useMyLegs() {
     queryFn: async (): Promise<Leg[]> => {
       const { data, error } = await supabase
         .from('legs')
-        .select('id, origin_city, dest_city, depart_from, depart_to, is_empty, status')
+        .select('id, origin_city, dest_city, depart_from, depart_to, is_empty, free_kg, status')
         .order('depart_from');
       if (error) throw error;
       return data ?? [];
@@ -355,30 +357,6 @@ export function useMyOffers() {
         .select('id, load_id, leg_id, status, expires_at')
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-}
-
-/**
- * Loads the driver may read. RLS restricts this to loads they hold an offer on
- * or are driving, so no filter is needed here — and adding one would be a
- * client-side control, which is not a control.
- *
- * @deprecated Superseded by `useDriverOffers` (0030), which composes payout,
- * detour and remaining capacity beside the price rather than handing a driver a
- * table read. **Nothing new may call this.** It survives only because
- * `driver.tsx`, `offers.tsx` and `trip/[id].tsx` still read it and are rewritten
- * later in P5; it is deleted with the last of them.
- */
-export function useVisibleLoads() {
-  return useQuery({
-    queryKey: ['loads', 'visible'],
-    queryFn: async (): Promise<Load[]> => {
-      const { data, error } = await supabase
-        .from('loads')
-        .select(LOAD_COLUMNS);
       if (error) throw error;
       return data ?? [];
     },
@@ -469,6 +447,42 @@ export function useDriverEarnings() {
   });
 }
 
+/**
+ * The job a driver is on (0031), composed like an offer.
+ *
+ * `payout_baisa` is what they earn; `collect_baisa` is what they take at the
+ * gate. Same three numbers as `DriverOffer`, so `DriverMoney` renders either.
+ */
+export type DriverTrip = {
+  trip_id: string;
+  status: Trip['status'];
+  load_id: string;
+  origin_city: number;
+  dest_city: number;
+  pickup_from: string;
+  pickup_to: string;
+  goods: string;
+  weight_kg: number | null;
+  collect_baisa: number | null;
+  payout_baisa: number | null;
+  owed_baisa: number | null;
+  currency: string;
+  shipper_name: string | null;
+  shipper_phone: string | null;
+};
+
+export function useDriverTrip(tripId: string | undefined) {
+  return useQuery({
+    queryKey: ['driver', 'trip', tripId],
+    enabled: !!tripId,
+    queryFn: async (): Promise<DriverTrip | null> => {
+      const { data, error } = await supabase.rpc('driver_trip', { p_trip_id: tripId });
+      if (error) throw error;
+      return ((data ?? []) as DriverTrip[])[0] ?? null;
+    },
+  });
+}
+
 export function useMyTrips() {
   return useQuery({
     queryKey: ['trips', 'mine'],
@@ -497,7 +511,6 @@ export function useRespondToOffer() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['offers', 'mine'] });
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
-      qc.invalidateQueries({ queryKey: ['loads', 'visible'] });
       qc.invalidateQueries({ queryKey: ['legs', 'mine'] });
       // Everything the driver reads about themselves: the offer they just
       // answered is gone from their book, and if they accepted, the trip and the
@@ -565,7 +578,6 @@ export function useAdvanceTrip() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
-      qc.invalidateQueries({ queryKey: ['loads', 'visible'] });
     },
   });
 }

@@ -17,6 +17,7 @@ import {
   LOAD_ID,
   OFFER_ID,
   driverOffer,
+  driverTrip,
   load,
   mockParams,
   mockPush,
@@ -31,10 +32,12 @@ import DriverHome from '@/app/(app)/(tabs)/driver';
 import OfferDetail from '@/app/(app)/offer/[id]';
 import LegRoute from '@/app/(app)/leg/route';
 import LegWhen from '@/app/(app)/leg/when';
+import TripDetail from '@/app/(app)/trip/[id]';
 import OffersTab from '@/app/(app)/(tabs)/offers';
 import RoutesTab from '@/app/(app)/(tabs)/routes';
 import * as queries from '@/lib/queries';
 import { clearLegDraft } from '@/lib/leg-draft';
+import { flat } from '../helpers/style';
 import type { Leg, Offer, Trip } from '@/lib/queries';
 
 const offer: Offer = {
@@ -61,6 +64,7 @@ const leg: Leg = {
   depart_from: '2026-08-01',
   depart_to: '2026-08-01',
   is_empty: true,
+  free_kg: null,
   status: 'open',
 };
 
@@ -71,19 +75,9 @@ beforeEach(() => {
   clearLegDraft();
 });
 
-const withOffer = () => {
-  (queries.useMyOffers as jest.Mock).mockReturnValue(ok([offer]));
-  (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
-};
-
 /** One composed offer, as `driver_offers()` returns it. */
 const withDriverOffer = () => {
   (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([driverOffer()]));
-};
-
-const withTrip = (status: Trip['status'] = 'assigned') => {
-  (queries.useMyTrips as jest.Mock).mockReturnValue(ok([{ ...trip, status }]));
-  (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
 };
 
 /* ─── D1 / D3 · the driver's home ────────────────────────────────────────── */
@@ -204,7 +198,6 @@ describe('DriverHome', () => {
   it('never renders a load nobody offered them', async () => {
     // Drivers do not browse a load board. There is no path from this screen to a
     // load that is not in `driver_offers()`, and RLS is what makes that true.
-    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
     (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([]));
     await render(<DriverHome />);
     expect(screen.queryByText('Building materials')).toBeNull();
@@ -268,7 +261,6 @@ describe('OffersTab', () => {
 
   it('does not show a driver any load they have no offer for', async () => {
     // Driver legs and shipper cargo are the crown jewels. There is no load board.
-    (queries.useVisibleLoads as jest.Mock).mockReturnValue(ok([load()]));
     (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([]));
     await render(<OffersTab />);
     expect(screen.queryByText('Building materials')).toBeNull();
@@ -367,18 +359,41 @@ describe('DeclareRoute', () => {
   });
 });
 
-/* ─── routes ─────────────────────────────────────────────────────────────── */
+/* ─── D6 · the routes ────────────────────────────────────────────────────── */
 
 describe('RoutesTab', () => {
   it('tells a driver with no routes what an empty book costs', async () => {
     await render(<RoutesTab />);
-    expect(screen.getByText('No routes declared')).toBeTruthy();
+    expect(screen.getByText('An empty book here means an empty truck.')).toBeTruthy();
   });
 
-  it('lists declared routes with their load state', async () => {
+  it('marks an empty truck as the live, actionable state', async () => {
     (queries.useMyLegs as jest.Mock).mockReturnValue(ok([leg]));
     await render(<RoutesTab />);
     expect(screen.getByText('EMPTY')).toBeTruthy();
+  });
+
+  it('says why an empty route costs the driver money', async () => {
+    (queries.useMyLegs as jest.Mock).mockReturnValue(ok([leg]));
+    await render(<RoutesTab />);
+    expect(screen.getByText(/a truck running for nothing/)).toBeTruthy();
+  });
+
+  it('states the room left only when the driver actually said', async () => {
+    (queries.useMyLegs as jest.Mock).mockReturnValue(
+      ok([{ ...leg, is_empty: false, free_kg: null }]),
+    );
+    await render(<RoutesTab />);
+    expect(screen.getByText('PART LOADED')).toBeTruthy();
+    expect(screen.queryByText(/free after/)).toBeNull();
+  });
+
+  it('shows it when they did', async () => {
+    (queries.useMyLegs as jest.Mock).mockReturnValue(
+      ok([{ ...leg, is_empty: false, free_kg: 4000 }]),
+    );
+    await render(<RoutesTab />);
+    expect(screen.getByText(/4,000 kg free after this load/)).toBeTruthy();
   });
 
   it('keeps declaring a route reachable whether the list is empty or full', async () => {
@@ -386,5 +401,56 @@ describe('RoutesTab', () => {
     await render(<RoutesTab />);
     await fireEvent.press(screen.getByLabelText('Add a trip you are making'));
     expect(mockPush).toHaveBeenCalledWith('/leg/route');
+  });
+});
+
+/* ─── D7 · on the job ────────────────────────────────────────────────────── */
+
+describe('OnTheJob', () => {
+  beforeEach(() => {
+    mockParams.current = { id: 'trip-1' };
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+  });
+
+  it('shows what the driver earns beside where it drops', async () => {
+    await render(<TripDetail />);
+    expect(screen.getByText('YOU EARN')).toBeTruthy();
+    expect(screen.getByText('DROP AT')).toBeTruthy();
+    expect(screen.getByText('Salalah')).toBeTruthy();
+  });
+
+  it('earns the payout, not the shipper\u2019s price', async () => {
+    // The commission is applied in SQL. A screen showing 96.000 here would be
+    // telling the driver they keep the margin.
+    await render(<TripDetail />);
+    expect(screen.getByText('78.000')).toBeTruthy();
+  });
+
+  it('gives delivery one large target, for a thumb in a truck cab', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    await render(<TripDetail />);
+    const btn = screen.getByLabelText('I have delivered it');
+    expect(flat(btn.props.style).minHeight).toBe(64);
+  });
+
+  it('will not deliver without a photo, because the database will not either', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    await render(<TripDetail />);
+    await fireEvent.press(screen.getByLabelText('I have delivered it'));
+    expect(
+      screen.getByText('A photo is required before you can mark this delivered.'),
+    ).toBeTruthy();
+  });
+
+  it('reads nothing for a trip that is not theirs, and says so plainly', async () => {
+    // Not found and not-yours are the same answer: `driver_trip` is scoped to
+    // the caller inside the definer.
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(null));
+    await render(<TripDetail />);
+    expect(screen.getByText('We could not load that')).toBeTruthy();
   });
 });

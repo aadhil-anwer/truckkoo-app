@@ -419,5 +419,13 @@ export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 export const MIN_TARGET = 44;
 /** The pinned primary action, at the thumb. */
 export const CTA_HEIGHT = 58;
+/**
+ * D7's delivery button, and nothing else.
+ *
+ * The handoff sizes the one action on the on-the-job screen at 64 — pressed
+ * one-handed, in a cab, by someone wearing gloves half the year. A second use
+ * of this would mean two screens both claiming to be the loudest.
+ */
+export const CTA_TALL = 64;
 /** Body copy floor. Nothing carrying words goes below this. */
 export const BODY_FLOOR = 12.5;

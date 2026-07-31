@@ -1532,6 +1532,34 @@ select assert_true(
        = date '2026-08-02'),
   'and the next day starts a new one, because that day is a Sunday');
 
+-- ─── 9d-bis. the job, by trip id (0031) ─────────────────────────────────────
+-- Driver A carries `The full walk` from §7. The trip id is a client-supplied
+-- argument, so the ownership check inside the definer is the whole guard.
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_equals(
+  (select count(*) from public.driver_trip(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  1, 'a driver reads the job they are actually on');
+select act_as_reset();
+
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_equals(
+  (select count(*) from public.driver_trip(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  0, 'and holding another driver''s trip id reads nothing at all');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A, who owns the load
+select assert_equals(
+  (select count(*) from public.driver_trip(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'))),
+  0, 'a shipper reads no payout here — it is the driver''s wage, not their price');
+select act_as_reset();
+
 -- ─── 9e. the rate card is not a driver's to enumerate ───────────────────────
 -- Crown jewel #1 (SECURITY.md §1). Both functions are granted to `authenticated`
 -- and every argument they take is on a driver's own offer card, so without the

@@ -25,6 +25,7 @@ import {
 import { Icon, type IconName } from './icon';
 import {
   CTA_HEIGHT,
+  CTA_TALL,
   HIT_SLOP,
   MIN_TARGET,
   alpha,
@@ -68,6 +69,7 @@ export function PrimaryButton({
   loading = false,
   ground = 'ink',
   icon,
+  tall = false,
 }: {
   label: string;
   onPress: () => void;
@@ -75,6 +77,13 @@ export function PrimaryButton({
   loading?: boolean;
   ground?: Ground;
   icon?: IconName;
+  /**
+   * 64px instead of 58. D7 only: the delivery button is pressed one-handed, in
+   * sunlight, by someone who has just climbed out of a truck, and it is the only
+   * action on that screen. Everywhere else 58 is the committed CTA height and a
+   * taller button would just be a louder one.
+   */
+  tall?: boolean;
 }) {
   const { scale, onPressIn, onPressOut } = usePressScale();
   const inert = disabled || loading;
@@ -107,11 +116,16 @@ export function PrimaryButton({
       // The Pressable is the touch target, so it declares the target's height.
       // Leaving that only on the inner view hides the >=44pt guarantee from
       // anything inspecting the node a finger actually lands on.
-      style={styles.ctaTarget}
+      style={StyleSheet.flatten([styles.ctaTarget, tall && styles.ctaTallTarget])}
     >
       <Animated.View
         testID="primary-surface"
-        style={StyleSheet.flatten([styles.cta, surface, { transform: [{ scale }] }])}
+        style={StyleSheet.flatten([
+          styles.cta,
+          tall && styles.ctaTall,
+          surface,
+          { transform: [{ scale }] },
+        ])}
       >
         {loading ? (
           <ActivityIndicator color={tint} />
@@ -457,6 +471,8 @@ export function StepHeader({
 
 const styles = StyleSheet.create({
   ctaTarget: { minHeight: CTA_HEIGHT },
+  ctaTallTarget: { minHeight: CTA_TALL },
+  ctaTall: { minHeight: CTA_TALL },
   cta: {
     minHeight: CTA_HEIGHT,
     borderRadius: radius.round,

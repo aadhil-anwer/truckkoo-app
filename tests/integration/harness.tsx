@@ -11,7 +11,7 @@
  * module for a test that also imports the screen under test.
  */
 
-import type { City, DriverOffer, Load, TruckType } from '@/lib/queries';
+import type { City, DriverOffer, DriverTrip, Load, TruckType } from '@/lib/queries';
 
 /**
  * An explicit safe-area mock rather than the library's shipped one.
@@ -54,6 +54,7 @@ export const mockQuoteMutate = jest.fn();
 export const mockAcceptMutate = jest.fn();
 export const mockRateMutate = jest.fn();
 export const mockPostLegMutate = jest.fn();
+export const mockAdvanceMutate = jest.fn();
 /** Mutable so a detail-screen test can say which load it opened. */
 export const mockParams: { current: Record<string, string> } = { current: {} };
 
@@ -89,7 +90,6 @@ jest.mock('@/lib/queries', () => {
     useMyLegs: jest.fn(),
     useMyOffers: jest.fn(),
     useMyTrips: jest.fn(),
-    useVisibleLoads: jest.fn(),
     useRespondToOffer: jest.fn(),
     // The shipper's view of who is carrying the load. Mocked like the rest —
     // unmocked they call the real `useQuery`, which needs a QueryClientProvider
@@ -113,7 +113,9 @@ jest.mock('@/lib/queries', () => {
     useDriverOffers: jest.fn(),
     useDriverOffer: jest.fn(),
     useDriverEarnings: jest.fn(),
+    useAdvanceTrip: jest.fn(),
     usePostLeg: jest.fn(),
+    useDriverTrip: jest.fn(),
   };
 });
 
@@ -215,6 +217,31 @@ export function driverOffer(over: Partial<DriverOffer> = {}): DriverOffer {
 }
 
 /**
+ * The job a driver is on, as `driver_trip()` composes it. Same three money
+ * fields as an offer, so `DriverMoney` renders either.
+ */
+export function driverTrip(over: Partial<DriverTrip> = {}): DriverTrip {
+  return {
+    trip_id: 'trip-1',
+    status: 'assigned',
+    load_id: LOAD_ID,
+    origin_city: 1,
+    dest_city: 2,
+    pickup_from: '2026-08-01',
+    pickup_to: '2026-08-01',
+    goods: 'Building materials',
+    weight_kg: 8000,
+    collect_baisa: 96000,
+    payout_baisa: 78000,
+    owed_baisa: 18000,
+    currency: 'OMR',
+    shipper_name: 'Aisha Trading',
+    shipper_phone: '+96890000000',
+    ...over,
+  };
+}
+
+/**
  * The default world: two cities, one truck type, nothing owned by anyone.
  * Call from `beforeEach`, then override the one hook the test is about.
  */
@@ -226,6 +253,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   mockRateMutate.mockReset();
   mockPostLegMutate.mockReset();
   mockPostLegMutate.mockResolvedValue('leg-new');
+  mockAdvanceMutate.mockReset();
+  mockAdvanceMutate.mockResolvedValue(undefined);
   mockParams.current = {};
 
   m('useCities').mockReturnValue(ok([MUSCAT, SALALAH]));
@@ -234,7 +263,6 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useMyLegs').mockReturnValue(ok([]));
   m('useMyOffers').mockReturnValue(ok([]));
   m('useMyTrips').mockReturnValue(ok([]));
-  m('useVisibleLoads').mockReturnValue(ok([]));
   // DEFAULT: NOTHING OFFERED, NOTHING EARNED. That is the state the product
   // launches in, so it is what a fresh test renders — D3, not D1 — and it is why
   // the empty state cannot rot untested.
@@ -242,6 +270,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverOffer').mockReturnValue(ok(null));
   m('useDriverEarnings').mockReturnValue(ok(null));
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
+  m('useDriverTrip').mockReturnValue(ok(null));
+  m('useAdvanceTrip').mockReturnValue({ mutateAsync: mockAdvanceMutate, isPending: false });
   m('useRespondToOffer').mockReturnValue({
     mutate: mockRespondMutate,
     isPending: false,
