@@ -1587,6 +1587,93 @@ select assert_true(
   'a shipper still gets an estimate');
 select act_as_reset();
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 10. positions (0032)
+-- ════════════════════════════════════════════════════════════════════════════
+-- Driver A carries `The full walk` from §7 and it is `delivered` by the time
+-- this runs, so the live case needs a trip put deliberately back in transit.
+-- Done as the owner: no client may set a status.
+
+update public.trips set status = 'in_transit'::public.trip_status
+ where load_id = (select id from public.loads where goods_description = 'The full walk');
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_true(
+  (select public.report_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'),
+     23.588, 58.408, 12)),
+  'a driver reports a position on the trip they are actually driving');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.trip_positions), 1,
+  'and exactly one row lands');
+
+-- Somebody else's trip is not reportable, and says nothing about why.
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_true(
+  (select public.report_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'),
+     23.588, 58.408, 12) = false),
+  'another driver reporting on that trip stores nothing');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A, who owns the load
+select assert_true(
+  (select public.report_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'),
+     23.588, 58.408, 12) = false),
+  'and the shipper cannot place their own truck on the map');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.trip_positions), 1,
+  'neither of those wrote a row');
+
+-- Garbage is refused at the function, and again at the table.
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_raises(
+  $$select public.report_position(
+      (select t.id from public.trips t join public.loads l on l.id = t.load_id
+        where l.goods_description = 'The full walk'), 51.5, 0.12, 5)$$,
+  'a position in London is a broken device, not a truck');
+select act_as_reset();
+
+-- The table itself is unreachable. No grant, so not even a read.
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_raises($$select count(*) from public.trip_positions$$,
+  'a driver cannot read the positions table directly');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_raises($$select count(*) from public.trip_positions$$,
+  'and neither can a shipper — the trail is nobody''s to enumerate');
+select act_as_reset();
+
+-- Tracking stops when the trip does, in the database and not merely in the UI.
+update public.trips set status = 'delivered'::public.trip_status
+ where load_id = (select id from public.loads where goods_description = 'The full walk');
+
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_true(
+  (select public.report_position(
+     (select t.id from public.trips t join public.loads l on l.id = t.load_id
+       where l.goods_description = 'The full walk'),
+     23.600, 58.400, 12) = false),
+  'a delivered trip stores nothing, and does not raise at the gate either');
+select act_as_reset();
+
+select assert_equals(
+  (select count(*) from public.trip_positions), 1,
+  'the trail stops growing the moment the trip ends');
+
+-- Put it back for the read assertions in §11.
+update public.trips set status = 'in_transit'::public.trip_status
+ where load_id = (select id from public.loads where goods_description = 'The full walk');
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;
