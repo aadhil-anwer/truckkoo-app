@@ -16,6 +16,31 @@ map spur is the one new drawing primitive and it lives in `src/map/`.
 **Tech Stack:** Expo / React Native, expo-router, TanStack Query, Supabase
 (Postgres + RLS), `react-native-svg` + `d3-geo` for the map, Jest + RNTL.
 
+## Where this stands (2026-07-31)
+
+**Done and committed:** Task 1 (`94efc34`, migration 0028) and Task 1b
+(`2f7ae88` on branch `p5/commission` in `~/truckkoo-ops`). Both verified in a
+browser, not only by tests — the commission panel was driven end to end and the
+rate reached `private.app_settings` with an audit row.
+
+**Next:** Task 2. Nothing is half-applied; both repos are clean and green
+(378 JS tests, 445 SQL assertions).
+
+**Two things learned while doing Tasks 1/1b, worth carrying forward:**
+
+1. `useOpsMutation` in the console invalidated seven query keys and not the one
+   the commission panel reads, so a successful write left the old value on
+   screen. Fixed there — but **any new ops panel that reads a value it also
+   writes needs its key in that list**, or it will look broken while working.
+2. `npm run test:db` needs a **fresh `npx supabase db reset`**. Seeding the demo
+   dataset for a browser check makes `tenant_isolation` fail on assertions that
+   have nothing to do with the change under test. The suite's own header says
+   this; it is easy to forget an hour later.
+
+**Local dev fixtures** (recreate after any `db reset`, they are not migrations):
+a dispatcher account `dispatch@demo.local` / `dispatch-local-only`, appointed by
+inserting into `private.ops_users`, plus `~/truckkoo-ops/dev/seed_demo.sql`.
+
 ## Global Constraints
 
 - **Money is integer baisa.** OMR has three decimals. Use `src/lib/money.ts`.
@@ -78,7 +103,7 @@ flow mirroring `src/app/(app)/book/`. Create `src/app/(app)/leg/_layout.tsx`,
 
 ---
 
-## Task 1: 0028 — the commission rate and the payout
+## Task 1: 0028 — the commission rate and the payout ✅ DONE (`94efc34`)
 
 **Files:**
 - Create: `supabase/migrations/0028_driver_payout.sql`
@@ -206,7 +231,7 @@ git commit -m "Derive the driver's payout from the shipper's price (0028)"
 
 ---
 
-## Task 1b: The commission rate, editable from the dashboard
+## Task 1b: The commission rate, editable from the dashboard ✅ DONE (`2f7ae88`)
 
 **Repo:** `~/truckkoo-ops` (separate deployment, separate commit, branch first)
 
