@@ -30,6 +30,7 @@ import {
   ok,
   PENDING,
   resetQueries,
+  tripPosition,
 } from './harness';
 
 import { Linking } from 'react-native';
@@ -451,12 +452,68 @@ describe('TrackLoad', () => {
       expect(screen.getByText('150.000 OMR')).toBeTruthy();
     });
 
-    it('narrates arrival without claiming a live fix', async () => {
-      // GPS is P6. Until then the position is interpolated and the copy says
-      // "arriving", never "the truck is here".
+    it('narrates arrival without overstating what it knows', async () => {
+      // The copy says "arriving", never "the truck is here". Since P6 the
+      // position is a real reported fix or nothing at all, and the bar is driven
+      // by distance remaining rather than by the clock — so it needs a position
+      // to render at all.
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
       await render(<TrackLoad />);
       expect(screen.getByText('ARRIVING')).toBeTruthy();
       expect(screen.getByRole('progressbar')).toBeTruthy();
+    });
+
+    it('draws the truck where it was actually reported', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
+      const { getByTestId } = await render(<TrackLoad />);
+      expect(getByTestId('truck-marker')).toBeTruthy();
+    });
+
+    it('draws no truck when nobody has reported one', async () => {
+      // The whole phase in one assertion: an unreported truck is absent, not
+      // guessed at from the clock.
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ lat: null, lng: null, seen_at: null, eta_source: 'corridor' })),
+      );
+      const { queryByTestId } = await render(<TrackLoad />);
+      expect(queryByTestId('truck-marker')).toBeNull();
+    });
+
+    it('stamps every position it draws with its age', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
+      await render(<TrackLoad />);
+      expect(screen.getByText(/Seen/)).toBeTruthy();
+    });
+
+    it('dims a marker the shipper should not read as current', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ seen_at: new Date(Date.now() - 3 * 3600_000).toISOString() })),
+      );
+      const { getByTestId } = await render(<TrackLoad />);
+      const fill = getByTestId('truck-body').props.fill as { payload: number };
+      expect(((fill.payload >>> 24) & 255) / 255).toBeLessThan(0.9);
+    });
+
+    it('says the arrival is an estimate when there has been no fix', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ lat: null, lng: null, seen_at: null, eta_source: 'corridor' })),
+      );
+      await render(<TrackLoad />);
+      expect(screen.getByText('Estimated arrival')).toBeTruthy();
+    });
+
+    it('does not call it an estimate once it comes from a fix', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
+      await render(<TrackLoad />);
+      expect(screen.queryByText('Estimated arrival')).toBeNull();
+    });
+
+    it('says plainly that there is no position, rather than showing nothing', async () => {
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ lat: null, lng: null, seen_at: null, eta_source: 'corridor' })),
+      );
+      await render(<TrackLoad />);
+      expect(screen.getByText('No position yet')).toBeTruthy();
     });
 
     it('still offers a human', async () => {

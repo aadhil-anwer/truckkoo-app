@@ -40,7 +40,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -64,9 +64,9 @@ import {
   Timeline,
 } from '@/components/ui';
 import { arabicIfNeeded } from '@/components/text-direction';
-import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, roadHours } from '@/map';
+import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, roadKm } from '@/map';
 import { align, formatNumber, getLanguage, localized, t } from '@/i18n';
-import { formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
+import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import {
@@ -80,10 +80,12 @@ import {
   usePodUrl,
   useRateTrip,
   useTripCounterpart,
+  useTripPosition,
   useTripEvents,
   useTripTruck,
   useTruckTypes,
   type City,
+  type TripPosition,
   type DriverSummary,
   type Load,
   type Trip,
@@ -95,6 +97,9 @@ import { GUTTER_INK, alpha, color, elevation, font, hairline, radius, space } fr
 /** A driver has it, so the line is a commitment rather than an intention. */
 const COMMITTED: Load['status'][] = ['assigned', 'in_transit', 'delivered', 'closed'];
 
+/** The map band. Fixed, because every screen picks a framing and there is no pan. */
+const MAP_HEIGHT = 420;
+
 export default function TrackLoad() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -104,7 +109,10 @@ export default function TrackLoad() {
   const { data: truckTypes } = useTruckTypes();
   const loads = useMyLoads();
   const { data: trips } = useMyTrips();
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+  // The map band is a fixed height across the full width, so it takes its size
+  // from the window rather than from `onLayout`. One less frame where the
+  // coastline is not there yet, and the geometry is assertable in a test.
+  const { width: mapWidth } = useWindowDimensions();
 
   const index = useMemo(() => cityIndex(cities), [cities]);
 
@@ -118,6 +126,7 @@ export default function TrackLoad() {
   const counterpart = useTripCounterpart(trip?.id);
   const truck = useTripTruck(trip?.id);
   const events = useTripEvents(trip?.id);
+  const position = useTripPosition(trip?.id);
   const summary = useDriverSummary(trip?.driver_id);
 
   const origin = load ? index.get(load.origin_city) : undefined;
@@ -173,9 +182,9 @@ export default function TrackLoad() {
   const committed = COMMITTED.includes(status);
   const delivered = status === 'delivered' || status === 'closed';
 
-  // One road duration for the screen. The marker and the progress bar are both
-  // derived from it, so they cannot disagree with each other.
-  const hours = roadHours(
+  // The whole corridor, in road km. The progress bar is `remaining_km` against
+  // this, so the bar and the map are two views of one server-supplied number.
+  const corridorKm = roadKm(
     { lng: origin.lng, lat: origin.lat },
     { lng: dest.lng, lat: dest.lat },
   );
@@ -185,14 +194,10 @@ export default function TrackLoad() {
       {/* Orientation, not a control — the shipper cannot pan or zoom, and every
           screen picks its framing. `pointerEvents="none"` so the scroll under a
           thumb belongs to the content. */}
-      <View
-        style={styles.mapArea}
-        onLayout={(e) => setMapSize(e.nativeEvent.layout)}
-        pointerEvents="none"
-      >
-        {mapSize.width > 0 && (
+      <View style={styles.mapArea} pointerEvents="none">
+        {mapWidth > 0 && (
           <>
-            <MapCanvas framing="domestic" width={mapSize.width} height={mapSize.height}>
+            <MapCanvas framing="domestic" width={mapWidth} height={MAP_HEIGHT}>
               <Corridor
                 from={{ lng: origin.lng, lat: origin.lat }}
                 to={{ lng: dest.lng, lat: dest.lat }}
@@ -200,11 +205,14 @@ export default function TrackLoad() {
               />
               <CityPin at={{ lng: origin.lng, lat: origin.lat }} state="origin" />
               <CityPin at={{ lng: dest.lng, lat: dest.lat }} state="destination" />
-              {status === 'in_transit' && (
-                <TruckMarker at={interpolate(origin, dest, progressOf(trip, events.data, hours))} />
+              {position.data?.lat != null && position.data.lng != null && (
+                <TruckMarker
+                  at={{ lng: position.data.lng, lat: position.data.lat }}
+                  stale={isStale(position.data.seen_at)}
+                />
               )}
             </MapCanvas>
-            <Scrim variant="topHeavy" width={mapSize.width} height={mapSize.height} />
+            <Scrim variant="topHeavy" width={mapWidth} height={MAP_HEIGHT} />
           </>
         )}
       </View>
@@ -239,7 +247,12 @@ export default function TrackLoad() {
           <Assigned driver={counterpart.data} truck={truck.data} summary={summary.data} names={truckName} />
         )}
         {status === 'in_transit' && (
-          <InTransit load={load} dest={dest} trip={trip} events={events.data} hours={hours} />
+          <InTransit
+            load={load}
+            dest={dest}
+            position={position.data}
+            corridorKm={corridorKm}
+          />
         )}
         {delivered && <Delivered load={load} />}
         {status === 'cancelled' && (
@@ -560,10 +573,15 @@ function Credentials({ summary }: { summary: DriverSummary | null | undefined })
 /**
  * Where it is, when it lands, what is owed.
  *
- * THE POSITION IS NOT LIVE, and the copy is careful never to claim it is. GPS is
- * P6; until then the marker sits at a point interpolated from the collection
- * time and the road duration, which is an honest estimate and reads as one. The
- * screen says "arriving", never "the truck is here".
+ * THE POSITION IS A REPORTED FIX OR NOTHING (P6). The marker is where the
+ * driver's phone last said the truck was, and its age is on screen beside it —
+ * `Seen 4 min ago`. With no fix there is no marker, the arrival time is labelled
+ * an estimate, and the screen says so in as many words. It says "arriving",
+ * never "the truck is here", because it still does not know that.
+ *
+ * The progress bar is `remaining_km` against the corridor, so it moves when the
+ * truck moves. Its predecessor divided elapsed time by an assumed duration and
+ * advanced whether or not anything was happening.
  *
  * The amount is shown because settlement is offline and the driver is about to
  * ask for it — a shipper who has to go hunting for the number at the gate is a
@@ -573,33 +591,46 @@ function Credentials({ summary }: { summary: DriverSummary | null | undefined })
 function InTransit({
   load,
   dest,
-  trip,
-  events,
-  hours,
+  position,
+  corridorKm,
 }: {
   load: Load;
   dest: City;
-  trip: Trip | undefined;
-  events: { type: string; occurred_at: string }[] | undefined;
-  hours: number;
+  position: TripPosition | null | undefined;
+  corridorKm: number;
 }) {
-  const from = collectedAt(trip, events);
-  const eta = from ? new Date(new Date(from).getTime() + hours * 3600_000).toISOString() : null;
-  const done = progressOf(trip, events, hours);
+  const fix = position?.eta_source === 'fix';
+  const age = formatAge(position?.seen_at);
+  const remaining = position?.remaining_km ?? null;
 
   return (
     <View style={styles.block}>
       <StatusPill label={t('track.transit.arriving')} tone="accent" />
       <Text style={styles.eta} accessibilityRole="header">
-        {eta ? formatDeadline(eta) : localized(dest)}
+        {position?.eta_at ? formatDeadline(position.eta_at) : localized(dest)}
       </Text>
 
-      <View style={styles.progress}>
-        {/* Whole minutes rather than a fraction: `ProgressBar` announces its own
-            value to a screen reader, and "62 of 100" is a number a person can
-            hold, where 0.6187 is not. */}
-        <ProgressBar step={Math.round(done * 100)} total={100} ground="ink" />
-      </View>
+      {/* An arrival time derived from the corridor rather than from the truck
+          says so. The one derived from a real fix does not need to — it carries
+          the age of the fix instead, which is the more useful fact. */}
+      <Text style={styles.positionMeta}>
+        {fix && age ? `${t('pos.seen')} ${age}` : t('pos.estimate')}
+      </Text>
+
+      {!fix && <Text style={styles.positionMeta}>{t('pos.none')}</Text>}
+
+      {remaining != null && (
+        <View style={styles.progress}>
+          {/* Whole percent rather than a fraction: `ProgressBar` announces its
+              own value, and "62 of 100" is a number a person can hold. Derived
+              from distance left, so it moves when the truck does. */}
+          <ProgressBar
+            step={progressPercent(remaining, corridorKm)}
+            total={100}
+            ground="ink"
+          />
+        </View>
+      )}
 
       {load.price_baisa != null && (
         <View style={styles.owed}>
@@ -729,45 +760,27 @@ function Proof({ events }: { events: { photo_path: string | null }[] | undefined
 
 /* ─── estimates ───────────────────────────────────────────────────────────── */
 
-/** When the driver picked it up, or the best stand-in we have. */
-function collectedAt(
-  trip: Trip | undefined,
-  events: { type: string; occurred_at: string }[] | undefined,
-): string | null {
-  const pickup = (events ?? []).find((e) => e.type === 'picked_up');
-  return pickup?.occurred_at ?? trip?.created_at ?? null;
+/** Older than half an hour. The marker dims; the timestamp says how much older. */
+const STALE_MS = 30 * 60_000;
+
+function isStale(seenAt: string | null | undefined): boolean {
+  if (!seenAt) return true;
+  return Date.now() - new Date(seenAt).getTime() > STALE_MS;
 }
 
 /**
- * How far along, as a fraction — an ESTIMATE, never a fix.
+ * How far along, from distance left over distance total.
  *
- * `hours` is the road duration for this specific corridor, passed in rather than
- * assumed, so the marker on the map and the bar under the ETA are computed from
- * the same number. Two independent guesses at "how far along" would drift apart
- * on screen, and a truck ahead of its own progress bar is worse than neither.
- *
- * Clamped away from both ends because a marker sitting exactly on the origin pin
- * reads as "it has not moved" and one on the destination reads as "it arrived",
- * and neither is something this function knows. P6 owns GPS; until then nothing
- * here claims a live fix.
+ * Clamped to 2–98 so the bar never reads as "not started" or "arrived" — this
+ * function knows neither. It is the only place a progress number is computed in
+ * the product, and it is computed from a measurement rather than from the clock.
+ * Its predecessor divided elapsed time by an assumed duration, which moved
+ * whether or not the truck did.
  */
-function progressOf(
-  trip: Trip | undefined,
-  events: { type: string; occurred_at: string }[] | undefined,
-  hours: number,
-): number {
-  const from = trip ? collectedAt(trip, events) : null;
-  if (!from || hours <= 0) return 0.05;
-  const elapsedH = (Date.now() - new Date(from).getTime()) / 3600_000;
-  return Math.min(0.95, Math.max(0.05, elapsedH / hours));
-}
-
-/** A point on the line between two cities. Not a road, and not pretending to be. */
-function interpolate(a: City, b: City, fraction: number) {
-  return {
-    lng: a.lng + (b.lng - a.lng) * fraction,
-    lat: a.lat + (b.lat - a.lat) * fraction,
-  };
+function progressPercent(remainingKm: number, totalKm: number): number {
+  if (totalKm <= 0) return 2;
+  const done = 1 - remainingKm / totalKm;
+  return Math.min(98, Math.max(2, Math.round(done * 100)));
 }
 
 function initial(name: string): string {
@@ -781,7 +794,7 @@ const styles = StyleSheet.create({
     top: 0,
     insetInlineStart: 0,
     insetInlineEnd: 0,
-    height: 420,
+    height: MAP_HEIGHT,
   },
 
   scroll: { paddingHorizontal: GUTTER_INK, gap: space.lg },
@@ -810,6 +823,7 @@ const styles = StyleSheet.create({
   // T2
   priceHero: { ...font.priceHero, color: color.lightText, textAlign: align.start },
   priceMeta: { ...font.caption, color: alpha.onInk.tertiary, textAlign: align.start },
+  positionMeta: { ...font.caption, color: alpha.onInk.tertiary, textAlign: align.start },
 
   // T3
   driver: {
