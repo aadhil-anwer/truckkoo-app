@@ -7,6 +7,7 @@
 export { MapCanvas, useProjection } from './MapCanvas';
 export { BBOX, project, projectionFor, type Framing } from './framing';
 export { Corridor } from './Corridor';
+export { DetourSpur } from './DetourSpur';
 export { CityPin, type PinState } from './CityPin';
 export { TruckMarker } from './TruckMarker';
 export { Scrim } from './Scrim';
