@@ -18,6 +18,8 @@ import {
   OFFER_ID,
   driverOffer,
   driverTrip,
+  mockReporterArgs,
+  tripPosition,
   load,
   mockParams,
   mockPush,
@@ -444,6 +446,48 @@ describe('OnTheJob', () => {
     expect(
       screen.getByText('A photo is required before you can mark this delivered.'),
     ).toBeTruthy();
+  });
+
+  it('tells the driver their position is being shared, while it is', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    await render(<TripDetail />);
+    expect(screen.getByText('Sharing your position with the shipper')).toBeTruthy();
+    expect(screen.getByText('Only while you are carrying this load.')).toBeTruthy();
+  });
+
+  it('says nothing about sharing before the load is collected', async () => {
+    // Nothing is sent on an `assigned` trip — report_position refuses it — so a
+    // line claiming otherwise would be false.
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+    await render(<TripDetail />);
+    expect(screen.queryByText('Sharing your position with the shipper')).toBeNull();
+  });
+
+  it('reports only while the trip is live', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+    await render(<TripDetail />);
+    // usePositionReporter(tripId, active)
+    expect(mockReporterArgs[1]).toBe(false);
+  });
+
+  it('draws its own last reported position, never a guess', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
+    const { getByTestId } = await render(<TripDetail />);
+    expect(getByTestId('truck-marker')).toBeTruthy();
+  });
+
+  it('draws no truck at all when nothing has been reported', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    (queries.useTripPosition as jest.Mock).mockReturnValue(ok(null));
+    const { queryByTestId } = await render(<TripDetail />);
+    expect(queryByTestId('truck-marker')).toBeNull();
   });
 
   it('reads nothing for a trip that is not theirs, and says so plainly', async () => {

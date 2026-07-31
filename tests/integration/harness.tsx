@@ -11,7 +11,7 @@
  * module for a test that also imports the screen under test.
  */
 
-import type { City, DriverOffer, DriverTrip, Load, TruckType } from '@/lib/queries';
+import type { City, DriverOffer, DriverTrip, Load, TripPosition, TruckType } from '@/lib/queries';
 
 /**
  * An explicit safe-area mock rather than the library's shipped one.
@@ -71,6 +71,21 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
 
+/**
+ * The reporter is mocked whole. It owns a real `expo-location` subscription,
+ * which no screen test should be starting — what these tests assert is that D7
+ * asks for it on a live trip and not otherwise, and that is `mockReporterArgs`.
+ */
+export const mockReporter = { lastSentAt: null as string | null, denied: false };
+export const mockReporterArgs: unknown[] = [];
+jest.mock('@/lib/position', () => ({
+  usePositionReporter: (...a: unknown[]) => {
+    mockReporterArgs.length = 0;
+    mockReporterArgs.push(...a);
+    return mockReporter;
+  },
+}));
+
 jest.mock('@/lib/session', () => ({
   useSession: () => ({
     session: { user: { id: 'u1' } },
@@ -116,6 +131,8 @@ jest.mock('@/lib/queries', () => {
     useAdvanceTrip: jest.fn(),
     usePostLeg: jest.fn(),
     useDriverTrip: jest.fn(),
+    useTripPosition: jest.fn(),
+    useReportPosition: jest.fn(),
   };
 });
 
@@ -241,6 +258,20 @@ export function driverTrip(over: Partial<DriverTrip> = {}): DriverTrip {
   };
 }
 
+/** A fix, as `trip_position()` composes it. Fresh unless a test says otherwise. */
+export function tripPosition(over: Partial<TripPosition> = {}): TripPosition {
+  return {
+    lat: 22.5,
+    lng: 57.5,
+    seen_at: new Date(Date.now() - 4 * 60_000).toISOString(),
+    accuracy_m: 12,
+    remaining_km: 640,
+    eta_at: new Date(Date.now() + 6 * 3600_000).toISOString(),
+    eta_source: 'fix',
+    ...over,
+  };
+}
+
 /**
  * The default world: two cities, one truck type, nothing owned by anyone.
  * Call from `beforeEach`, then override the one hook the test is about.
@@ -271,6 +302,13 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverEarnings').mockReturnValue(ok(null));
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useDriverTrip').mockReturnValue(ok(null));
+  // DEFAULT: NO FIX. A trip nobody has reported on is the state every trip
+  // starts in, so it is what a fresh test renders.
+  m('useTripPosition').mockReturnValue(ok(null));
+  m('useReportPosition').mockReturnValue({ mutateAsync: jest.fn() });
+  mockReporter.lastSentAt = null;
+  mockReporter.denied = false;
+  mockReporterArgs.length = 0;
   m('useAdvanceTrip').mockReturnValue({ mutateAsync: mockAdvanceMutate, isPending: false });
   m('useRespondToOffer').mockReturnValue({
     mutate: mockRespondMutate,

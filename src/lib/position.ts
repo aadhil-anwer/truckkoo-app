@@ -33,10 +33,15 @@ export function usePositionReporter(
   const [lastSentAt, setLastSentAt] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
 
-  // The mutation object is new on every render; the effect must not restart the
-  // watcher because of that, so it reads through a ref instead of depending on it.
+  // The mutation object is new on every render; the watcher effect must not
+  // restart because of that, so it reaches the mutation through a ref rather
+  // than depending on it. The ref is updated in its own effect, not during
+  // render — a ref written during render is what `react-hooks/refs` forbids,
+  // and it is forbidden because it makes the value read depend on render order.
   const reportRef = useRef(report);
-  reportRef.current = report;
+  useEffect(() => {
+    reportRef.current = report;
+  });
 
   useEffect(() => {
     if (!tripId || !active) return;

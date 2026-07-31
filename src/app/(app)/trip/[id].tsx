@@ -17,9 +17,9 @@
  * proof of delivery is append-only, because a trail that can be edited is not a
  * trail.
  *
- * THE MAP CLAIMS NO LIVE FIX. T4 interpolates the truck on elapsed time because
- * a shipper has no other signal; a driver knows exactly where they are, so the
- * marker here says only "in transit" and sits at the midpoint. P6 owns GPS.
+ * THE MARKER IS A REPORTED POSITION OR NOTHING. It is the driver's own last
+ * fix, sent from this screen while the trip is live, dimmed once it is more than
+ * half an hour old. Nothing is interpolated anywhere in the product since P6.
  */
 
 import { useMemo, useState } from 'react';
@@ -44,8 +44,9 @@ import { arabicIfNeeded } from '@/components/text-direction';
 import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker } from '@/map';
 import { align, localized, t } from '@/i18n';
-import { formatWeight } from '@/lib/format';
-import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, type City } from '@/lib/queries';
+import { formatAge, formatWeight } from '@/lib/format';
+import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { usePositionReporter } from '@/lib/position';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
@@ -77,6 +78,13 @@ export default function TripScreen() {
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
   const trip = job.data;
+
+  const live = trip?.status === 'in_transit';
+  // The reporter runs only on a live trip. `report_position` refuses anything
+  // else server-side (0032), so this is the client agreeing with the database
+  // rather than the client being the control.
+  const { lastSentAt } = usePositionReporter(id, live);
+  const position = useTripPosition(live ? id : undefined);
 
   const origin = trip ? index.get(trip.origin_city) : undefined;
   const dest = trip ? index.get(trip.dest_city) : undefined;
@@ -179,10 +187,14 @@ export default function TripScreen() {
                   />
                   <CityPin at={{ lng: origin.lng, lat: origin.lat }} state="origin" />
                   <CityPin at={{ lng: dest.lng, lat: dest.lat }} state="destination" />
-                  {/* No GPS. A guess drawn as a fix is the one thing a driver
-                      would catch immediately, since they know where they are. */}
-                  {collected && (
-                    <TruckMarker at={midpoint(origin, dest)} />
+                  {/* A reported position or nothing. A guess drawn as a fix is
+                      the one thing a driver would catch immediately, since they
+                      know where they are. */}
+                  {position.data?.lat != null && position.data.lng != null && (
+                    <TruckMarker
+                      at={{ lng: position.data.lng, lat: position.data.lat }}
+                      stale={isStale(position.data.seen_at)}
+                    />
                   )}
                 </>
               )}
@@ -287,6 +299,22 @@ export default function TripScreen() {
             </Text>
           )}
 
+          {/* Stated while it is happening, and gone when it stops — which is
+              also when the database stops accepting fixes. There is no toggle:
+              the OS permission is the real control, and a switch would give the
+              shipper a truck that vanishes for reasons they cannot see. */}
+          {live && (
+            <View style={styles.sharing}>
+              <Text style={styles.sharingTitle}>{t('pos.sharing')}</Text>
+              <Text style={styles.sharingWhy}>{t('pos.sharingWhy')}</Text>
+              {!!formatAge(lastSentAt) && (
+                <Text style={styles.sharingWhy}>
+                  {`${t('pos.lastSent')} ${formatAge(lastSentAt)}`}
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* The one target. 64px, and nothing beside it competing for the thumb.
               It is NOT disabled without a photo: a dead button teaches a driver
               the app is broken, where a press that says what is missing teaches
@@ -315,16 +343,12 @@ export default function TripScreen() {
   );
 }
 
-/**
- * Halfway. Not a position — a placeholder for one.
- *
- * T4 interpolates on elapsed time because a shipper has no other signal. A
- * driver knows exactly where they are, so animating a fake progress at them
- * would be the app telling them something they can disprove out of the
- * windscreen. The marker says "in transit", nothing more, until P6 brings GPS.
- */
-function midpoint(a: City, b: City) {
-  return { lng: (a.lng + b.lng) / 2, lat: (a.lat + b.lat) / 2 };
+/** Older than half an hour. The marker dims; the timestamp says how much older. */
+const STALE_MS = 30 * 60_000;
+
+function isStale(seenAt: string | null | undefined): boolean {
+  if (!seenAt) return true;
+  return Date.now() - new Date(seenAt).getTime() > STALE_MS;
 }
 
 const styles = StyleSheet.create({
@@ -407,6 +431,23 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
   },
   retakeText: { ...font.caption, fontFamily: face.archivo700, color: color.creamCard },
+
+  sharing: {
+    gap: 2,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: hairline.inner,
+  },
+  sharingTitle: {
+    ...arabicIfNeeded(font.rowTitle),
+    color: color.lightText,
+    textAlign: align.start,
+  },
+  sharingWhy: {
+    ...arabicIfNeeded(font.bodySmall),
+    color: alpha.onInk.secondary,
+    textAlign: align.start,
+  },
 
   error: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
   action: { marginTop: space.sm },
