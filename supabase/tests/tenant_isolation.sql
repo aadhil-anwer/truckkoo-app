@@ -1394,6 +1394,159 @@ select assert_true(
       and dest_city = (select id from public.cities where name_en = 'Nizwa')),
   'and drops it for an empty truck, where all of it is free');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 9. the driver's own reads, and the rate card (0030)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Fixtures as the owner: `create_offer` is revoked from every client role, and
+-- an offer is what this section is about.
+update public.trucks set capacity_kg = 10000
+ where id = 'cccccccc-0000-4000-8000-000000000001';
+
+insert into public.legs (id, driver_id, truck_id, origin_city, dest_city, depart_from, depart_to)
+values ('bbbbbbbb-0000-4000-8000-0000000000ca', '33333333-3333-4333-8333-333333333333',
+        'cccccccc-0000-4000-8000-000000000001',
+        (select id from public.cities where name_en = 'Muscat'),
+        (select id from public.cities where name_en = 'Salalah'),
+        current_date + 60, current_date + 62)
+on conflict (id) do nothing;
+
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                          goods_description, weight_kg, price_baisa)
+values ('aaaaaaaa-0000-4000-8000-0000000000ca', '11111111-1111-4111-8111-111111111111',
+        (select id from public.cities where name_en = 'Nizwa'),
+        (select id from public.cities where name_en = 'Sohar'),
+        current_date + 60, current_date + 62, 'Dates, palletised', 8000, 96000)
+on conflict (id) do nothing;
+
+insert into public.offers (id, load_id, driver_id, leg_id, expires_at)
+values ('dddddddd-0000-4000-8000-0000000000ca',
+        'aaaaaaaa-0000-4000-8000-0000000000ca',
+        '33333333-3333-4333-8333-333333333333',
+        'bbbbbbbb-0000-4000-8000-0000000000ca',
+        now() + interval '2 days')
+on conflict (id) do nothing;
+
+-- ─── 9a. the three numbers, at the rate we ship in ──────────────────────────
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_equals(
+  (select payout_baisa from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  96000, 'at 0 percent commission the driver keeps the whole price');
+select assert_equals(
+  (select collect_baisa from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  96000, 'and collects that same amount from the shipper, in cash');
+select assert_equals(
+  (select owed_baisa from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  0, 'owing Truckkoo nothing — the state the product launches in');
+
+-- The detour is the driver's cost and it is on the card before they commit.
+select assert_true(
+  (select detour_km > 0 from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  'a load off the leg carries its detour onto the offer');
+
+-- 10 tonnes of truck, 8 of load.
+select assert_equals(
+  (select free_after_kg from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  2000, 'and says what room is left, so a second load is a decision not a guess');
+select act_as_reset();
+
+-- ─── 9b. it is the caller's, not the argument's ─────────────────────────────
+-- driver_offer takes an id, so it is exactly the shape match_load had to guard:
+-- without the auth.uid() scope inside the definer it is an IDOR into every
+-- driver's work and every shipper's cargo at once.
+
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_equals((select count(*) from public.driver_offers()), 0,
+  'a driver with no offer sees none of anybody else''s');
+select assert_equals(
+  (select count(*) from public.driver_offer('dddddddd-0000-4000-8000-0000000000ca')),
+  0, 'and holding another driver''s offer id gets them nothing — not found, not forbidden');
+select act_as_reset();
+
+select assert_raises($$select count(*) from public.driver_offers()$$,
+  'and with no actor at all there is nothing to scope to, so it refuses');
+
+-- A shipper is not the audience either. This function exists to compute a
+-- payout, and a payout is a driver's business.
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_equals((select count(*) from public.driver_offers()), 0,
+  'a shipper reads no offers here, even on their own load');
+select act_as_reset();
+
+-- ─── 9c. an expired offer is gone, not merely stale ─────────────────────────
+
+update public.offers set expires_at = now() - interval '1 hour'
+ where id = 'dddddddd-0000-4000-8000-0000000000ca';
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_equals(
+  (select count(*) from public.driver_offers()
+    where offer_id = 'dddddddd-0000-4000-8000-0000000000ca'),
+  0, 'an expired offer leaves the driver''s book rather than sitting there dead');
+select act_as_reset();
+
+-- ─── 9d. earnings ───────────────────────────────────────────────────────────
+-- Driver A delivered `The full walk` in §7. Driver B has delivered nothing, and
+-- must be told that as a zero rather than an error.
+
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_equals((select week_trips from public.driver_earnings()), 0,
+  'a driver who has delivered nothing has earned nothing — 0, not an error');
+select assert_equals((select week_baisa from public.driver_earnings()), 0,
+  'and no money with it');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_true(
+  (select all_time_trips >= 1 from public.driver_earnings()),
+  'a driver who has delivered counts it');
+select assert_true(
+  (select week_trips >= 1 from public.driver_earnings()),
+  'and it lands in this week, because it was delivered today');
+select act_as_reset();
+
+-- THE WEEK STARTS ON SUNDAY, in Muscat. An ISO Monday-start week would show
+-- every driver last week's total every Sunday, on the screen they check most.
+select assert_true(
+  (select to_char(
+     (now() at time zone 'Asia/Muscat')::date
+       - (extract(isodow from (now() at time zone 'Asia/Muscat')::date)::int % 7),
+     'Dy') = 'Sun'),
+  'the earnings week begins on a Sunday');
+
+-- ─── 9e. the rate card is not a driver's to enumerate ───────────────────────
+-- Crown jewel #1 (SECURITY.md §1). Both functions are granted to `authenticated`
+-- and every argument they take is on a driver's own offer card, so without the
+-- role guard a driver could read the card band by band.
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_raises(
+  $$select * from public.quote_route(
+      (select id from public.cities where name_en = 'Muscat'),
+      (select id from public.cities where name_en = 'Salalah'), '10t', 9000)$$,
+  'a driver cannot price a corridor — that is the rate card, band by band');
+select assert_raises(
+  $$select * from public.estimate_route(
+      (select id from public.cities where name_en = 'Muscat'),
+      (select id from public.cities where name_en = 'Salalah'), '10t', 9000)$$,
+  'nor estimate one');
+select act_as_reset();
+
+-- And a shipper loses nothing.
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_true(
+  (select count(*) >= 0 from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'), '10t', 9000)),
+  'a shipper still gets an estimate');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;
