@@ -18,13 +18,41 @@ map spur is the one new drawing primitive and it lives in `src/map/`.
 
 ## Where this stands (2026-07-31)
 
-**Done and committed:** Task 1 (`94efc34`, migration 0028) and Task 1b
-(`2f7ae88` on branch `p5/commission` in `~/truckkoo-ops`). Both verified in a
-browser, not only by tests — the commission panel was driven end to end and the
-rate reached `private.app_settings` with an audit row.
+**Done and committed:** Tasks 1, 1b, **2, 3, 4, 5, 6 and 7**. Tasks 1/1b were
+verified in a browser, not only by tests — the commission panel was driven end to
+end and the rate reached `private.app_settings` with an audit row. Tasks 2–7 are
+verified by tests only; nothing has been seen on a device.
 
-**Next:** Task 2. Nothing is half-applied; both repos are clean and green
-(378 JS tests, 445 SQL assertions).
+**Next:** Task 8. Both repos are clean and green (391 JS tests, 3 SQL suites).
+
+**Five decisions taken while doing 2–7 that depart from the plan as written:**
+
+1. **`post_leg` gained `p_free_kg` in 0029, not in Task 4.** The plan had Task 4
+   editing an already-applied 0029. The old six-argument signature is dropped in
+   the same migration, per the 0024 lesson.
+2. **Task 2's `f4` assertions were rewritten.** The fixtures the plan named are
+   both Muscat→Salalah, so `detour >= 0` was trivially true of zero. Section 8
+   now inserts a genuinely off-line load (Nizwa→Sohar) and asserts the detour
+   exceeds the distance from the corridor to the pickup — the "loop, not half of
+   it" claim, actually tested.
+3. **Task 3 §3 was already done.** `quote_route` (0011) and `estimate_route`
+   (0021) each reject a non-shipper before touching an argument. Reproducing both
+   bodies to insert a guard they already carry would have risked two rate-card
+   lookups for no change in behaviour, so 0030 asserts it instead. The refusal
+   stays `not permitted` rather than the plan's `not found`: it is raised before
+   any argument is read, so it is identical for every input and discloses only
+   the caller's own role.
+4. **`driver_earnings` buckets on the delivery event, not `trips.created_at`,
+   and on Muscat's calendar, not UTC.** A trip opened three weeks ago and
+   delivered this morning is this week's money. `created_at` remains the fallback
+   for a trip closed without a `delivered` event.
+5. **`useVisibleLoads` is deprecated, not yet deleted.** Its three call sites are
+   `driver.tsx`, `offers.tsx` and `trip/[id].tsx`, all rewritten in Tasks 8–11 —
+   deleting it in Task 4 would have left the tree not typechecking across four
+   commits. It carries a `@deprecated` warning and goes with the last call site.
+
+Task 7 was also pulled ahead of Task 5: `t()` is typed by `StringKey`, so a
+screen cannot reference a string that does not exist yet.
 
 **Two things learned while doing Tasks 1/1b, worth carrying forward:**
 
@@ -285,7 +313,7 @@ git add -A && git commit -m "Set the driver's commission from the dashboard"
 
 ---
 
-## Task 2: 0029 — detour, and the space left on a truck
+## Task 2: 0029 — detour, and the space left on a truck ✅ DONE (`40e8484`)
 
 **Files:**
 - Create: `supabase/migrations/0029_detour_and_capacity.sql`
@@ -395,7 +423,7 @@ git commit -m "Cost a detour honestly, and let a driver say what room is left (0
 
 ---
 
-## Task 3: 0030 — what a driver may read, and the rate-card hole
+## Task 3: 0030 — what a driver may read, and the rate-card hole ✅ DONE (`4f5840e`)
 
 **Files:**
 - Create: `supabase/migrations/0030_driver_reads.sql`
@@ -637,7 +665,7 @@ git commit -m "Give the driver their own view, and close the rate card (0030)"
 
 ---
 
-## Task 4: The client query layer
+## Task 4: The client query layer ✅ DONE (`06446f1`)
 
 **Files:**
 - Modify: `src/lib/queries.ts`
@@ -764,7 +792,7 @@ git commit -m "Move the driver off the loads table and onto their own view"
 
 ---
 
-## Task 5: The money triple
+## Task 5: The money triple ✅ DONE (`5b33e3e`)
 
 **Files:**
 - Create: `src/components/driver/Money.tsx`
@@ -836,7 +864,7 @@ git commit -m "Show the driver all three numbers, with what they keep leading"
 
 ---
 
-## Task 6: The detour spur
+## Task 6: The detour spur ✅ DONE (`d40cbdc`)
 
 **Files:**
 - Create: `src/map/DetourSpur.tsx`
@@ -904,7 +932,7 @@ git commit -m "Draw the detour as a dashed spur off the corridor"
 
 ---
 
-## Task 7: Strings for D1–D7
+## Task 7: Strings for D1–D7 ✅ DONE (`1319372`)
 
 **Files:**
 - Modify: `src/i18n/index.ts`
