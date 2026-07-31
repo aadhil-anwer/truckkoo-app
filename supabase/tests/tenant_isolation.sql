@@ -1277,6 +1277,123 @@ select assert_true(
   'once a real rating exists, it is what the driver card reports');
 select act_as_reset();
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 8. detour and capacity (0029)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Fresh fixtures, as the owner. The seed leg has been offered and matched by §5
+-- and §7 by the time this runs, and the `own legs updatable` policy is bounded
+-- by `status = 'open'` — so writing free_kg to it would silently touch no rows
+-- and the grant assertion below would read green having checked nothing.
+insert into public.legs (id, driver_id, origin_city, dest_city, depart_from, depart_to, is_empty)
+values ('bbbbbbbb-0000-4000-8000-0000000000c9', '33333333-3333-4333-8333-333333333333',
+        (select id from public.cities where name_en = 'Muscat'),
+        (select id from public.cities where name_en = 'Salalah'),
+        current_date + 40, current_date + 42, true)
+on conflict (id) do nothing;
+
+-- A load that is nowhere near the Muscat→Salalah line: inland to Nizwa, then
+-- north to Sohar, then back down the whole coast.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description)
+values ('aaaaaaaa-0000-4000-8000-0000000000c9', '11111111-1111-4111-8111-111111111111',
+        (select id from public.cities where name_en = 'Nizwa'),
+        (select id from public.cities where name_en = 'Sohar'),
+        current_date + 40, current_date + 42, 'Off the line')
+on conflict (id) do nothing;
+
+-- A load whose route IS the leg costs nothing extra.
+select assert_true(
+  (select private.detour_km('bbbbbbbb-0000-4000-8000-0000000000c9',
+                            'aaaaaaaa-0000-4000-8000-000000000001') = 0),
+  'a load whose route IS the leg adds no distance');
+
+-- And a load off the line costs the LOOP, not the turn-off. Quoting the distance
+-- from the corridor to the pickup would understate this by more than half, which
+-- beside a payout is the difference between a good offer and a bad one.
+select assert_true(
+  (select private.detour_km('bbbbbbbb-0000-4000-8000-0000000000c9',
+                            'aaaaaaaa-0000-4000-8000-0000000000c9')
+          > private.route_km((select id from public.cities where name_en = 'Muscat'),
+                             (select id from public.cities where name_en = 'Nizwa'))),
+  'a detour off the line costs the whole loop, not the distance to the pickup');
+
+-- Never negative, whatever great-circle arithmetic says about a load that
+-- appears to shorten the trip.
+select assert_true(
+  (select private.detour_km('bbbbbbbb-0000-4000-8000-0000000000c9',
+                            'aaaaaaaa-0000-4000-8000-0000000000c9') >= 0),
+  'and a detour is never negative');
+
+-- A missing leg or load is NULL, not an exception: driver_offers joins on a
+-- nullable leg_id and must not fall over when an offer carries none.
+select assert_true(
+  (select private.detour_km(null, 'aaaaaaaa-0000-4000-8000-0000000000c9') is null),
+  'an offer with no leg has no detour, rather than an error');
+
+-- free_kg is the driver's to state about their own leg.
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+update public.legs set free_kg = 4000, is_empty = false
+ where id = 'bbbbbbbb-0000-4000-8000-0000000000c9';
+select act_as_reset();
+
+select assert_equals(
+  (select free_kg from public.legs where id = 'bbbbbbbb-0000-4000-8000-0000000000c9'),
+  4000, 'a driver can say how much room is left on their own truck');
+
+-- But the grant is a column, not a hole in the row.
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_raises(
+  $$update public.legs set driver_id = '44444444-4444-4444-8444-444444444444'
+     where id = 'bbbbbbbb-0000-4000-8000-0000000000c9'$$,
+  'free_kg is writable but ownership still is not');
+select act_as_reset();
+
+-- And driver B silently touches nothing, because "not found" beats "forbidden".
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+update public.legs set free_kg = 9999
+ where id = 'bbbbbbbb-0000-4000-8000-0000000000c9';
+select act_as_reset();
+
+select assert_equals(
+  (select free_kg from public.legs where id = 'bbbbbbbb-0000-4000-8000-0000000000c9'),
+  4000, 'another driver writing free_kg on a leg they do not own changes nothing');
+
+-- Bounded, like every other number the client can send (SECURITY.md §6).
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_raises(
+  $$update public.legs set free_kg = 90000
+     where id = 'bbbbbbbb-0000-4000-8000-0000000000c9'$$,
+  'a truck with 90 tonnes free is a typo, not a truck');
+select assert_raises(
+  $$update public.legs set free_kg = 0
+     where id = 'bbbbbbbb-0000-4000-8000-0000000000c9'$$,
+  'and zero free space is said with is_empty = false, not with a zero');
+select act_as_reset();
+
+-- post_leg carries it, and an empty truck states no number at all — is_empty and
+-- a free_kg would be two contradictory answers to one question.
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select public.post_leg(
+  (select id from public.cities where name_en = 'Muscat'),
+  (select id from public.cities where name_en = 'Sur'),
+  current_date + 50, current_date + 52, null, false, 3000);
+select public.post_leg(
+  (select id from public.cities where name_en = 'Muscat'),
+  (select id from public.cities where name_en = 'Nizwa'),
+  current_date + 50, current_date + 52, null, true, 3000);
+select act_as_reset();
+
+select assert_equals(
+  (select free_kg from public.legs
+    where driver_id = '33333333-3333-4333-8333-333333333333'
+      and dest_city = (select id from public.cities where name_en = 'Sur')),
+  3000, 'post_leg stores the room a part-loaded driver states');
+select assert_true(
+  (select free_kg is null from public.legs
+    where driver_id = '33333333-3333-4333-8333-333333333333'
+      and dest_city = (select id from public.cities where name_en = 'Nizwa')),
+  'and drops it for an empty truck, where all of it is free');
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;
