@@ -60,6 +60,15 @@
           "photosPermission": "Truckkoo needs access to your photos so you can attach proof of delivery to a trip.",
           "cameraPermission": "Truckkoo uses the camera so you can photograph proof of delivery when a load is dropped off."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationWhenInUsePermission": "Truckkoo shares your position with the shipper while you are carrying their load, so they can see where their cargo is. It is only shared during a delivery.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
       ]
     ],
     "experiments": {
