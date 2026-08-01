@@ -6,7 +6,7 @@
  * users do not want to watch it arrive.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, I18nManager, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -15,7 +15,7 @@ import { useFonts } from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { initLanguage } from '@/i18n';
+import { loadLanguage } from '@/lib/language';
 import { SessionProvider, useSession } from '@/lib/session';
 import { color } from '@/theme/tokens';
 import { FONT_ASSETS } from '@/theme/faces';
@@ -23,9 +23,14 @@ import { FONT_ASSETS } from '@/theme/faces';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // RTL is structural from day one (CLAUDE.md). Allowing it here means every layout
-// is exercised in both directions as soon as Arabic copy lands.
+// is exercised in both directions as soon as Arabic copy lands. The direction
+// itself is decided by `loadLanguage()` below, which is the only caller of
+// forceRTL — see src/lib/language.ts for why the two must stay paired.
+//
+// `allowRTL` must stay here and must stay first: `forceRTL` is ignored on a
+// build that has not allowed RTL, which would leave the language switch
+// silently doing nothing at all.
 I18nManager.allowRTL(true);
-initLanguage();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,12 +45,24 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts(FONT_ASSETS);
+  const [languageReady, setLanguageReady] = useState(false);
+
+  // Before first render, not in a layout effect: a screen that renders
+  // left-to-right and then flips is worse than one that waits. Fonts already
+  // gate here, so the wait is free. Both arms resolve — a failure to read the
+  // preference must not be a failure to start.
+  useEffect(() => {
+    loadLanguage().then(
+      () => setLanguageReady(true),
+      () => setLanguageReady(true),
+    );
+  }, []);
 
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
+    if (fontsLoaded && languageReady) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded, languageReady]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded || !languageReady) return null;
 
   return (
     <SafeAreaProvider>
