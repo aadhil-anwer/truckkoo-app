@@ -719,7 +719,19 @@ const ar: Partial<Record<StringKey, string>> = {
   "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
 };
 
-const dictionaries: Record<Language, Partial<Record<StringKey, string>>> = { en, ar };
+/**
+ * Both dictionaries, exported.
+ *
+ * `tests/unit/i18n.test.ts` and `scripts/rtl-proof.tsx` both have to enumerate
+ * every key — for placeholder parity, for completeness, and for the proof-sheet.
+ * Exporting beats duplicating the key list in a test, which is how a test drifts
+ * from what ships.
+ *
+ * Typed with `en` as its literal type rather than as `Record<Language, ...>`, so
+ * `dictionaries.en[key]` stays a string literal and the placeholder types below
+ * can read it.
+ */
+export const dictionaries: { en: typeof en; ar: Partial<Record<StringKey, string>> } = { en, ar };
 
 /**
  * Current language. Read once at startup: React Native applies RTL layout at
@@ -745,11 +757,52 @@ export function isRTL(): boolean {
 }
 
 /**
+ * Placeholder names inside a dictionary value, at the type level.
+ *
+ * `en` is `as const`, so each value is a literal type and its `{name}` markers
+ * are readable by the compiler. That makes a missing or misspelt param a
+ * typecheck failure rather than a `{km}` rendered on a driver's screen.
+ */
+type Placeholders<S extends string> = S extends `${string}{${infer K}}${infer Rest}`
+  ? K | Placeholders<Rest>
+  : never;
+
+/**
+ * The params argument for a key: absent when the string has no placeholders,
+ * required and exhaustive when it has any.
+ *
+ * `[X] extends [never]` rather than `X extends never` — the bare form is a
+ * distributive conditional and collapses to `never` for every key.
+ */
+type ParamsFor<K extends StringKey> = [Placeholders<(typeof en)[K]>] extends [never]
+  ? []
+  : [params: Record<Placeholders<(typeof en)[K]>, string | number>];
+
+/**
+ * Substitute `{name}` markers.
+ *
+ * An unknown marker is left visible rather than replaced with "undefined": a
+ * literal `{oops}` on screen is a bug someone reports, and "undefined" is a bug
+ * someone assumes is data.
+ */
+export function interpolate(raw: string, params: Record<string, string | number>): string {
+  return raw.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : whole,
+  );
+}
+
+/**
  * Look up a string. Falls back to English rather than rendering a key or a
  * blank — a missing translation should look unfinished, not broken.
+ *
+ * Values are NOT formatted here. A number is stringified by the caller through
+ * `formatNumber`, so `t()` stays a lookup and a substitution with no opinion
+ * about numerals — which is what keeps it swappable for i18next later.
  */
-export function t(key: StringKey): string {
-  return dictionaries[current][key] ?? en[key];
+export function t<K extends StringKey>(key: K, ...args: ParamsFor<K>): string {
+  const raw: string = dictionaries[current === 'ar' ? 'ar' : 'en'][key] ?? en[key];
+  const params = args[0] as Record<string, string | number> | undefined;
+  return params ? interpolate(raw, params) : raw;
 }
 
 /**

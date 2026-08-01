@@ -12,7 +12,16 @@
 
 import { I18nManager } from 'react-native';
 
-import { align, directionArrow, formatNumber, initLanguage, localized, t } from '@/i18n';
+import {
+  align,
+  dictionaries,
+  directionArrow,
+  formatNumber,
+  initLanguage,
+  interpolate,
+  localized,
+  t,
+} from '@/i18n';
 
 describe('t', () => {
   beforeEach(() => initLanguage('en'));
@@ -182,5 +191,33 @@ describe('formatNumber', () => {
     // The site renders ٤٠ طن; PRODUCT.md records this as the chosen convention.
     expect(formatNumber(40)).not.toBe('40');
     expect(formatNumber(40)).toMatch(/[٠-٩]/);
+  });
+});
+
+describe('interpolation', () => {
+  beforeEach(() => initLanguage('en'));
+
+  it('leaves a string with no placeholders untouched', () => {
+    expect(t('app.name')).toBe('Truckkoo');
+  });
+
+  it('substitutes every occurrence of a placeholder', () => {
+    expect(interpolate('{a} and {a} and {b}', { a: '1', b: '2' })).toBe('1 and 1 and 2');
+  });
+
+  it('leaves an unknown placeholder in place rather than printing undefined', () => {
+    // A visible `{oops}` is findable. The string "undefined" is not.
+    expect(interpolate('x {oops} y', { a: '1' })).toBe('x {oops} y');
+  });
+
+  it('stringifies a number param', () => {
+    expect(interpolate('{n} km', { n: 12 })).toBe('12 km');
+  });
+});
+
+describe('dictionary export', () => {
+  it('exposes both dictionaries for the integrity tests', () => {
+    expect(Object.keys(dictionaries.en).length).toBeGreaterThan(300);
+    expect(dictionaries.ar).toBeDefined();
   });
 });
