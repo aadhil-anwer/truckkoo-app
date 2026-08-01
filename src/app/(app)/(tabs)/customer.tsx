@@ -40,7 +40,7 @@ import { CityPin, Corridor, MapCanvas, Scrim } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { formatWeight, formatWindow } from '@/lib/format';
-import { align, localized, t } from '@/i18n';
+import { align, localized, t, type StringKey } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import {
   GUTTER_INK,
@@ -215,13 +215,13 @@ export default function ShipperHome() {
                   key={load.id}
                   onPress={() => router.push(`/load/${load.id}`)}
                   accessibilityLabel={`${localized(o)} ${t('route.ariaTo')} ${localized(d)}. ${t(
-                    `status.${load.status}` as never,
+                    `status.${load.status}` as StringKey,
                   )}`}
                   style={styles.loadCard}
                 >
                   <View style={styles.loadHead}>
                     <StatusPill
-                      label={t(`status.${load.status}` as never)}
+                      label={t(`status.${load.status}` as StringKey)}
                       // Accent only while something is genuinely happening.
                       tone={load.status === 'in_transit' ? 'accent' : 'neutral'}
                     />

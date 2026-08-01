@@ -10,7 +10,7 @@
 import { render, screen } from '@testing-library/react-native';
 
 import { DriverMoney } from '@/components/driver/Money';
-import { initLanguage } from '@/i18n';
+import { initLanguage, t } from '@/i18n';
 
 beforeEach(() => initLanguage('en'));
 
@@ -54,5 +54,28 @@ describe('DriverMoney', () => {
   it('carries the amount into one accessible label, not three loose numbers', async () => {
     await render(<DriverMoney payout={78000} collect={96000} owed={18000} currency="OMR" />);
     expect(screen.getByLabelText('You keep 78.000 OMR')).toBeTruthy();
+  });
+});
+
+describe('composed driver copy', () => {
+  afterEach(() => initLanguage('en'));
+
+  it('puts the detour distance and its unit inside one string', () => {
+    initLanguage('en');
+    expect(t('drv.offer.detour', { km: '12' })).toBe('about 12 km extra on your route');
+  });
+
+  it('lets Arabic place the unit itself', () => {
+    initLanguage('ar');
+    const s = t('drv.offer.detour', { km: '١٢' });
+    expect(s).toContain('١٢');
+    // The Latin unit must not survive into Arabic copy.
+    expect(s).not.toContain('km');
+    expect(s).toContain('كم');
+  });
+
+  it('carries the amount inside the take label', () => {
+    initLanguage('en');
+    expect(t('drv.offer.take', { amount: 'OMR 42.500' })).toBe('Take it — OMR 42.500');
   });
 });

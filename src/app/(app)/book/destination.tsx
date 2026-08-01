@@ -19,7 +19,7 @@ import { Icon } from '@/components/icon';
 import { CityPin, Corridor, roadKm } from '@/map';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities, useMyLoads } from '@/lib/queries';
-import { align, formatNumber, t } from '@/i18n';
+import { align, formatNumber, t, type StringKey } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { alpha, color, font, hairline, radius, space } from '@/theme/tokens';
 
@@ -126,11 +126,11 @@ export default function Destination() {
                   // longer shows.
                   update({ destinationCountry: c, destinationCityId: null })
                 }
-                accessibilityLabel={t(`country.${c}` as never)}
+                accessibilityLabel={t(`country.${c}` as StringKey)}
                 style={[styles.segment, on && styles.segmentOn]}
               >
                 <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
-                  {t(`country.${c}` as never)}
+                  {t(`country.${c}` as StringKey)}
                 </Text>
               </PressableSurface>
             );

@@ -125,7 +125,7 @@ export default function RoutesTab() {
                 guess here would be a number they never gave us. */}
             {!leg.is_empty && leg.free_kg != null && (
               <Text style={styles.free}>
-                {`${formatWeight(leg.free_kg, '')} ${t('drv.offer.freeAfter')}`}
+                {t('drv.offer.freeAfter', { weight: formatWeight(leg.free_kg, '') })}
               </Text>
             )}
           </View>

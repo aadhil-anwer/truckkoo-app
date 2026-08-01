@@ -54,7 +54,7 @@ export function OfferCard({
   const amount = formatMoney(offer.payout_baisa, offer.currency as Currency);
   // The label carries the amount, so the thing a driver is agreeing to is in the
   // thing they press — and a screen reader announces it rather than "Take it".
-  const takeLabel = amount ? `${t('drv.offer.take')} — ${amount}` : t('drv.offer.take');
+  const takeLabel = amount ? t('drv.offer.take', { amount }) : t('drv.offer.take.bare');
 
   return (
     <View style={[styles.card, compact && styles.cardCompact]}>
@@ -62,7 +62,7 @@ export function OfferCard({
         {/* Neutral. The accent on this card is the button. */}
         <StatusPill label={t('drv.offer.fits')} tone="neutral" />
         <Text style={styles.expiry}>
-          {`${t('drv.offer.expires')} ${formatDeadline(offer.expires_at)}`}
+          {t('drv.offer.expires', { when: formatDeadline(offer.expires_at) })}
         </Text>
       </View>
 
@@ -81,9 +81,7 @@ export function OfferCard({
           <View style={styles.detour}>
             <Icon name="routes" size={16} tint={alpha.onInk.tertiary} />
             <Text style={styles.detourText}>
-              {`${t('drv.offer.about')} ${formatNumber(Math.round(offer.detour_km))} km ${t(
-                'drv.offer.detour',
-              )}`}
+              {t('drv.offer.detour', { km: formatNumber(Math.round(offer.detour_km)) })}
             </Text>
           </View>
         )}
@@ -94,7 +92,7 @@ export function OfferCard({
         {offer.weight_kg != null && <Chip label={formatWeight(offer.weight_kg, '')} />}
         {offer.free_after_kg != null && (
           <Chip
-            label={`${formatWeight(offer.free_after_kg, '')} ${t('drv.offer.freeAfter')}`}
+            label={t('drv.offer.freeAfter', { weight: formatWeight(offer.free_after_kg, '') })}
           />
         )}
       </View>

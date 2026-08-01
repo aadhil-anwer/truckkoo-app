@@ -54,7 +54,7 @@ export function DriverMoney({
           accessibilityRole="header"
           // One label, so the number is never announced without its unit or its
           // meaning — a bare "78" tells a driver nothing.
-          accessibilityLabel={`${t('drv.money.keep')} ${keep} ${currency}`}
+          accessibilityLabel={t('drv.money.keepAria', { amount: `${keep} ${currency}` })}
         >
           {keep}
         </Text>
@@ -63,7 +63,10 @@ export function DriverMoney({
 
       {!!remit && !!take && (
         <Text style={styles.supporting}>
-          {`${t('drv.money.collect')} ${take} ${currency} · ${t('drv.money.owe')} ${remit} ${currency}`}
+          {t('drv.money.split', {
+            collect: `${take} ${currency}`,
+            owed: `${remit} ${currency}`,
+          })}
         </Text>
       )}
     </View>

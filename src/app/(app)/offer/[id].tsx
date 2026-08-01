@@ -185,8 +185,8 @@ export default function OfferDetail() {
           <View style={styles.facts}>
             {data.detour_km != null && (
               <Fact
-                label={t('drv.offer.detour')}
-                value={`${t('drv.offer.about')} ${formatNumber(Math.round(data.detour_km))} km`}
+                label={t('drv.offer.detourLabel')}
+                value={t('drv.offer.detour', { km: formatNumber(Math.round(data.detour_km)) })}
               />
             )}
             <Fact label={t('book.review.cargo')} value={safeText(data.goods)} />
@@ -203,14 +203,14 @@ export default function OfferDetail() {
               load on a guess is worse off than one told nothing. */}
           {data.free_after_kg != null && (
             <Text style={styles.capacity}>
-              {`${formatWeight(data.free_after_kg, '')} ${t('drv.offer.freeAfter')}`}
+              {t('drv.offer.freeAfter', { weight: formatWeight(data.free_after_kg, '') })}
             </Text>
           )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
 
           <PrimaryButton
-            label={amount ? `${t('drv.offer.take')} — ${amount}` : t('drv.offer.take')}
+            label={amount ? t('drv.offer.take', { amount }) : t('drv.offer.take.bare')}
             onPress={take}
             loading={respond.isPending && respond.variables?.accept === true}
           />

@@ -37,7 +37,7 @@ import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
-import { align, formatNumber, localized, t } from '@/i18n';
+import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
 import { formatMoney, type Currency } from '@/lib/money';
 import {
   cityIndex,
@@ -76,6 +76,7 @@ export default function DriverHome() {
 
   const pending = offers.data ?? [];
   const week = earnings.data;
+  const weekAmount = week ? formatMoney(week.week_baisa, 'OMR') : null;
   const trip = (trips.data ?? []).find(
     (tr) => tr.status === 'assigned' || tr.status === 'in_transit',
   );
@@ -143,11 +144,11 @@ export default function DriverHome() {
           {greeting}
         </Text>
 
-        {/* Only once it is real. */}
-        {!!week && week.week_baisa > 0 && (
-          <Text style={styles.week}>
-            {`${formatMoney(week.week_baisa, 'OMR')} ${t('drv.home.week')}`}
-          </Text>
+        {/* Only once it is real, and only once it formats. `formatMoney` returns
+            null for a currency it does not know, and a week's earnings rendered
+            as "null this week" is worse than no line at all. */}
+        {!!week && week.week_baisa > 0 && !!weekAmount && (
+          <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
         )}
 
         {/* The job in progress, if there is one. Compact: it is a way back to
@@ -155,12 +156,12 @@ export default function DriverHome() {
         {!!trip && (
           <PressableSurface
             onPress={() => router.push(`/trip/${trip.id}`)}
-            accessibilityLabel={t(`status.${trip.status}` as never)}
+            accessibilityLabel={t(`status.${trip.status}` as StringKey)}
             style={styles.job}
           >
             <Icon name="truck" size={22} tint={color.lightText} />
             <View style={styles.jobText}>
-              <StatusPill label={t(`status.${trip.status}` as never)} tone="accent" />
+              <StatusPill label={t(`status.${trip.status}` as StringKey)} tone="accent" />
             </View>
             <Icon name="chevron" size={18} tint={alpha.onInk.tertiary} />
           </PressableSurface>

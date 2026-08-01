@@ -83,20 +83,35 @@ const en = {
   'drv.home.greeting.one': 'load wants your truck',
   'drv.home.greeting.some': 'loads want your truck',
   'drv.home.greeting.none': 'Nothing offered yet',
-  'drv.home.week': 'this week',
+  'drv.home.week': '{amount} this week',
   'drv.money.keep': 'You keep',
   'drv.money.collect': 'Collect from the shipper',
   'drv.money.owe': 'To Truckkoo',
+  // The spoken forms. `drv.money.keep` and the two above label the hero layout,
+  // where each number sits under its own word; these carry the same facts as
+  // sentences, for the row layout and for a screen reader.
+  'drv.money.keepAria': 'You keep {amount}',
+  'drv.money.split': 'Collect from the shipper {collect} · To Truckkoo {owed}',
   'drv.offer.fits': 'FITS YOUR TRUCK',
-  'drv.offer.expires': 'Expires',
-  'drv.offer.take': 'Take it',
+  'drv.offer.expires': 'Expires {when}',
+  'drv.offer.take': 'Take it — {amount}',
+  // The same button before a payout is known. Two keys rather than an empty
+  // placeholder, because "Take it — " with nothing after it is worse than either.
+  'drv.offer.take.bare': 'Take it',
   'drv.offer.details': 'See details',
   'drv.offer.pass': 'Pass',
   // "about", because a detour is great-circle distance between city centres on
   // roads that are neither straight nor centred. Same honesty rule as T4.
-  'drv.offer.about': 'about',
-  'drv.offer.detour': 'extra on your route',
-  'drv.offer.freeAfter': 'free after this load',
+  //
+  // One key, not four. The English order — about, number, unit, clause — is
+  // correct English and merely plausible Arabic, and composing it at the call
+  // site is what made it unfixable without touching a screen (OPEN_ISSUES 30).
+  'drv.offer.detour': 'about {km} km extra on your route',
+  // The row label on the detail screen, where the sentence above is the value.
+  // It exists because `drv.offer.detour` used to be the trailing fragment and
+  // was doing double duty as a label; a sentence cannot label itself.
+  'drv.offer.detourLabel': 'Detour',
+  'drv.offer.freeAfter': '{weight} free after this load',
   'drv.offer.gone': 'That offer has gone',
   'drv.none.title': 'An empty book here means an empty truck.',
   'drv.none.body':
@@ -589,18 +604,24 @@ const ar: Partial<Record<StringKey, string>> = {
   'drv.home.greeting.one': 'شحنة تريد شاحنتك',
   'drv.home.greeting.some': 'شحنات تريد شاحنتك',
   'drv.home.greeting.none': 'لا توجد عروض بعد',
-  'drv.home.week': 'هذا الأسبوع',
+  // Every value in this block is ASSEMBLED from fragments already in this file
+  // — `حوالي`, `إضافية على مسارك`, `ينتهي`, `خذها`, `تحتفظ بـ` are the website's
+  // own words, moved rather than rewritten, with `كم` for the unit.
+  // FLAG FOR PROOFING: assembling is still a translation act.
+  'drv.home.week': '{amount} هذا الأسبوع',
   'drv.money.keep': 'تحتفظ بـ',
   'drv.money.collect': 'تحصّلها من الشاحن',
   'drv.money.owe': 'لتراكو',
+  'drv.money.keepAria': 'تحتفظ بـ {amount}',
+  'drv.money.split': 'تحصّلها من الشاحن {collect} · لتراكو {owed}',
   'drv.offer.fits': 'مناسبة لشاحنتك',
-  'drv.offer.expires': 'ينتهي',
-  'drv.offer.take': 'خذها',
+  'drv.offer.expires': 'ينتهي {when}',
+  'drv.offer.take': 'خذها — {amount}',
+  'drv.offer.take.bare': 'خذها',
   'drv.offer.details': 'التفاصيل',
   'drv.offer.pass': 'تجاوز',
-  'drv.offer.about': 'حوالي',
-  'drv.offer.detour': 'إضافية على مسارك',
-  'drv.offer.freeAfter': 'متبقية بعد هذه الشحنة',
+  'drv.offer.detour': 'حوالي {km} كم إضافية على مسارك',
+  'drv.offer.freeAfter': '{weight} متبقية بعد هذه الشحنة',
   'drv.offer.gone': 'هذا العرض لم يعد متاحاً',
   'drv.none.title': 'الدفتر الفارغ هنا يعني شاحنة فارغة.',
   'drv.none.body':
@@ -771,12 +792,21 @@ type Placeholders<S extends string> = S extends `${string}{${infer K}}${infer Re
  * The params argument for a key: absent when the string has no placeholders,
  * required and exhaustive when it has any.
  *
- * `[X] extends [never]` rather than `X extends never` — the bare form is a
- * distributive conditional and collapses to `never` for every key.
+ * `K extends K ?` is a deliberate no-op condition that makes this distribute
+ * over a union. Without it, a caller holding a widened `StringKey` — which is
+ * every `t(\`status.${x}\` as StringKey)` site — gets the placeholders of ALL
+ * values unioned together and is forced to pass params it has no way to know.
+ * Distributing turns the result into a union of tuples that includes `[]`, so a
+ * dynamic key stays callable while a literal key stays strict.
+ *
+ * Inside, `[X] extends [never]` rather than `X extends never` — the bare form is
+ * itself a distributive conditional and collapses to `never` for every key.
  */
-type ParamsFor<K extends StringKey> = [Placeholders<(typeof en)[K]>] extends [never]
-  ? []
-  : [params: Record<Placeholders<(typeof en)[K]>, string | number>];
+type ParamsFor<K extends StringKey> = K extends K
+  ? [Placeholders<(typeof en)[K]>] extends [never]
+    ? []
+    : [params: Record<Placeholders<(typeof en)[K]>, string | number>]
+  : never;
 
 /**
  * Substitute `{name}` markers.
