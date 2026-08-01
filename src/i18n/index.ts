@@ -9,10 +9,15 @@
  *   1. every user-facing string goes through `t()`, never a literal in a screen
  *   2. every layout uses logical properties, never left/right
  *
- * Arabic values already present below were lifted verbatim from the live
- * bilingual website (`~/truckkoo`), not machine-translated. Where a key has no
- * Arabic yet it falls back to English, visibly, so gaps are findable rather
- * than silently blank.
+ * ARABIC IS COMPLETE AS OF P7, and it is not all of one kind. Strings are
+ * either lifted verbatim from the live bilingual website (`~/truckkoo`) or from
+ * the handoff's X3/X4, assembled from words already here, or DRAFTED — and the
+ * drafts sit in one delimited block at the end of the `ar` dictionary, marked
+ * UNPROOFED, because none of them has been read by someone who reads Arabic.
+ * `npm run preview:rtl` lays every string out for exactly that review.
+ *
+ * The English fallback stays, and still matters: the next key someone adds will
+ * have no Arabic for a while, and it must look unfinished rather than blank.
  *
  * This is deliberately a plain typed dictionary rather than i18next. It is ~40
  * lines of machinery instead of a dependency, and `t()` has the same shape, so
@@ -757,6 +762,274 @@ const ar: Partial<Record<StringKey, string>> = {
   "action.back": "رجوع",
   // Driver-facing, and it appears at the worst possible moment.
   "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
+
+  /* ─── HARVESTED · P7 ──────────────────────────────────────────────────────
+   * Lifted from the live bilingual site (`~/truckkoo`) or from the handoff's
+   * X3 and X4, which specify finished Arabic for a whole home screen and a
+   * whole question screen. Verbatim, or assembled from words already above.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  // Tab labels, greeting and states — all quoted directly in the handoff's X3.
+  'tab.home': 'الرئيسية',
+  'tab.loads': 'الشحنات',
+  'tab.account': 'حسابي',
+  'home.hello': 'مرحباً',
+  'home.live': 'قيد التنفيذ',
+  'home.seeAll': 'عرض الكل',
+  'status.finding_truck': 'جاري البحث عن شاحنة',
+  'cust.section.active': 'قيد التنفيذ',
+  // X4's date blocks and its continue button.
+  'date.today': 'اليوم',
+  'date.tomorrow': 'غداً',
+  'common.next': 'متابعة',
+  // The site's own public commitments. These are claims the company already
+  // makes in Arabic, so they are not ours to reword (CLAUDE.md #5).
+  'account.help.detail': 'نرد خلال دقائق · طوال أيام الأسبوع',
+  'cust.driver.verified': 'موثّق',
+  'truck.unset': 'غير متأكد — انصحوني',
+  // Assembled from words already in this file.
+  'loads.title': 'شحناتك',
+  'cust.masthead': 'شحناتك',
+  'account.title': 'حسابي',
+  'account.language': 'اللغة',
+  'account.details': 'بياناتك',
+  'account.help': 'المساعدة',
+  'account.role.shipper': 'أنت ترسل بضائع',
+  'account.role.driver': 'أنت تقود شاحنة',
+  'label.pickup': 'الاستلام',
+  'label.weight': 'الوزن',
+  'label.driver': 'السائق',
+  'label.dates': 'التواريخ',
+  'label.plate': 'رقم اللوحة',
+  'common.back': 'رجوع',
+  'common.search': 'بحث',
+  'common.close': 'إغلاق',
+  'common.retry': 'حاول مرة أخرى',
+  'common.loading': 'جارٍ التحميل…',
+  'price.title': 'السعر',
+  'event.delivered': 'تم التسليم',
+  'status.delivered': 'تم التسليم',
+  'trip.title': 'الرحلة الحالية',
+  'label.trip': 'الرحلة الحالية',
+
+  /* ─── UNPROOFED DRAFTS · P7 ───────────────────────────────────────────────
+   * NOT lifted from the website and NOT assembled from existing fragments.
+   *
+   * EVERY STRING BELOW NEEDS A NATIVE ARABIC READER BEFORE LAUNCH. They exist
+   * so that no screen falls back to English mid-sentence and so the proof-sheet
+   * has something to review; they do not constitute a claim that the Arabic is
+   * right. `npm run preview:rtl` lays them out for that review, and the count is
+   * tracked in OPEN_ISSUES.
+   *
+   * Kept in one block on purpose. Scattered among the harvested strings, a
+   * reviewer would have to read all 387 lines looking for the ones that need
+   * attention; here they read one section.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  'drv.offer.detourLabel': 'الانعطاف',
+  'role.shipper': 'أحتاج نقل بضائع',
+  'role.driver': 'أقود شاحنة',
+  'load.submit': 'اطلب عرض سعر',
+  'home.search.aria': 'إلى أين تريد النقل؟ اختر مدينتين ونحن نتولى الباقي.',
+  'common.error.aria': 'تعذّر تحميل ذلك. حاول مرة أخرى',
+  'book.origin.ctaNamed': 'الاستلام من هنا — {city}',
+  'track.price.acceptNamed': 'موافق على {amount}',
+  'track.assigned.takingNamed': '{name} سيأخذ شحنتك.',
+  'track.rate.starAria': '{n} نجوم',
+  'label.referenceNamed': 'المرجع {ref}',
+
+  'status.posted': 'تم الإرسال',
+  'status.matched': 'وُجدت شاحنة',
+  'status.assigned': 'تم تعيين شاحنة',
+  'status.in_transit': 'على الطريق',
+  'status.closed': 'مكتملة',
+  'status.cancelled': 'ملغاة',
+
+  'error.generic': 'حدث خطأ ما. حاول مرة أخرى.',
+  'error.offline': 'لا يوجد اتصال. حفظنا هذا وسنرسله عند عودة الاتصال.',
+
+  'auth.signIn.kicker': 'أهلاً بعودتك',
+  'auth.signUp.title': 'أنشئ حسابك',
+  'auth.signUp.kicker': 'دقيقتان، مرة واحدة',
+  'auth.email.placeholder': 'you@company.com',
+  'auth.password.placeholder': '٨ أحرف على الأقل',
+  'auth.name.placeholder': 'الاسم الكامل',
+  'auth.phone.placeholder': '‎+968 …',
+  'auth.phone.help': 'لنتواصل معك بخصوص الشحنة. لا نشاركه مع أحد.',
+  'auth.submit.signIn': 'تسجيل الدخول',
+  'auth.submit.signUp': 'إنشاء حساب',
+  'auth.toSignUp': 'جديد في تركو؟ أنشئ حساباً',
+  'auth.toSignIn': 'لديك حساب بالفعل؟ سجّل الدخول',
+  'auth.or': 'أو',
+  'auth.google': 'المتابعة عبر جوجل',
+  'auth.apple': 'المتابعة عبر آبل',
+  'auth.checkEmail': 'تحقق من بريدك لتأكيد حسابك، ثم سجّل الدخول.',
+  'auth.role.title': 'من أنت؟',
+  'auth.role.help': 'يمكنك الاختيار مرة واحدة فقط، فاختر ما يناسبك.',
+  'auth.role.shipper.title': 'أحتاج نقل بضائع',
+  'auth.role.shipper.detail': 'أخبرنا بما تريد نقله ونحن نجد الشاحنة.',
+  'auth.role.driver.title': 'أقود شاحنة',
+  'auth.role.driver.detail': 'أخبرنا بمساراتك واحصل على شحنات تناسبها.',
+  'auth.truck.title': 'شاحنتك',
+  'auth.truck.help': 'نطابق الشحنات مع حجم شاحنتك، لذا يجب أن يكون هذا صحيحاً.',
+  'auth.truck.unavailable': 'تعذّر تحميل أحجام الشاحنات. تحقق من الاتصال وحاول مرة أخرى.',
+  'auth.truck.plate': 'رقم اللوحة',
+  'auth.truck.plate.placeholder': 'اختياري',
+  'auth.reset.title': 'اضبط كلمة مرور جديدة',
+  'auth.reset.explain': 'اختر كلمة مرور جديدة. سيتم تسجيل دخولك مباشرة بعدها.',
+  'auth.reset.password': 'كلمة المرور الجديدة',
+  'auth.reset.submit': 'حفظ كلمة المرور',
+  'auth.reset.invalid': 'هذا الرابط غير صالح. اطلب رابطاً جديداً من شاشة تسجيل الدخول.',
+  'auth.confirm.title': 'جارٍ تأكيد بريدك',
+  'auth.confirm.working': 'لحظة واحدة.',
+  'auth.confirm.invalid': 'هذا الرابط غير صالح. سجّل الدخول وسنرسل رابطاً جديداً.',
+  'auth.forgot': 'نسيت كلمة المرور؟',
+  'auth.forgot.needEmail': 'اكتب بريدك أعلاه أولاً، ثم اضغط هنا مرة أخرى.',
+  'auth.forgot.sent': 'إذا كان لهذا البريد حساب، فقد أرسلنا إليه رابط إعادة التعيين. تحقق من بريدك.',
+
+  'error.email.invalid': 'هذا لا يبدو عنوان بريد إلكتروني.',
+  'error.password.short': 'استخدم ٨ أحرف على الأقل.',
+  'error.name.required': 'من فضلك أخبرنا باسمك.',
+  'error.role.required': 'من فضلك اختر واحداً.',
+  'error.truck.required': 'من فضلك اختر حجم شاحنتك.',
+  'error.signIn.failed': 'البريد وكلمة المرور غير متطابقين. حاول مرة أخرى.',
+  'error.oauth.unavailable': 'طريقة الدخول هذه غير مفعّلة بعد. استخدم بريدك في الوقت الحالي.',
+  'error.reset.expired': 'انتهت صلاحية الرابط. اطلب رابطاً جديداً من شاشة تسجيل الدخول.',
+  'error.confirm.expired': 'انتهت صلاحية الرابط. سجّل الدخول وسنرسل رابطاً جديداً.',
+
+  'cust.newLoad': 'انقل شيئاً',
+  'cust.empty.title': 'لا شيء يتحرك بعد',
+  'cust.empty.explain':
+    'أخبرنا بما يجب نقله وإلى أين. سنجد شاحنة متجهة إلى هناك بالفعل — أو نرتب رحلة جديدة.',
+  'cust.empty.action': 'أرسل أول شحنة لك',
+  'cust.section.past': 'المكتملة',
+  'cust.record.title': 'الشحنات المكتملة',
+  'cust.record.none.title': 'لا شيء مكتمل بعد',
+  'cust.record.none.explain': 'الشحنات المسلّمة والملغاة تُحفظ هنا.',
+  'cust.finding.explain':
+    'نبحث عن شاحنة متجهة إلى هناك بالفعل. وإن لم يناسب شيء، نرتب رحلة جديدة — لن تُترك بلا إجابة.',
+  'cust.driver.title': 'سائقك',
+  'cust.driver.call': 'راسل سائقك',
+  'cust.progress.title': 'التقدّم',
+  'cust.pod.title': 'إثبات التسليم',
+
+  'driver.masthead': 'اليوم',
+  'driver.trip.none.title': 'لا توجد رحلة الآن',
+  'driver.trip.none.explain':
+    'أخبرنا إلى أين ستقود بعد ذلك. وحين تناسب شحنة مسارك، ستصلك هنا.',
+  'driver.postLeg': 'أضف رحلة ستقوم بها',
+  'driver.section.offers': 'شحنات معروضة عليك',
+  'driver.offers.none.title': 'لا توجد عروض بعد',
+  'driver.offers.none.explain':
+    'أضف المسارات التي تقودها بالفعل. نرسل لك فقط الشحنات التي تقع عليها.',
+  'driver.section.legs': 'مساراتك القادمة',
+  'driver.pay': 'ستحصل على',
+  'driver.pay.pending': 'ستؤكد تركو السعر معك قبل الاستلام.',
+  'driver.accept': 'اقبل هذه الشحنة',
+  'driver.decline': 'ليست هذه',
+  'driver.advance.pickedUp': 'لقد استلمتها',
+  'driver.advance.delivered': 'تحديد كمُسلّمة',
+  'driver.trip.title': 'رحلتك',
+  'driver.trip.next': 'الخطوة التالية',
+  'driver.routes.title': 'المسارات التي أضفتها',
+  'driver.routes.none.title': 'لا توجد مسارات',
+  'driver.routes.none.explain':
+    'أضف إلى أين ستقود بعد ذلك. نعرض عليك فقط الشحنات التي تقع على أحد مساراتك — فالدفتر الفارغ هنا يعني شاحنة فارغة.',
+  'driver.offer.sheet': 'شحنة معروضة عليك',
+
+  'tab.offers': 'العروض',
+  'tab.routes': 'المسارات',
+  'offers.title': 'معروضة عليك',
+  'offers.hint': 'فقط الشحنات التي تقع على مسار أضفته',
+  'routes.title': 'مساراتك',
+  'routes.hint': 'نطابق الشحنات مع هذه',
+
+  'home.entry': 'إلى أين؟',
+  'home.entry.hint': 'أخبرنا بمكان الاستلام والتسليم — ونحن نجد الشاحنة',
+  'home.again': 'أرسلها مرة أخرى',
+  'home.again.hint': 'مسار استخدمته من قبل',
+  'loads.seg.live': 'قيد التنفيذ',
+  'loads.seg.past': 'المكتملة',
+
+  'step.route': 'إلى أين تذهب؟',
+  'step.route.hint': 'الاستلام أولاً، ثم التسليم',
+  'step.details': 'ماذا ننقل؟',
+  'step.details.hint': 'إجابة تقريبية تكفي — سنؤكدها معك',
+  'step.of': 'من',
+
+  'leg.stamp.empty': 'فارغة',
+  'leg.stamp.part': 'جزئية',
+  'label.replyBy': 'الرد قبل',
+
+  'review.title': 'راجع هذا قبل أن نبدأ',
+  'review.priceLabel': 'سعرك',
+  'review.confirm': 'نعم، احجزها',
+  'review.change': 'غيّر شيئاً',
+  'review.checking': 'نحسب سعرك…',
+
+  'note.title': 'بوليصة الشحن',
+  'note.carrier': 'نقلها',
+  'note.query': 'اسألنا عن هذه الشحنة',
+  'note.pod.alt': 'صورة التقطت عند التسليم',
+  'note.missing.title': 'لا نجد هذه الشحنة',
+  'note.missing.explain':
+    'ربما أُلغيت، أو أنها تخص حساباً آخر. شحناتك المكتملة معروضة على شاشتك الرئيسية.',
+  'note.open': 'اعرض البوليصة كاملة',
+  'label.load': 'بوليصة الشحن',
+  'label.offer': 'عرض شحنة',
+  'label.leg': 'مسارك',
+
+  'price.action': 'اطلب سعراً',
+  'price.retry': 'اسأل مرة أخرى',
+  'price.none.explain': 'اطلب منا سعراً وسنعود إليك مباشرة.',
+  'price.advise_me':
+    'طلبت منا أن نرشّح الشاحنة، لذا سنسعّرها بناءً على الترشيح. توقع الإجابة خلال دقائق.',
+  'price.no_rate': 'نسعّر هذا المسار يدوياً. نحسبه الآن وسنعود إليك خلال دقائق.',
+  'price.over_capacity':
+    'هذه الشحنة أثقل مما تحتمله الشاحنة التي اخترتها. سنقترح الشاحنة المناسبة ونسعّرها لك.',
+  'price.heldUntil': 'السعر محفوظ حتى {when}',
+  'price.settle': 'لا يُخصم شيء في التطبيق. نرتب الدفع معك مباشرة.',
+
+  'event.picked_up': 'تم الاستلام',
+  'event.en_route': 'على الطريق',
+  'event.note': 'ملاحظة',
+
+  'weight.unset': 'غير محدد',
+  'common.error.title': 'تعذّر تحميل ذلك',
+  'common.error.explain': 'تحقق من اتصالك وحاول مرة أخرى. لم يُفقد شيء.',
+  'common.noMatches': 'لا يوجد ما يطابق ذلك. جرّب كلمة أقصر.',
+  'account.language.hint': 'أعد تشغيل التطبيق بعد تغيير هذا',
+
+  'post.load.title': 'ما الذي تريد نقله؟',
+  'post.load.submit': 'أرسل إلى تركو',
+  'post.load.weight': 'الوزن التقريبي (اختياري)',
+  'post.load.weight.placeholder': 'مثال: ٨٠٠٠',
+  'post.load.weight.unit': 'بالكيلوغرام. اتركه فارغاً إن لم تكن متأكداً.',
+  'post.load.date': 'متى نأتي لأخذ الشحنة؟',
+  'post.load.sameCity': 'لا يمكن أن يكون الاستلام والتسليم في المكان نفسه.',
+  'post.load.done.title': 'استلمناها',
+  'post.load.done.explain': 'نبحث عن شاحنة متجهة إلى هناك. ستراها ضمن شحناتك.',
+
+  'post.leg.title': 'إلى أين تقود؟',
+  'post.leg.submit': 'أضف هذا المسار',
+  'post.leg.date': 'متى تنطلق؟',
+  'post.leg.empty': 'هل الشاحنة فارغة؟',
+  'post.leg.empty.yes': 'فارغة — يمكنني أخذ شحنة',
+  'post.leg.empty.no': 'محمّلة جزئياً — بقي بعض المكان',
+  'post.leg.help': 'نرسل لك فقط الشحنات التي تقع على مسار أضفته.',
+
+  'trip.collect.title': 'هل استلمت الشحنة؟',
+  'trip.collect.explain': 'حدّد هذا فقط بعد أن تصبح البضاعة على شاحنتك.',
+  'trip.collect.action': 'نعم، تم تحميلها',
+  'trip.deliver.title': 'تم التسليم؟',
+  'trip.deliver.explain':
+    'التقط صورة واحدة للبضاعة المسلّمة. هذه إثباتك، ولا يمكن تغييرها بعد ذلك.',
+  'trip.deliver.photo': 'التقط صورة',
+  'trip.deliver.retake': 'التقط صورة أخرى',
+  'trip.deliver.action': 'تأكيد التسليم',
+  'trip.deliver.needPhoto': 'الصورة مطلوبة قبل تحديد الشحنة كمُسلّمة.',
+  'trip.photo.denied': 'نحتاج إذن الكاميرا لالتقاط إثبات التسليم. يمكنك تفعيله من الإعدادات.',
+  'trip.uploading': 'جارٍ الإرسال…',
 };
 
 /**

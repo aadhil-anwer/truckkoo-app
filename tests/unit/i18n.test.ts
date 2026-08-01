@@ -5,9 +5,9 @@
  * things that silently break it: a `textAlign: 'left'` that React Native will
  * not flip, and a hardcoded arrow that points at the wrong city in Arabic.
  *
- * The dictionary-integrity tests exist because the Arabic dictionary is
- * deliberately partial — which means a typo'd key falls back to English and
- * looks fine, forever.
+ * The dictionary-integrity tests exist because a typo'd key falls back to
+ * English and looks fine, forever. Since P7 they also assert completeness: every
+ * English key has an Arabic value, and every placeholder survives translation.
  */
 
 import { I18nManager } from 'react-native';
@@ -35,10 +35,16 @@ describe('t', () => {
     expect(t('cust.masthead')).not.toContain('.');
   });
 
-  it('falls back to English for a key Arabic has not translated yet', () => {
+  it('falls back to English rather than rendering blank when Arabic is missing', () => {
     initLanguage('ar');
-    // Visibly English rather than blank: gaps must be findable.
-    expect(t('common.back')).toBe('Back');
+    // Every key has Arabic as of P7, so the gap is constructed rather than
+    // found. The behaviour still matters: the next key someone adds will have no
+    // Arabic for a while, and it must look unfinished rather than broken.
+    const key = 'app.name' as const;
+    const saved = dictionaries.ar[key];
+    delete dictionaries.ar[key];
+    expect(t(key)).toBe(dictionaries.en[key]);
+    dictionaries.ar[key] = saved;
   });
 
   it('uses Arabic where Arabic exists', () => {
@@ -105,6 +111,15 @@ describe('dictionary integrity', () => {
     initLanguage('en');
     expect(t('leg.stamp.empty').length).toBeLessThanOrEqual(12);
     expect(t('leg.stamp.part').length).toBeLessThanOrEqual(12);
+  });
+
+  it('every English key has an Arabic value', () => {
+    // P7's completeness claim, and the thing that stops the next phase quietly
+    // shipping an English string inside an Arabic screen.
+    const missing = Object.keys(dictionaries.en).filter(
+      (k) => !dictionaries.ar[k as keyof typeof dictionaries.en],
+    );
+    expect(missing).toEqual([]);
   });
 
   it('never renders a raw key for a missing Arabic value', () => {
