@@ -427,17 +427,27 @@ money before real rates go live.**
 **Done when:** either a real routing/distance source replaces the factor, or the
 value is set deliberately by someone looking at the corridor mix.
 
-### The client and the server each compute a road distance
+### The client and the server each compute a road distance — NARROWED 2026-08-01
 
 `src/map/distance.ts` (display) and `private.route_km` (pricing) implement the
-same arithmetic with the same 1.35 factor in two languages. Pricing cannot use
-the client's number — a client-supplied multiplier on a price is a
-client-supplied price — so the duplication is deliberate, but it can drift: the
-server's factor is tunable and the client's is a constant.
+same arithmetic in two languages. Pricing cannot use the client's number — a
+client-supplied multiplier on a price is a client-supplied price — so the
+duplication is deliberate. The risk is drift.
 
-**Watch for:** a distance shown on S4 that disagrees with the one the price was
-built from. The fix is to have the client display the server's number wherever an
-RPC has already been called.
+**They agree today.** Both are 1.2; this entry used to say 1.35, which stopped
+being true at `0025_road_factor_120.sql`.
+`tests/security/schema-invariants.test.ts` now reads the last value any migration
+assigns to `road_factor_pct` and asserts the client constant matches, so
+migration-time drift fails in CI instead of showing a shipper one distance and
+charging from another.
+
+**What that does not cover:** `road_factor_pct` is a runtime setting on purpose
+(0025 says so — it is meant to be retuned from the ops console once there is real
+trip data). A retune there moves the server and no static test can see it.
+
+**Done when:** `quote_route` and `quote_load` return the km they priced from, and
+S4 and the review screen display that instead of deriving one. That is a
+migration, so it did not happen here.
 
 ### Loading the dev rate card breaks `npm run test:db`
 

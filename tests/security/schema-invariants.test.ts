@@ -13,6 +13,8 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
+import { ROAD_FACTOR } from '@/map';
+
 const DIR = join(__dirname, '../../supabase/migrations');
 const FILES = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
 const SQL = FILES.map((f) => readFileSync(join(DIR, f), 'utf8')).join('\n');
@@ -510,5 +512,48 @@ describe('SENSITIVE_FIELDS.md is kept in step', () => {
     for (const field of ['role', 'verified_at', 'price_baisa', 'status', 'source']) {
       expect(register).toContain(field);
     }
+  });
+});
+
+/**
+ * The one number the client and the server both hold.
+ *
+ * `private.route_km` (pricing) and `src/map/distance.ts` (display) implement the
+ * same arithmetic in two languages, deliberately: pricing cannot take a
+ * multiplier from a client, because a client-supplied multiplier on a price is a
+ * client-supplied price. The cost of that duplication is drift, and drift here
+ * means a shipper reads one distance on S4 and is charged from another.
+ *
+ * This catches drift introduced by a MIGRATION. It cannot catch a retune from
+ * the ops console, because `road_factor_pct` is a runtime setting by design
+ * (0025) — see OPEN_ISSUES. The real fix is for the quote RPC to return the km
+ * it priced from, so the client displays a number instead of deriving one.
+ */
+describe('the road factor agrees across the client and the migrations', () => {
+  it('matches the last value any migration sets', () => {
+    const setters = FILES.filter((f) =>
+      readFileSync(join(DIR, f), 'utf8').includes('road_factor_pct'),
+    );
+    expect(setters.length).toBeGreaterThan(0);
+
+    // Both forms the migrations actually use: the seed in 0024 and the update in
+    // 0025. Matching a bare `'NN'::jsonb` instead would pick up whichever other
+    // setting happened to sit nearest in the file — 0032 seeds avg_speed_kph the
+    // same way, and that is how the first version of this test read 65.
+    const SEED = /'road_factor_pct',\s*'(\d+)'::jsonb/g;
+    const UPDATE = /set\s+value\s*=\s*'(\d+)'::jsonb\s+where\s+key\s*=\s*'road_factor_pct'/g;
+
+    // Files are sorted, so the last assignment wins — the order the database
+    // applies them in.
+    let serverPct: number | null = null;
+    for (const f of setters) {
+      const sql = readFileSync(join(DIR, f), 'utf8');
+      for (const re of [SEED, UPDATE]) {
+        for (const m of sql.matchAll(re)) serverPct = Number(m[1]);
+      }
+    }
+
+    expect(serverPct).not.toBeNull();
+    expect(ROAD_FACTOR).toBeCloseTo((serverPct as number) / 100, 5);
   });
 });
