@@ -82,7 +82,8 @@
     "verify": "npm run typecheck && npm run lint && npm test",
     "build:geo": "node scripts/build-geo.mjs",
     "check:pins": "node scripts/check-city-pins.mjs",
-    "preview:map": "node scripts/render-map-preview.mjs"
+    "preview:map": "node scripts/render-map-preview.mjs",
+    "preview:rtl": "jest --runTestsByPath scripts/rtl-proof.tsx --testMatch '**/rtl-proof.tsx'"
   },
   "private": true
 }
