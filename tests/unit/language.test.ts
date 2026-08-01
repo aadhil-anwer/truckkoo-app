@@ -14,6 +14,7 @@ import * as Updates from 'expo-updates';
 
 import { LANGUAGE_KEY, loadLanguage, needsReload, setLanguage } from '@/lib/language';
 import { getLanguage, initLanguage } from '@/i18n';
+import { supabase } from '@/lib/supabase';
 
 function setRTL(value: boolean) {
   Object.defineProperty(I18nManager, 'isRTL', { value, configurable: true });
@@ -114,5 +115,60 @@ describe('setLanguage', () => {
     (Updates.reloadAsync as jest.Mock).mockRejectedValueOnce(new Error('not supported'));
     await expect(setLanguage('ar')).resolves.toBeUndefined();
     await expect(SecureStore.getItemAsync(LANGUAGE_KEY)).resolves.toBe('ar');
+  });
+});
+
+describe('setLanguage and the profile column', () => {
+  const eq = jest.fn(async () => ({ error: null }));
+  const update = jest.fn(() => ({ eq }));
+
+  beforeEach(async () => {
+    await SecureStore.deleteItemAsync(LANGUAGE_KEY);
+    setRTL(false);
+    initLanguage('en');
+    jest.spyOn(I18nManager, 'forceRTL').mockImplementation(() => {});
+
+    update.mockClear();
+    eq.mockClear();
+    (supabase.from as jest.Mock).mockReturnValue({ update });
+    (supabase.auth.getSession as jest.Mock).mockResolvedValue({
+      data: { session: { user: { id: 'u1' } } },
+    });
+  });
+
+  it('records the choice on the profile, so the column stops claiming English', async () => {
+    await setLanguage('ar');
+    expect(supabase.from).toHaveBeenCalledWith('profiles');
+    expect(update).toHaveBeenCalledWith({ language: 'ar' });
+    expect(eq).toHaveBeenCalledWith('id', 'u1');
+  });
+
+  it('still changes the language when the profile write fails', async () => {
+    // Patchy signal is the normal case for this audience. The local preference
+    // is already stored by now, and a stale column is a smaller lie than telling
+    // someone their language did not change when it did.
+    eq.mockRejectedValueOnce(new Error('offline'));
+    await expect(setLanguage('ar')).resolves.toBeUndefined();
+    await expect(SecureStore.getItemAsync(LANGUAGE_KEY)).resolves.toBe('ar');
+    expect(Updates.reloadAsync).toHaveBeenCalled();
+  });
+
+  it('writes nothing when nobody is signed in', async () => {
+    (supabase.auth.getSession as jest.Mock).mockResolvedValue({ data: { session: null } });
+    await setLanguage('ar');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('writes before the relaunch, because the relaunch may never return', async () => {
+    const order: string[] = [];
+    eq.mockImplementationOnce(async () => {
+      order.push('profile');
+      return { error: null };
+    });
+    (Updates.reloadAsync as jest.Mock).mockImplementationOnce(async () => {
+      order.push('reload');
+    });
+    await setLanguage('ar');
+    expect(order).toEqual(['profile', 'reload']);
   });
 });

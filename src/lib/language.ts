@@ -21,6 +21,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as Updates from 'expo-updates';
 
 import { getLanguage, initLanguage, type Language } from '@/i18n';
+import { supabase } from '@/lib/supabase';
 
 export const LANGUAGE_KEY = 'truckkoo.language';
 
@@ -59,10 +60,37 @@ export async function loadLanguage(): Promise<Language> {
   return lang;
 }
 
+/**
+ * Record the choice on the profile too, best effort.
+ *
+ * SecureStore is the source of truth for BOOT — the direction has to be settled
+ * before a session exists, because the auth screens need one. `profiles.language`
+ * is the source of truth for everything SERVER-side: a notification, an ops
+ * screen, an export. It has carried an UPDATE grant since 0001 and nothing had
+ * ever written it, so every row claimed its owner reads English.
+ *
+ * Failure is swallowed on purpose. This audience is on patchy signal, the local
+ * preference is already stored by the time this runs, and a language change that
+ * reports an error because the network was down would be a worse lie than a
+ * stale column.
+ */
+async function rememberOnProfile(next: Language): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const id = data.session?.user.id;
+    if (!id) return;
+    await supabase.from('profiles').update({ language: next }).eq('id', id);
+  } catch {
+    // See above.
+  }
+}
+
 /** Change the language. Persists, applies the direction, and relaunches. */
 export async function setLanguage(next: Language): Promise<void> {
   if (next === getLanguage() && !needsReload(next, I18nManager.isRTL)) return;
   await SecureStore.setItemAsync(LANGUAGE_KEY, next);
+  // Before the relaunch, not after: `reload()` may never return.
+  await rememberOnProfile(next);
   I18nManager.forceRTL(next === 'ar');
   await reload();
 }

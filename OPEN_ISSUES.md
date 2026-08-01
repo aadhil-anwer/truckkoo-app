@@ -62,22 +62,22 @@ ignored on a build that has not allowed RTL. Lint caught it as an unused import.
 **Done when:** someone changes the language on a real Android phone and the app
 returns, mirrored, in the other language.
 
-### `profiles.language` is written by nothing, so it is `'en'` for every row
+### `profiles.language` was written by nothing — RESOLVED 2026-08-01
 
-The column exists (0001), carries both an INSERT and an UPDATE grant, and has a
-`check (language in ('en','ar'))`. Nothing has ever written it.
+The column has existed since 0001 with an UPDATE grant and a
+`check (language in ('en','ar'))`, and nothing had ever written it, so every row
+claimed its owner reads English.
 
-P7 put the preference in SecureStore instead, because it has to be readable
-before a session exists — the auth screens need a direction too. That is the
-right home for the *boot* decision, but it leaves a column in the database
-claiming every user reads English, which anything server-side (a notification, an
-ops screen, an export) would believe.
+`setLanguage` now records it, best effort, before the relaunch. Two sources of
+truth on purpose, with different jobs: SecureStore settles the direction at BOOT,
+because that has to happen before a session exists — the auth screens need a
+direction too — and the column is what anything server-side reads.
 
-Not fixed here because P7 is a no-backend phase and this is a client write to a
-granted column that nobody asked for.
+The write is allowed to fail silently. This audience is on patchy signal, the
+local preference is already stored by then, and reporting a failed language
+change because the network was down would be a worse lie than a stale column.
 
-**Done when:** either `setLanguage` also writes `profiles.language`, or the
-column is dropped as dead.
+No migration: the grant was already there.
 
 ### X2 has no truck row, because `profiles` has no truck
 
