@@ -5,7 +5,7 @@
  * where the user answers a question. Never a mix.
  */
 
-import type { ReactNode } from 'react';
+import { Children, Fragment, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -417,6 +417,82 @@ export function Timeline({
  * screen under their thumb.
  */
 /**
+ * A group of values under a label — X2's `YOUR DETAILS`.
+ *
+ * Not `ListRow`: these rows are facts, and at most one of them navigates. The
+ * dividers are inset inside the card because a rule running to the card's edge
+ * reads as a border and makes one card look like three.
+ */
+export function DetailGroup({ label, children }: { label: string; children: ReactNode }) {
+  const rows = Children.toArray(children);
+  return (
+    <View style={styles.detailGroup}>
+      <SectionLabel>{label}</SectionLabel>
+      <Card style={styles.detailCard}>
+        {rows.map((row, i) => (
+          <Fragment key={i}>
+            {row}
+            {i < rows.length - 1 && <View testID="detail-divider" style={styles.detailDivider} />}
+          </Fragment>
+        ))}
+      </Card>
+    </View>
+  );
+}
+
+/**
+ * One fact. A chevron appears only when the row actually goes somewhere —
+ * otherwise it promises a tap that does nothing.
+ */
+export function DetailRow({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
+  const body = (
+    <View style={styles.detailRow}>
+      <Text
+        style={StyleSheet.flatten([
+          arabicIfNeeded(font.body),
+          { color: alpha.onInk.secondary, textAlign: align.start },
+        ])}
+      >
+        {label}
+      </Text>
+      <View style={styles.detailValue}>
+        <Text
+          numberOfLines={1}
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.value),
+            { color: color.lightText, textAlign: align.end },
+          ])}
+        >
+          {value}
+        </Text>
+        {!!onPress && (
+          <View testID="detail-chevron">
+            <Icon name="chevron" size={18} tint={color.iconGreyDim} />
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  if (!onPress) return body;
+  // The label and the value together: "English" alone tells a screen reader
+  // nothing about what is English.
+  return (
+    <PressableSurface onPress={onPress} accessibilityLabel={`${label}, ${value}`}>
+      {body}
+    </PressableSurface>
+  );
+}
+
+/**
  * Two views of one list — not two tabs, and not a question.
  *
  * The count lives inside the label because that is what makes the control worth
@@ -582,4 +658,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.tileXs,
   },
+
+  detailGroup: { gap: space.md },
+  // No horizontal padding on the card: the rows carry it, so the dividers can
+  // be inset within it rather than running edge to edge.
+  detailCard: { borderRadius: radius.card, paddingVertical: space.xs, paddingHorizontal: 0 },
+  detailDivider: { height: 1, backgroundColor: hairline.inner, marginHorizontal: 18 },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: MIN_TARGET,
+    paddingHorizontal: 18,
+    gap: space.md,
+  },
+  detailValue: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 1 },
 });

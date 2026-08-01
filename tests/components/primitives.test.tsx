@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import { PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
-import { Segmented } from '@/components/ui';
+import { DetailGroup, DetailRow, Segmented } from '@/components/ui';
 import { initLanguage } from '@/i18n';
 import { color, font } from '@/theme/tokens';
 
@@ -110,5 +110,53 @@ describe('Segmented', () => {
     await render(<Segmented options={options} value="live" onChange={onChange} />);
     fireEvent.press(screen.getByLabelText('Finished, 1'));
     expect(onChange).toHaveBeenCalledWith('past');
+  });
+});
+
+describe('DetailRow', () => {
+  it('shows a chevron only when it goes somewhere', async () => {
+    const plain = await render(<DetailRow label="Mobile" value="+968 …" />);
+    expect(plain.queryByTestId('detail-chevron')).toBeNull();
+
+    const tappable = await render(
+      <DetailRow label="Language" value="English" onPress={() => {}} />,
+    );
+    expect(tappable.queryByTestId('detail-chevron')).toBeTruthy();
+  });
+
+  it('announces label and value together', async () => {
+    // "English" alone tells a screen reader nothing about what is English.
+    await render(<DetailRow label="Language" value="English" onPress={() => {}} />);
+    expect(screen.getByLabelText('Language, English')).toBeTruthy();
+  });
+
+  it('renders a value that does not act', async () => {
+    await render(<DetailRow label="Mobile" value="+968 …" />);
+    expect(screen.getByText('Mobile')).toBeTruthy();
+    expect(screen.getByText('+968 …')).toBeTruthy();
+  });
+});
+
+describe('DetailGroup', () => {
+  it('divides rows with a hairline but does not rule the last one', async () => {
+    // A rule under the final row reads as a border and makes one card look like
+    // several.
+    await render(
+      <DetailGroup label="YOUR DETAILS">
+        <DetailRow label="a" value="1" />
+        <DetailRow label="b" value="2" />
+        <DetailRow label="c" value="3" />
+      </DetailGroup>,
+    );
+    expect(screen.getAllByTestId('detail-divider')).toHaveLength(2);
+  });
+
+  it('does not divide a single row at all', async () => {
+    await render(
+      <DetailGroup label="YOUR DETAILS">
+        <DetailRow label="a" value="1" />
+      </DetailGroup>,
+    );
+    expect(screen.queryByTestId('detail-divider')).toBeNull();
   });
 });
