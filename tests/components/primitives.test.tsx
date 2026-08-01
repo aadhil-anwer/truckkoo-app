@@ -1,6 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import { PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
+import { Segmented } from '@/components/ui';
+import { initLanguage } from '@/i18n';
 import { color, font } from '@/theme/tokens';
 
 describe('PrimaryButton', () => {
@@ -69,5 +71,44 @@ describe('TertiaryButton', () => {
     await render(<TertiaryButton label="Skip — I do not know the weight" onPress={onPress} />);
     await fireEvent.press(screen.getByText('Skip — I do not know the weight'));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Segmented', () => {
+  const options = [
+    { value: 'live', label: 'Moving', count: 2 },
+    { value: 'past', label: 'Finished', count: 1 },
+  ];
+
+  afterEach(() => initLanguage('en'));
+
+  it('puts the count in the visible label', async () => {
+    await render(<Segmented options={options} value="live" onChange={() => {}} />);
+    expect(screen.getByText('Moving (2)')).toBeTruthy();
+  });
+
+  it('announces the count with its referent, never as a loose number', async () => {
+    // A bare "2" is read out with nothing to attach it to.
+    await render(<Segmented options={options} value="live" onChange={() => {}} />);
+    expect(screen.getByLabelText('Moving, 2')).toBeTruthy();
+  });
+
+  it('marks the active segment selected', async () => {
+    await render(<Segmented options={options} value="live" onChange={() => {}} />);
+    expect(screen.getByLabelText('Moving, 2').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('Finished, 1').props.accessibilityState.selected).toBe(false);
+  });
+
+  it('renders the count in Arabic-Indic digits in Arabic', async () => {
+    initLanguage('ar');
+    await render(<Segmented options={options} value="live" onChange={() => {}} />);
+    expect(screen.getByText('Moving (٢)')).toBeTruthy();
+  });
+
+  it('reports a tap', async () => {
+    const onChange = jest.fn();
+    await render(<Segmented options={options} value="live" onChange={onChange} />);
+    fireEvent.press(screen.getByLabelText('Finished, 1'));
+    expect(onChange).toHaveBeenCalledWith('past');
   });
 });

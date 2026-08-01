@@ -6,7 +6,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from './icon';
@@ -25,7 +25,7 @@ import {
   space,
 } from '@/theme/tokens';
 import { align, arabicIfNeeded } from './text-direction';
-import { t } from '@/i18n';
+import { formatNumber, t } from '@/i18n';
 
 export type Ground = 'ink' | 'cream';
 
@@ -416,6 +416,62 @@ export function Timeline({
  * layout jumping when it does. A spinner tells them nothing and then reflows the
  * screen under their thumb.
  */
+/**
+ * Two views of one list — not two tabs, and not a question.
+ *
+ * The count lives inside the label because that is what makes the control worth
+ * having: "Moving (2)" answers the question before the tap. It goes through
+ * `formatNumber`, like every other numeral, and into the accessible name with
+ * its referent — a bare "2" is announced with nothing to attach it to.
+ *
+ * `Choice` and `SelectRow` are for answering a question. This is not one, so it
+ * carries none of their three-way selection signalling: there is no wrong answer
+ * to which half of your own list you are looking at.
+ */
+export function Segmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string; count: number }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View style={styles.segmented} accessibilityRole="tablist">
+      {options.map((o) => {
+        const on = o.value === value;
+        const count = formatNumber(o.count);
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${o.label}, ${count}`}
+            style={StyleSheet.flatten([
+              styles.segment,
+              on && { backgroundColor: color.lightText },
+            ])}
+          >
+            <Text
+              numberOfLines={1}
+              style={StyleSheet.flatten([
+                arabicIfNeeded(font.rowTitle),
+                // 'center' is not a direction literal: centre is centre in both
+                // reading directions.
+                { color: on ? color.inkText : alpha.onInk.secondary, textAlign: 'center' },
+              ])}
+            >
+              {`${o.label} (${count})`}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Skeleton({
   width = '100%',
   height = 18,
@@ -509,4 +565,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(247,245,242,.14)',
   },
   timelineText: { flex: 1, paddingBottom: space.xl, gap: 2 },
+
+  // The handoff's numbers: a 5px-padded track holding two 42px segments, which
+  // makes the control 52px overall and clears MIN_TARGET as a whole.
+  segmented: {
+    flexDirection: 'row',
+    backgroundColor: color.raised,
+    borderRadius: radius.tile,
+    padding: 5,
+    gap: 5,
+  },
+  segment: {
+    flex: 1,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.tileXs,
+  },
 });
