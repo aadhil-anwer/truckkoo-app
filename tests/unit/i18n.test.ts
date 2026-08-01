@@ -249,3 +249,23 @@ describe('placeholder parity', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('composed shared copy', () => {
+  beforeEach(() => initLanguage('en'));
+
+  it('carries both cities in one route label', () => {
+    expect(t('route.aria', { origin: 'Muscat', destination: 'Barka' })).toBe('Muscat to Barka');
+  });
+
+  it('carries the distance and its unit in one string', () => {
+    expect(t('book.aboutKm', { km: '73' })).toBe('about 73 km');
+  });
+
+  it('carries the weight and its unit in one string', () => {
+    expect(t('book.weight.value', { weight: '8,000' })).toBe('8,000 kg');
+  });
+
+  it('carries the name in the greeting', () => {
+    expect(t('home.greetingNamed', { name: 'Nasser' })).toBe('Hello, Nasser');
+  });
+});

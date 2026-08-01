@@ -212,10 +212,30 @@ const en = {
   'load.submit': 'Request a quote',
 
   // ── route rail ────────────────────────────────────────────────────────────
-  // The word joining origin and destination in the RouteRail's accessibility
-  // label — "Muscat [to] Barka". Kept as its own key rather than interpolated,
-  // since `t()` here takes a key only, no template substitution.
-  'route.ariaTo': 'to',
+  // The RouteRail's accessibility label. One key rather than a joining word
+  // between two names: Arabic does not necessarily put the connective in the
+  // same place, and a screen reader reads whatever order it is handed.
+  'route.aria': '{origin} to {destination}',
+
+  // ── sentences composed at a call site until P7 ────────────────────────────
+  // Each of these replaced a template literal that concatenated fragments. The
+  // unit lives inside the string so the translator can move or replace it —
+  // `${n} km` renders a Latin "km" in Arabic copy.
+  'home.greetingNamed': 'Hello, {name}',
+  'home.search.aria': 'Where is it going? Pick two cities. We do the rest.',
+  // The same words as `common.error.title` + `common.retry`, which is what this
+  // replaced. A refactor is not the place to change what the app says.
+  'common.error.aria': 'We could not load that. Try again',
+  'book.aboutKm': 'about {km} km',
+  'book.origin.ctaNamed': 'Pick up here — {city}',
+  'book.weight.value': '{weight} kg',
+  'track.price.acceptNamed': 'Accept {amount}',
+  'track.assigned.takingNamed': '{name} is taking your load.',
+  'track.tripsCount': '{count} trips',
+  'track.rate.starAria': '{n} stars',
+  'pos.seenAgo': 'Seen {age}',
+  'pos.lastSentAgo': 'Last sent {age}',
+  'label.referenceNamed': 'Reference {ref}',
 
   'status.posted': 'Posted',
   'status.finding_truck': 'Finding you a truck',
@@ -439,7 +459,7 @@ const en = {
   "price.over_capacity": "This load is heavier than the truck you chose can carry. We will suggest the right truck and price it for you.",
   // Prefixes a formatted date. Not "expires": a held price is a promise Truckkoo
   // is keeping, and "expires" reads as a threat to hurry up.
-  "price.heldUntil": "Price held until",
+  "price.heldUntil": "Price held until {when}",
   // Says only what is certainly true: nothing is charged here. Who collects and
   // how is a real commercial fact that no document in this repo states, so this
   // string does not invent one — and PRODUCT.md forbids implying any in-app
@@ -718,7 +738,16 @@ const ar: Partial<Record<StringKey, string>> = {
   'load.truckType': 'نوع الشاحنة (اختياري)',
   'load.truckType.unsure': 'غير متأكد — انصحوني',
   'load.city.placeholder': 'مثال: مسقط',
-  'route.ariaTo': 'إلى',
+  // ASSEMBLED from fragments already in this file — `إلى`, `حوالي`, `كجم`,
+  // `مرحباً`, `شوهدت`, `آخر إرسال`, `رحلة` — moved rather than rewritten.
+  // FLAG FOR PROOFING: assembling is still a translation act.
+  'route.aria': '{origin} إلى {destination}',
+  'home.greetingNamed': 'مرحباً، {name}',
+  'book.aboutKm': 'حوالي {km} كم',
+  'book.weight.value': '{weight} كجم',
+  'track.tripsCount': '{count} رحلة',
+  'pos.seenAgo': 'شوهدت {age}',
+  'pos.lastSentAgo': 'آخر إرسال {age}',
 
   'whatsapp.action': 'واتساب',
   'whatsapp.promise': 'نرد خلال دقائق · طوال أيام الأسبوع',

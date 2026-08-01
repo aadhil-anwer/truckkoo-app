@@ -86,7 +86,7 @@ export default function RoutesTab() {
             onPress={() => {
               legs.refetch();
             }}
-            accessibilityLabel={`${t('common.error.title')} ${t('common.retry')}`}
+            accessibilityLabel={t('common.error.aria')}
             style={styles.retry}
           >
             <Text style={styles.retryText}>{t('common.error.title')}</Text>

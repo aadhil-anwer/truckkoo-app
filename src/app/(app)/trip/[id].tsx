@@ -309,7 +309,7 @@ export default function TripScreen() {
               <Text style={styles.sharingWhy}>{t('pos.sharingWhy')}</Text>
               {!!formatAge(lastSentAt) && (
                 <Text style={styles.sharingWhy}>
-                  {`${t('pos.lastSent')} ${formatAge(lastSentAt)}`}
+                  {t('pos.lastSentAgo', { age: formatAge(lastSentAt) ?? '' })}
                 </Text>
               )}
             </View>

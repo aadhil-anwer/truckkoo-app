@@ -122,7 +122,9 @@ describe('CustomerHome', () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(FAILED);
     await render(<CustomerHome />);
     expect(screen.getByText('We could not load that')).toBeTruthy();
-    expect(screen.getByLabelText(/We could not load that Try again/)).toBeTruthy();
+    // One string now, not two concatenated: the sentence is the translator's to
+    // order, not the call site's.
+    expect(screen.getByLabelText('We could not load that. Try again')).toBeTruthy();
   });
 
   it('shows a spinner rather than an empty state while loading', async () => {

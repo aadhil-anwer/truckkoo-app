@@ -224,7 +224,7 @@ export function RouteRail({
       // `accessible={false}` stops the rail being its OWN element; it does not
       // hide the city names, which the enclosing card still needs to expose.
       accessible={labelled}
-      accessibilityLabel={labelled ? `${origin} ${t('route.ariaTo')} ${destination}` : undefined}
+      accessibilityLabel={labelled ? t('route.aria', { origin, destination }) : undefined}
     >
       <View style={styles.railSpine}>
         <View testID="rail-origin" style={styles.railOrigin} />

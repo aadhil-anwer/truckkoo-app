@@ -15,7 +15,7 @@ import { QuestionHeading } from '@/components/ui';
 import { CityPin } from '@/map';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities } from '@/lib/queries';
-import { align, t } from '@/i18n';
+import { align, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { color, font, space } from '@/theme/tokens';
 
@@ -66,7 +66,11 @@ export default function Origin() {
       <View style={styles.footer}>
         <PrimaryButton
           // The label restates the choice, so the commit is unambiguous.
-          label={chosen ? `${t('book.origin.cta')} — ${chosen.name_en}` : t('action.continue')}
+          label={
+            chosen
+              ? t('book.origin.ctaNamed', { city: localized(chosen) })
+              : t('action.continue')
+          }
           onPress={() => router.push('/book/destination')}
           disabled={draft.originCityId == null}
         />

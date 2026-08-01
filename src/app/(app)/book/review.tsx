@@ -113,7 +113,7 @@ export default function Review() {
               value={
                 draft.weightKg == null
                   ? t('book.review.notSaid')
-                  : `${formatNumber(draft.weightKg)} ${t('book.weight.unit')}`
+                  : t('book.weight.value', { weight: formatNumber(draft.weightKg) })
               }
               last
             />
@@ -145,7 +145,7 @@ export default function Review() {
         </Card>
 
         <Text style={styles.distance}>
-          {`${t('book.about')} ${formatNumber(roadKm(origin, dest))} km`}
+          {t('book.aboutKm', { km: formatNumber(roadKm(origin, dest)) })}
         </Text>
 
         {!!error && <Text style={styles.error}>{error}</Text>}

@@ -40,7 +40,7 @@ import { CityPin, Corridor, MapCanvas, Scrim } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { formatWeight, formatWindow } from '@/lib/format';
-import { align, localized, t, type StringKey } from '@/i18n';
+import { align, directionArrow, localized, t, type StringKey } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import {
   GUTTER_INK,
@@ -141,7 +141,7 @@ export default function ShipperHome() {
       >
         <Text style={styles.greeting} numberOfLines={1}>
           {profile?.full_name
-            ? `${t('home.greeting')}, ${profile.full_name.split(' ')[0]}`
+            ? t('home.greetingNamed', { name: profile.full_name.split(' ')[0] })
             : t('home.greeting')}
         </Text>
 
@@ -161,7 +161,7 @@ export default function ShipperHome() {
 
         <PressableSurface
           onPress={() => router.push('/book/origin')}
-          accessibilityLabel={`${t('home.search.title')} ${t('home.search.hint')}`}
+          accessibilityLabel={t('home.search.aria')}
           style={styles.entry}
         >
           <Icon name="search" size={24} tint="#FFFFFF" />
@@ -175,7 +175,7 @@ export default function ShipperHome() {
         {isError && (
           <PressableSurface
             onPress={() => refetch()}
-            accessibilityLabel={`${t('common.error.title')} ${t('common.retry')}`}
+            accessibilityLabel={t('common.error.aria')}
             style={styles.retry}
           >
             <Text style={styles.retryText}>{t('common.error.title')}</Text>
@@ -214,9 +214,10 @@ export default function ShipperHome() {
                 <PressableSurface
                   key={load.id}
                   onPress={() => router.push(`/load/${load.id}`)}
-                  accessibilityLabel={`${localized(o)} ${t('route.ariaTo')} ${localized(d)}. ${t(
-                    `status.${load.status}` as StringKey,
-                  )}`}
+                  accessibilityLabel={`${t('route.aria', {
+                    origin: localized(o),
+                    destination: localized(d),
+                  })}. ${t(`status.${load.status}` as StringKey)}`}
                   style={styles.loadCard}
                 >
                   <View style={styles.loadHead}>
@@ -264,14 +265,15 @@ export default function ShipperHome() {
                 },
               })
             }
-            accessibilityLabel={`${t('home.again.title')}. ${localized(repeatFrom)} ${t(
-              'route.ariaTo',
-            )} ${localized(repeatTo)}`}
+            accessibilityLabel={`${t('home.again.title')}. ${t('route.aria', {
+              origin: localized(repeatFrom),
+              destination: localized(repeatTo),
+            })}`}
             style={styles.again}
           >
             <View style={styles.againText}>
               <Text style={styles.againRoute} numberOfLines={1}>
-                {`${localized(repeatFrom)} → ${localized(repeatTo)}`}
+                {`${localized(repeatFrom)} ${directionArrow()} ${localized(repeatTo)}`}
               </Text>
               <Text style={styles.againHint}>{t('home.again.title')}</Text>
             </View>

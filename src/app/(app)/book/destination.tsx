@@ -110,7 +110,7 @@ export default function Destination() {
 
         {km != null && (
           <Text style={styles.distance}>
-            {`${t('book.about')} ${formatNumber(km)} km`}
+            {t('book.aboutKm', { km: formatNumber(km) })}
           </Text>
         )}
 

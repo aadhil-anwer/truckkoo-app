@@ -141,7 +141,9 @@ export default function TrackLoad() {
   function askHuman(suffix?: string) {
     if (!load) return;
     Linking.openURL(
-      whatsappLink(`${t('label.reference')} ${reference(load.id)}${suffix ? ` — ${suffix}` : ''}`),
+      whatsappLink(
+        `${t('label.referenceNamed', { ref: reference(load.id) })}${suffix ? ` — ${suffix}` : ''}`,
+      ),
     ).catch(() => {});
   }
 
@@ -424,7 +426,7 @@ function Priced({ load }: { load: Load }) {
       </Text>
       {!!held && (
         <Text style={styles.priceMeta}>
-          {`${t('price.heldUntil')} ${formatDeadline(held.expires_at)}`}
+          {t('price.heldUntil', { when: formatDeadline(held.expires_at) })}
         </Text>
       )}
       <View style={styles.lede}>
@@ -450,13 +452,13 @@ function AcceptBar({ load, onAsk }: { load: Load; onAsk: () => void }) {
   const accept = useAcceptQuote();
   const money =
     load.price_baisa == null
-      ? ''
-      : ` ${formatMoney(load.price_baisa, load.currency as Currency, getLanguage())}`;
+      ? null
+      : formatMoney(load.price_baisa, load.currency as Currency, getLanguage());
 
   return (
     <>
       <PrimaryButton
-        label={`${t('track.price.accept')}${money}`}
+        label={money ? t('track.price.acceptNamed', { amount: money }) : t('track.price.accept')}
         loading={accept.isPending}
         disabled={load.price_baisa == null}
         onPress={() => accept.mutate(load.id)}
@@ -502,7 +504,7 @@ function Assigned({
       <StatusPill label={t('track.assigned.label')} />
       {name ? (
         <QuestionHeading ground="ink" size="question">
-          {`${name} ${t('track.assigned.taking')}`}
+          {t('track.assigned.takingNamed', { name })}
         </QuestionHeading>
       ) : (
         <Skeleton height={35} width="70%" round={radius.notice} />
@@ -561,7 +563,7 @@ function Credentials({ summary }: { summary: DriverSummary | null | undefined })
       )}
       {summary.trips > 0 && (
         <Text style={styles.credentialText}>
-          {`${rated ? '· ' : ''}${formatNumber(summary.trips)} ${t('track.trips')}`}
+          {`${rated ? '· ' : ''}${t('track.tripsCount', { count: formatNumber(summary.trips) })}`}
         </Text>
       )}
     </View>
@@ -614,7 +616,7 @@ function InTransit({
           says so. The one derived from a real fix does not need to — it carries
           the age of the fix instead, which is the more useful fact. */}
       <Text style={styles.positionMeta}>
-        {fix && age ? `${t('pos.seen')} ${age}` : t('pos.estimate')}
+        {fix && age ? t('pos.seenAgo', { age }) : t('pos.estimate')}
       </Text>
 
       {!fix && <Text style={styles.positionMeta}>{t('pos.none')}</Text>}
@@ -717,7 +719,7 @@ function Rating({ trip }: { trip: Trip | undefined }) {
                 setChosen(n);
                 rate.mutate({ tripId: trip.id, stars: n });
               }}
-              accessibilityLabel={`${formatNumber(n)} ${t('track.rate.star')}`}
+              accessibilityLabel={t('track.rate.starAria', { n: formatNumber(n) })}
               style={styles.star}
             >
               <Icon
