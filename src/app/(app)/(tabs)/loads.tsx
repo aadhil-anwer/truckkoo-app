@@ -1,5 +1,5 @@
 /**
- * Every load this shipper has ever posted, moving and finished.
+ * X1 · Every load this shipper has ever posted, moving and finished.
  *
  * Home shows at most two live loads because home is about the *next* one. This
  * is the ledger: everything, segmented, in one scroll. Settlement is offline, so
@@ -7,29 +7,102 @@
  * reconciled against, and it has to be as reachable as the live half.
  *
  * A segmented control rather than two tabs, because these are two views of one
- * list. `Choice` rows are for answering a question; this is not one.
+ * list. `SelectRow` is for answering a question; this is not one.
+ *
+ * A MOVING LOAD IS A CARD, A FINISHED ONE IS A ROW. One is a journey being
+ * followed and wants its route drawn; the other is a record being scanned for a
+ * particular job and wants to be dense.
+ *
+ * NO ETA IS INVENTED. The arrival time comes from `trip_position`'s `eta_at`,
+ * the same field T4 reads, and a load with no reported fix behind it shows its
+ * pickup window instead. P6 deleted `progressOf` and `interpolate` on purpose; a
+ * card is just as capable of making a position up as a map marker is.
  */
 
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Screen } from '@/components/ui';
-import { directionArrow, localized, t, type StringKey } from '@/i18n';
-import { formatWindow } from '@/lib/format';
-import { cityIndex, useCities, useMyLoads, useTruckTypes } from '@/lib/queries';
-import { GUTTER_INK, color, space } from '@/theme/tokens';
+import { PressableSurface, PrimaryButton } from '@/components/primitives';
+import { arabicIfNeeded } from '@/components/text-direction';
+import {
+  Card,
+  DetailGroup,
+  DetailRow,
+  QuestionHeading,
+  RouteRail,
+  Segmented,
+  Skeleton,
+  StatusPill,
+} from '@/components/ui';
+import { align, directionArrow, localized, t, type StringKey } from '@/i18n';
+import { formatDeadline, formatWindow } from '@/lib/format';
+import { formatMoney, type Currency } from '@/lib/money';
+import {
+  cityIndex,
+  useCities,
+  useMyLoads,
+  useMyTrips,
+  useTripPosition,
+  type Load,
+  type LoadStatus,
+} from '@/lib/queries';
+import {
+  GUTTER_INK,
+  TABBAR_CLEARANCE_3,
+  alpha,
+  color,
+  font,
+  radius,
+  space,
+} from '@/theme/tokens';
 
-import { LIVE, LoadCard, TONE } from '@/components/load-card';
-import { Button, EmptyState, ListRow, PageTitle, RowGroup, Segmented, Stamp } from '@/components/legacy';
+/**
+ * Still working its way to a truck, rather than already finished.
+ *
+ * `quoted` and `accepted` belong here: omitting them would hide a load from the
+ * shipper's live list at exactly the moment it is asking them a question.
+ */
+const LIVE: LoadStatus[] = [
+  'posted',
+  'finding_truck',
+  'quoted',
+  'accepted',
+  'matched',
+  'assigned',
+  'in_transit',
+];
+
+/**
+ * Which statuses read as live.
+ *
+ * The pill is the only accent on this screen, so there is no pinned accent
+ * action competing with it — one accent per screen, and here it is spent on
+ * state rather than on a button.
+ */
+const PILL_TONE: Record<LoadStatus, 'accent' | 'neutral'> = {
+  posted: 'neutral',
+  finding_truck: 'neutral',
+  // A price waiting on the shipper is the most actionable state in the list.
+  quoted: 'accent',
+  accepted: 'accent',
+  matched: 'accent',
+  assigned: 'accent',
+  in_transit: 'accent',
+  delivered: 'neutral',
+  closed: 'neutral',
+  cancelled: 'neutral',
+};
 
 type LoadView = 'live' | 'past';
 
 export default function LoadsTab() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const cities = useCities();
-  const truckTypes = useTruckTypes();
   const loads = useMyLoads();
+  const trips = useMyTrips();
   const [view, setView] = useState<LoadView>('live');
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
@@ -38,13 +111,12 @@ export default function LoadsTab() {
     return c ? localized(c) : '—';
   };
 
-  const truckName = useMemo(() => {
+  /** load_id -> trip_id, so a card can ask for its own position. */
+  const tripFor = useMemo(() => {
     const m = new Map<string, string>();
-    for (const tt of truckTypes.data ?? []) {
-      m.set(tt.code, localized({ name_en: tt.name_en, name_ar: tt.name_ar }));
-    }
+    for (const tr of trips.data ?? []) m.set(tr.load_id, tr.id);
     return m;
-  }, [truckTypes.data]);
+  }, [trips.data]);
 
   const all = loads.data ?? [];
   const active = all.filter((l) => LIVE.includes(l.status));
@@ -52,104 +124,209 @@ export default function LoadsTab() {
   const shown = view === 'live' ? active : past;
 
   return (
-    <Screen>
-      <PageTitle>{t('loads.title')}</PageTitle>
-
-      <Segmented
-        value={view}
-        onChange={(v) => setView(v as LoadView)}
-        options={[
-          { value: 'live', label: t('loads.seg.live'), count: active.length },
-          { value: 'past', label: t('loads.seg.past'), count: past.length },
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
         ]}
-      />
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loads.isRefetching}
+            onRefresh={() => {
+              loads.refetch();
+            }}
+            tintColor={color.lightText}
+          />
+        }
+      >
+        <Text style={styles.title}>{t('loads.title')}</Text>
 
-      {loads.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={color.accent} accessibilityLabel={t('common.loading')} />
-        </View>
-      ) : loads.isError ? (
-        <EmptyState icon="alert" title={t('common.error.title')} explain={t('common.error.explain')}>
-          <View style={styles.emptyAction}>
-            <Button
-              label={t('common.retry')}
-              variant="secondary"
-              onPress={() => {
-                loads.refetch();
-              }}
-            />
+        <Segmented
+          value={view}
+          onChange={(v) => setView(v as LoadView)}
+          options={[
+            { value: 'live', label: t('loads.seg.live'), count: active.length },
+            { value: 'past', label: t('loads.seg.past'), count: past.length },
+          ]}
+        />
+
+        {/* Skeletons at the final geometry, never a spinner. */}
+        {loads.isPending && (
+          <View style={styles.skeletons}>
+            <Skeleton height={132} round={radius.card} />
+            <Skeleton height={132} round={radius.card} />
           </View>
-        </EmptyState>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={loads.isRefetching}
-              onRefresh={() => {
-                loads.refetch();
-              }}
-              tintColor={color.accent}
-            />
-          }
-        >
-          {shown.length === 0 ? (
-            <EmptyState
-              icon={view === 'live' ? 'truck' : 'loads'}
-              title={view === 'live' ? t('cust.empty.title') : t('cust.record.none.title')}
-              explain={view === 'live' ? t('cust.empty.explain') : t('cust.record.none.explain')}
-            >
-              {view === 'live' && (
-                <View style={styles.emptyAction}>
-                  <Button label={t('cust.empty.action')} onPress={() => router.push('/post-load')} />
-                </View>
-              )}
-            </EmptyState>
-          ) : view === 'live' ? (
-            // A moving load gets a card: the route is the thing being tracked,
-            // so it is drawn rather than summarised.
+        )}
+
+        {loads.isError && (
+          <PressableSurface
+            onPress={() => {
+              loads.refetch();
+            }}
+            accessibilityLabel={t('common.error.aria')}
+            style={styles.retry}
+          >
+            <Text style={styles.retryText}>{t('common.error.title')}</Text>
+            <Text style={styles.retryAction}>{t('common.retry')}</Text>
+          </PressableSurface>
+        )}
+
+        {!loads.isPending && !loads.isError && shown.length === 0 && (
+          <View style={styles.empty}>
+            <QuestionHeading ground="ink" size="question">
+              {view === 'live' ? t('cust.empty.title') : t('cust.record.none.title')}
+            </QuestionHeading>
+            <Text style={styles.body}>
+              {view === 'live' ? t('cust.empty.explain') : t('cust.record.none.explain')}
+            </Text>
+            {view === 'live' && (
+              <View style={styles.emptyAction}>
+                <PrimaryButton
+                  label={t('cust.empty.action')}
+                  onPress={() => router.push('/book/origin')}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {shown.length > 0 &&
+          (view === 'live' ? (
             <View style={styles.cards}>
               {shown.map((load) => (
-                <LoadCard
+                <MovingCard
                   key={load.id}
                   load={load}
+                  tripId={tripFor.get(load.id)}
                   cityName={cityName}
-                  truckName={truckName}
                   onPress={() => router.push(`/load/${load.id}`)}
                 />
               ))}
             </View>
           ) : (
-            // A finished one gets a row. It is a record being scanned for a
-            // particular job, not a journey being followed.
-            <View style={styles.group}>
-              <RowGroup>
-                {shown.map((l, i) => (
-                  <ListRow
-                    key={l.id}
-                    icon="loads"
-                    // Never a hardcoded arrow: it points the wrong way in Arabic.
-                    title={`${cityName(l.origin_city)} ${directionArrow()} ${cityName(l.dest_city)}`}
-                    subtitle={formatWindow(l.pickup_from, l.pickup_to)}
-                    trailing={<Stamp tone={TONE[l.status]}>{t(`status.${l.status}` as StringKey)}</Stamp>}
-                    last={i === shown.length - 1}
-                    onPress={() => router.push(`/load/${l.id}`)}
-                  />
-                ))}
-              </RowGroup>
-            </View>
+            <DetailGroup label={t('cust.record.title')}>
+              {shown.map((l) => (
+                <DetailRow
+                  key={l.id}
+                  // Never a hardcoded arrow: it points at the wrong city in Arabic.
+                  label={`${cityName(l.origin_city)} ${directionArrow()} ${cityName(l.dest_city)}`}
+                  value={formatWindow(l.pickup_from, l.pickup_to)}
+                  onPress={() => router.push(`/load/${l.id}`)}
+                />
+              ))}
+            </DetailGroup>
+          ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * One moving load.
+ *
+ * It asks for its own position rather than being handed one, which costs one RPC
+ * per in-transit load at the 60s interval `useTripPosition` already polls at.
+ * The list is short by construction — a shipper with more than a handful of
+ * trucks in motion is not the audience this screen was drawn for — and the only
+ * cheaper option is an ETA computed on the client, which P6 removed on purpose.
+ */
+function MovingCard({
+  load,
+  tripId,
+  cityName,
+  onPress,
+}: {
+  load: Load;
+  tripId: string | undefined;
+  cityName: (id: number) => string;
+  onPress: () => void;
+}) {
+  const origin = cityName(load.origin_city);
+  const destination = cityName(load.dest_city);
+
+  // Only a load actually on the road can have a fix behind it.
+  const position = useTripPosition(load.status === 'in_transit' ? tripId : undefined);
+  const eta = position.data?.eta_at ?? null;
+  const price =
+    load.price_baisa == null ? null : formatMoney(load.price_baisa, load.currency as Currency);
+
+  return (
+    <PressableSurface
+      onPress={onPress}
+      // The card carries the route, so the rail inside it does not repeat it.
+      accessibilityLabel={`${t('route.aria', { origin, destination })}. ${t(
+        `status.${load.status}` as StringKey,
+      )}`}
+    >
+      <Card>
+        <View style={styles.cardHead}>
+          <StatusPill
+            label={t(`status.${load.status}` as StringKey)}
+            tone={PILL_TONE[load.status]}
+          />
+          {eta ? (
+            <Text testID="load-eta" style={styles.when}>
+              {formatDeadline(eta)}
+            </Text>
+          ) : (
+            <Text style={styles.when}>{formatWindow(load.pickup_from, load.pickup_to)}</Text>
           )}
-        </ScrollView>
-      )}
-    </Screen>
+        </View>
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardRail}>
+            <RouteRail origin={origin} destination={destination} compact labelled={false} />
+          </View>
+          {!!price && (
+            <Text testID="load-price" style={styles.price} numberOfLines={1}>
+              {price}
+            </Text>
+          )}
+        </View>
+      </Card>
+    </PressableSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingTop: space.lg, paddingBottom: space.xxxl },
-  center: { paddingVertical: space.huge, alignItems: 'center' },
-  emptyAction: { alignSelf: 'stretch', paddingTop: space.md, paddingHorizontal: space.xl },
-  cards: { paddingHorizontal: GUTTER_INK, gap: space.md },
-  group: { paddingHorizontal: GUTTER_INK },
+  screen: { flex: 1, backgroundColor: color.ink },
+  scroll: { paddingHorizontal: GUTTER_INK, gap: space.lg },
+
+  title: { ...arabicIfNeeded(font.statement), color: color.lightText, textAlign: align.start },
+
+  skeletons: { gap: space.md },
+  cards: { gap: space.md },
+
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  // The price sits vertically centred against the rail rather than under it.
+  cardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.lg,
+    marginTop: space.md,
+  },
+  cardRail: { flex: 1 },
+  price: { ...arabicIfNeeded(font.rowTitle), color: color.lightText, flexShrink: 0 },
+  when: { ...arabicIfNeeded(font.caption), color: alpha.onInk.tertiary },
+
+  empty: { gap: space.sm, marginTop: space.xl, maxWidth: 320 },
+  body: { ...arabicIfNeeded(font.body), color: alpha.onInk.body, textAlign: align.start },
+  emptyAction: { alignSelf: 'stretch', marginTop: space.md },
+
+  retry: {
+    padding: space.lg,
+    borderRadius: radius.row,
+    backgroundColor: color.surface,
+    gap: 2,
+  },
+  retryText: { ...arabicIfNeeded(font.body), color: color.lightText, textAlign: align.start },
+  retryAction: { ...font.caption, color: color.accentLight, textAlign: align.start },
 });
