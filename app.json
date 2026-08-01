@@ -29,11 +29,11 @@
       "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "blockedPermissions": [
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
@@ -76,12 +76,15 @@
       "reactCompiler": true
     },
     "extra": {
-      "_comment": "No secrets here. app.json ships inside the bundle \u2014 see SECURITY.md \u00a79.",
+      "_comment": "No secrets here. app.json ships inside the bundle — see SECURITY.md §9.",
       "router": {},
       "eas": {
         "projectId": "f3a98e44-b748-4e57-a722-43aad8dfd2e6"
       }
     },
-    "owner": "aanwarsadaths-team"
+    "owner": "aanwarsadaths-team",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    }
   }
 }
