@@ -22,7 +22,7 @@ import { PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { Chip, QuestionHeading, SectionLabel } from '@/components/ui';
 import { CityPin, Corridor } from '@/map';
-import { align, localized, t } from '@/i18n';
+import { align, directionArrow, localized, t } from '@/i18n';
 import { getLegDraft, updateLegDraft } from '@/lib/leg-draft';
 import { cityIndex, useCities, useMyLegs } from '@/lib/queries';
 import { alpha, color, font, space } from '@/theme/tokens';
@@ -54,7 +54,11 @@ export default function LegRoute() {
       const d = index.get(l.dest_city);
       if (!o || !d) continue;
       seen.add(key);
-      out.push({ origin: o.id, dest: d.id, label: `${localized(o)} → ${localized(d)}` });
+      out.push({
+        origin: o.id,
+        dest: d.id,
+        label: `${localized(o)} ${directionArrow()} ${localized(d)}`,
+      });
     }
     return out.slice(0, 4);
   }, [legs, index]);
@@ -138,7 +142,9 @@ export default function LegRoute() {
       <View style={styles.footer}>
         <PrimaryButton
           label={
-            origin && dest ? `${localized(origin)} → ${localized(dest)}` : t('action.continue')
+            origin && dest
+              ? `${localized(origin)} ${directionArrow()} ${localized(dest)}`
+              : t('action.continue')
           }
           onPress={() => router.push('/leg/when')}
           disabled={draft.originCityId == null || draft.destCityId == null}

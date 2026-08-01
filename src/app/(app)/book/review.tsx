@@ -191,7 +191,14 @@ const styles = StyleSheet.create({
   },
   factDivided: { borderBottomWidth: 1, borderBottomColor: hairline.inner },
   factLabel: { ...arabicIfNeeded(font.body), color: alpha.onInk.secondary },
-  factValue: { ...arabicIfNeeded(font.value), color: color.lightText, flexShrink: 1, textAlign: 'right' },
+  // The value sits at the trailing edge of its row, which is the LEFT edge in
+  // Arabic. `align.end`, never 'right'.
+  factValue: {
+    ...arabicIfNeeded(font.value),
+    color: color.lightText,
+    flexShrink: 1,
+    textAlign: align.end,
+  },
   estimate: { gap: space.sm },
   range: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   rangeValue: { ...font.estimate, color: color.lightText },
