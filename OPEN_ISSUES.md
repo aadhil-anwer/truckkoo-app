@@ -118,15 +118,17 @@ last one deleted outright.
 
 **Done when:** P2 ships and the file can be deleted.
 
-### `npm run verify` exhausts memory on at least one machine
+### `npm run verify` exhausted memory — RESOLVED 2026-08-01
 
-Running the full jest suite at default parallelism was killed with exit 137
-during P7. `npx jest --maxWorkers=2`, plus `npm run typecheck` and `npm run lint`
-separately, does the same work and completes. Not reproduced elsewhere yet, so it
-may be local rather than a property of the suite.
+Diagnosed rather than worked around. Jest defaults to one worker per core minus
+one, and each `jest-expo` worker carries a whole React Native transform. That is
+a bet on cores and RAM rising together: the machine this was found on has 16
+cores and 7GB, so the default spawned 15 workers and the run died with exit 137
+instead of a test failure.
 
-**Done when:** it is confirmed on a second machine, and if real, `--maxWorkers`
-is pinned in `jest.config.js`.
+Not machine-specific, then — any high-core, low-memory box does this.
+`jest.config.js` pins `maxWorkers: 4`, and `npm run verify` completes in under
+ten seconds.
 
 ---
 
@@ -397,11 +399,10 @@ inside a fixed sheet.
 
 **Done when:** someone completes S3→S9 on a device and a load appears.
 
-### The loads tab still uses the pre-redesign card
+### The loads tab still uses the pre-redesign card — RESOLVED 2026-08-01
 
-`src/components/load-card.tsx` was extracted from the old shipper home when P3
-rebuilt it, because a screen importing components from a sibling screen is how
-two screens quietly become one. It is transitional and belongs to X1, in P7.
+Closed by P7. X1 rebuilt `(tabs)/loads.tsx` on the new system and
+`src/components/load-card.tsx` is deleted.
 
 ### The road factor is one number doing a job that needs two
 
@@ -489,16 +490,16 @@ waiting shipper most wants.
 **Watch for:** if shippers stop asking for prices after this ships, the tap is the
 reason and the ask belongs back on the card.
 
-### RTL has not been looked at since the rewire
+### RTL has not been looked at since the rewire — SUPERSEDED 2026-08-01
 
-Every new component uses logical properties and `align.start`, and
-`directionArrow()` is used everywhere a route is written as a string — but the
-Arabic dictionary is still partial, so no screen has actually been *rendered*
-right-to-left. The new pieces with real mirroring risk are the route stalk in
-`RouteLine`, the tab badge, and the chevron on every `ListRow`.
+The premise is gone: the Arabic dictionary is no longer partial, and P7 added
+`tests/components/rtl.test.tsx` and `tests/unit/no-literals.test.ts` to enforce
+the mechanical rules this entry was worrying about.
 
-**Done when:** the app has been run with `I18nManager.forceRTL(true)` and the
-three above have been looked at.
+What it was actually asking for — that someone *render* a screen right-to-left —
+is unchanged and now lives with the P7 entries at the top of this file, alongside
+issues 30 and 35. The three components named here (`RouteLine`, the tab badge,
+the `ListRow` chevron) are still the ones to look at first.
 
 ### The horizontal "waybill book" was deleted
 
@@ -1061,16 +1062,16 @@ deliberately — the MVP proves matching first. Public copy already claims "100%
 verified drivers", so this cannot ship to real users unverified without either
 the flow or a change to the claim.
 
-### 7. Arabic copy is partial
+### 7. Arabic copy is partial — HALF CLOSED 2026-08-01
 
-`src/i18n/index.ts` carries the full English dictionary and a partial Arabic
-one; missing keys fall back to English **visibly**, so gaps are findable rather
-than silently blank. Arabic added since the website lift — the auth, reset,
-date, and picker keys — has no translation yet.
+The dictionary is complete: all 387 English keys have an Arabic value as of P7,
+and `tests/unit/i18n.test.ts` asserts it, so this cannot silently regress. The
+auth, reset, date and picker keys this entry named are among them.
 
-**Done when:** every key in `en` has an `ar` value, proofed by a native speaker,
-and the app has been walked end to end with the device set to Arabic (RTL
-layout, not just translated strings).
+**The other half of the original "done when" stands**, and it is the harder
+half: proofed by a native speaker, and walked end to end on an Arabic device.
+177 of the strings are unproofed drafts. See the P7 entries at the top of this
+file — that is where this is tracked now.
 
 ### 8. Client test suite — RESOLVED 2026-07-26
 

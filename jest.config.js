@@ -44,4 +44,19 @@ module.exports = {
 
   clearMocks: true,
   restoreMocks: true,
+
+  /**
+   * Bounded on purpose.
+   *
+   * Jest defaults to one worker per core minus one, and each `jest-expo` worker
+   * carries a whole React Native transform — a few hundred MB. That is a bet on
+   * cores and RAM rising together, and they do not: a 16-core machine with 7GB
+   * spawns 15 workers, exhausts memory, and `npm run verify` dies with exit 137
+   * rather than a test failure. That happened throughout P7.
+   *
+   * Four is slower than the theoretical maximum on a large machine and it
+   * finishes everywhere, which is the trade a test command should make. CI can
+   * override with `--maxWorkers` if it knows better than this file does.
+   */
+  maxWorkers: 4,
 };
