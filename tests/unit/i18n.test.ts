@@ -221,3 +221,31 @@ describe('dictionary export', () => {
     expect(dictionaries.ar).toBeDefined();
   });
 });
+
+describe('placeholder parity', () => {
+  const markers = (s: string) => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
+
+  it('every Arabic string carries exactly the placeholders its English does', () => {
+    // A translated string that drops {km} silently loses the number. Nothing
+    // else in the suite would notice, because the sentence still reads.
+    const wrong: string[] = [];
+    for (const [key, arValue] of Object.entries(dictionaries.ar)) {
+      if (!arValue) continue;
+      const enValue = dictionaries.en[key as keyof typeof dictionaries.en];
+      const a = markers(enValue);
+      const b = markers(arValue);
+      if (a.size !== b.size || [...a].some((m) => !b.has(m))) {
+        wrong.push(`${key}: en{${[...a]}} ar{${[...b]}}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('no dictionary value contains an unclosed marker', () => {
+    // `{km` renders literally and reads as a typo nobody catches in Arabic.
+    const bad = Object.entries({ ...dictionaries.en, ...dictionaries.ar })
+      .filter(([, v]) => v && /\{[^}]*$/.test(v))
+      .map(([k]) => k);
+    expect(bad).toEqual([]);
+  });
+});
