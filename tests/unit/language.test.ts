@@ -1,16 +1,17 @@
 /**
  * The language preference.
  *
- * `I18nManager.forceRTL` only takes effect on the NEXT launch, so the whole
- * correctness question here is about the reload. Get it wrong in one direction
- * and the user reads Arabic in a left-to-right layout; get it wrong in the other
- * and the app relaunches forever, because the stored preference is still there
- * on the way back in.
+ * `I18nManager.forceRTL` only takes effect on the NEXT launch, and nothing here
+ * relaunches the app — `expo-updates` was tried for that and removed, so the
+ * restart is the user's and X2 asks for it.
+ *
+ * What is left to get right is the direction decision itself: apply it when the
+ * stored preference and the native flag disagree, leave it alone when they
+ * already agree, and never fail to boot because a keystore was locked.
  */
 
 import { I18nManager } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import * as Updates from 'expo-updates';
 
 import { LANGUAGE_KEY, loadLanguage, needsReload, setLanguage } from '@/lib/language';
 import { getLanguage, initLanguage } from '@/i18n';
@@ -59,24 +60,24 @@ describe('loadLanguage', () => {
     await expect(loadLanguage()).resolves.toBe('en');
   });
 
-  it('never reloads on boot when the layout already matches', async () => {
+  it('leaves the direction alone on boot when it already matches', async () => {
     await SecureStore.setItemAsync(LANGUAGE_KEY, 'en');
     await loadLanguage();
-    expect(Updates.reloadAsync).not.toHaveBeenCalled();
+    expect(I18nManager.forceRTL).not.toHaveBeenCalled();
   });
 
-  it('reloads once when a stored Arabic preference meets a left-to-right layout', async () => {
-    // The self-healing path: the preference survived, the native direction did
-    // not. Exactly one relaunch fixes it, and the next boot is quiet.
+  it('heals a stored Arabic preference meeting a left-to-right layout, once', async () => {
+    // The self-healing path. Applying forceRTL unconditionally would rewrite the
+    // native flag on every launch forever; applying it on a mismatch means the
+    // next boot is quiet.
     await SecureStore.setItemAsync(LANGUAGE_KEY, 'ar');
     await loadLanguage();
     expect(I18nManager.forceRTL).toHaveBeenCalledWith(true);
-    expect(Updates.reloadAsync).toHaveBeenCalledTimes(1);
 
     setRTL(true);
-    (Updates.reloadAsync as jest.Mock).mockClear();
+    (I18nManager.forceRTL as jest.Mock).mockClear();
     await loadLanguage();
-    expect(Updates.reloadAsync).not.toHaveBeenCalled();
+    expect(I18nManager.forceRTL).not.toHaveBeenCalled();
   });
 
   it('still starts when the keystore is unavailable', async () => {
@@ -94,27 +95,17 @@ describe('setLanguage', () => {
     jest.spyOn(I18nManager, 'forceRTL').mockImplementation(() => {});
   });
 
-  it('persists the choice and reloads', async () => {
+  it('persists the choice and flips the direction', async () => {
     await setLanguage('ar');
     await expect(SecureStore.getItemAsync(LANGUAGE_KEY)).resolves.toBe('ar');
     expect(I18nManager.forceRTL).toHaveBeenCalledWith(true);
-    expect(Updates.reloadAsync).toHaveBeenCalled();
   });
 
   it('does nothing when the language is already active and the layout agrees', async () => {
     await SecureStore.setItemAsync(LANGUAGE_KEY, 'en');
     await loadLanguage();
     await setLanguage('en');
-    expect(Updates.reloadAsync).not.toHaveBeenCalled();
-  });
-
-  it('does not reject when the relaunch is unavailable', async () => {
-    // reloadAsync is a no-op in Expo Go and can reject in a dev client. The
-    // preference is already stored by then, so the next manual start is correct
-    // and an error here would look like the change failed when it did not.
-    (Updates.reloadAsync as jest.Mock).mockRejectedValueOnce(new Error('not supported'));
-    await expect(setLanguage('ar')).resolves.toBeUndefined();
-    await expect(SecureStore.getItemAsync(LANGUAGE_KEY)).resolves.toBe('ar');
+    expect(I18nManager.forceRTL).not.toHaveBeenCalled();
   });
 });
 
@@ -150,7 +141,7 @@ describe('setLanguage and the profile column', () => {
     eq.mockRejectedValueOnce(new Error('offline'));
     await expect(setLanguage('ar')).resolves.toBeUndefined();
     await expect(SecureStore.getItemAsync(LANGUAGE_KEY)).resolves.toBe('ar');
-    expect(Updates.reloadAsync).toHaveBeenCalled();
+    expect(I18nManager.forceRTL).toHaveBeenCalledWith(true);
   });
 
   it('writes nothing when nobody is signed in', async () => {
@@ -159,16 +150,18 @@ describe('setLanguage and the profile column', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('writes before the relaunch, because the relaunch may never return', async () => {
+  it('records the profile before flipping the direction', async () => {
+    // Order matters if a relaunch is ever reintroduced: the flip is the last
+    // thing that happens, so nothing after it can be skipped by a restart.
     const order: string[] = [];
     eq.mockImplementationOnce(async () => {
       order.push('profile');
       return { error: null };
     });
-    (Updates.reloadAsync as jest.Mock).mockImplementationOnce(async () => {
-      order.push('reload');
+    (I18nManager.forceRTL as jest.Mock).mockImplementationOnce(() => {
+      order.push('direction');
     });
     await setLanguage('ar');
-    expect(order).toEqual(['profile', 'reload']);
+    expect(order).toEqual(['profile', 'direction']);
   });
 });

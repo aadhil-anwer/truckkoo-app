@@ -32,14 +32,6 @@ jest.mock('expo-localization', () => ({
   getLocales: () => [{ languageCode: 'en', languageTag: 'en-OM', textDirection: 'ltr' }],
 }));
 
-// The relaunch that makes a language change take effect. Stubbed rather than
-// skipped: `src/lib/language.ts` is correct only if it calls this at the right
-// moments and — more importantly — does not call it at the wrong ones.
-jest.mock('expo-updates', () => ({
-  reloadAsync: jest.fn(async () => {}),
-  isEmbeddedLaunch: true,
-}));
-
 jest.mock('expo-auth-session', () => ({
   makeRedirectUri: ({ scheme = 'truckkoo', path = '' }: { scheme?: string; path?: string } = {}) =>
     `${scheme}://${path}`,

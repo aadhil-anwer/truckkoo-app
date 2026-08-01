@@ -2,13 +2,19 @@
  * The language preference: reading it, writing it, and making the layout match.
  *
  * This is the only file that calls `I18nManager.forceRTL`, and that matters:
- * forceRTL does not take effect until the next launch, so every call has to be
- * paired with a relaunch. A call without one leaves Arabic text sitting in a
- * left-to-right layout. Keeping the pair in one place is what makes it checkable.
+ * forceRTL does not take effect until the next launch. Every call has to be
+ * followed by a restart or the user is left reading Arabic in a left-to-right
+ * layout, so the two belong in one place where the pair is checkable.
  *
- * The reload is conditional on `needsReload`, never unconditional. An
- * unconditional reload after applying a stored preference relaunches the app
- * forever, because the stored preference is still there on the way back in.
+ * THE RESTART IS THE USER'S. `expo-updates` was added for `reloadAsync()` and
+ * then removed: it failed the EAS "Configure expo-updates" build phase, and
+ * making it pass means enabling EAS Update — an OTA check at every launch, for
+ * an audience on patchy signal in a truck cab, bought solely to save one tap.
+ * X2 shows `account.language.hint` instead and asks them to reopen the app.
+ *
+ * `needsReload` therefore still decides, and still matters: it is what makes the
+ * boot path self-healing when the stored preference and the native direction
+ * disagree, and what stops that healing from being an infinite loop.
  *
  * BEFORE P7 there was no path to Arabic at all. `allowRTL(true)` was called and
  * `forceRTL` never was, and `initLanguage()` took no argument and stored
@@ -18,7 +24,6 @@
 
 import { I18nManager } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import * as Updates from 'expo-updates';
 
 import { getLanguage, initLanguage, type Language } from '@/i18n';
 import { supabase } from '@/lib/supabase';
@@ -53,10 +58,10 @@ export async function loadLanguage(): Promise<Language> {
 
   const lang = initLanguage(isLanguage(stored) ? stored : undefined);
 
-  if (needsReload(lang, I18nManager.isRTL)) {
-    I18nManager.forceRTL(lang === 'ar');
-    await reload();
-  }
+  // Self-healing, and conditional on purpose. Applying forceRTL unconditionally
+  // would rewrite the native flag on every single launch; applying it only on a
+  // mismatch means the next launch is quiet.
+  if (needsReload(lang, I18nManager.isRTL)) I18nManager.forceRTL(lang === 'ar');
   return lang;
 }
 
@@ -85,29 +90,16 @@ async function rememberOnProfile(next: Language): Promise<void> {
   }
 }
 
-/** Change the language. Persists, applies the direction, and relaunches. */
+/**
+ * Change the language.
+ *
+ * Persists, records it on the profile, and flips the native direction — which
+ * takes effect on the NEXT launch. The caller is responsible for telling the
+ * user that, which X2 does.
+ */
 export async function setLanguage(next: Language): Promise<void> {
   if (next === getLanguage() && !needsReload(next, I18nManager.isRTL)) return;
   await SecureStore.setItemAsync(LANGUAGE_KEY, next);
-  // Before the relaunch, not after: `reload()` may never return.
   await rememberOnProfile(next);
   I18nManager.forceRTL(next === 'ar');
-  await reload();
-}
-
-/**
- * Relaunch.
- *
- * `reloadAsync` is a no-op in Expo Go and can reject in a dev client. Swallowing
- * that is deliberate: the preference is already stored by this point, so the
- * next manual start comes up correct, and a thrown error here would look like
- * the language change failed when it did not. X2 tells the user to reopen the
- * app if it is still running afterwards.
- */
-async function reload(): Promise<void> {
-  try {
-    await Updates.reloadAsync();
-  } catch {
-    // See above.
-  }
 }

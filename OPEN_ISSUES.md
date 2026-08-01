@@ -41,26 +41,27 @@ possible without running the app.
 **Done when:** a native Arabic reader has been through the proof-sheet and the
 `UNPROOFED DRAFTS` block has been emptied into the body of the dictionary.
 
-### The language switch has never been seen relaunching a real app
+### Changing language needs the user to reopen the app
 
-`expo-updates` was added for `reloadAsync`, and `src/lib/language.ts` is the only
-caller of `I18nManager.forceRTL` — deliberately, because forceRTL takes effect
-only on the *next* launch and so must always be paired with a relaunch.
+`src/lib/language.ts` is the only caller of `I18nManager.forceRTL`, which takes
+effect on the *next* launch. Nothing relaunches the app, so X2 shows
+`account.language.hint` — "restart the app after changing this" — and that is the
+design rather than a fallback.
 
-The tests cover the decision: one relaunch heals a language/direction mismatch,
-a matching pair relaunches never (which is what stops an infinite loop), and a
-rejected `reloadAsync` does not surface as a failed language change. None of that
-proves a real Android build actually comes back up in Arabic. If the relaunch
-silently does not happen, the user gets Arabic text in a left-to-right layout;
-X2 renders `account.language.hint` in that case, which is a fallback rather than
-the design.
+`expo-updates` was added in P7 to call `reloadAsync()` and then removed. It
+failed the EAS **Configure expo-updates** build phase, and making it pass means
+enabling EAS Update: an OTA check at every launch, plus a release channel to
+manage, bought to save one tap for an audience on patchy signal in a truck cab.
+The trade was not worth it. If it is ever revisited, `needsReload` is still the
+function that decides.
 
 Nearly shipped worse: the edit that moved the direction decision into
 `loadLanguage()` deleted `I18nManager.allowRTL(true)` with it, and `forceRTL` is
-ignored on a build that has not allowed RTL. Lint caught it as an unused import.
+ignored on a build that has not allowed RTL — the switch would have done nothing
+at all. Lint caught it as an unused import.
 
-**Done when:** someone changes the language on a real Android phone and the app
-returns, mirrored, in the other language.
+**Done when:** someone changes the language on a real Android phone, reopens it,
+and the app comes back mirrored in the other language.
 
 ### `profiles.language` was written by nothing — RESOLVED 2026-08-01
 

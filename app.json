@@ -82,9 +82,6 @@
         "projectId": "f3a98e44-b748-4e57-a722-43aad8dfd2e6"
       }
     },
-    "owner": "aanwarsadaths-team",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    }
+    "owner": "aanwarsadaths-team"
   }
 }

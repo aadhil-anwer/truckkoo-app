@@ -23,10 +23,11 @@
  *
  * THE LANGUAGE ROW LEADS SOMEWHERE. Before P7 it was read-only, because React
  * Native applies RTL natively and needs a relaunch — so a picker would have
- * promised what a tap could not deliver. `setLanguage` delivers it now: it
- * persists the choice, flips the direction and relaunches. If the relaunch does
- * not happen (Expo Go has no `reloadAsync`), the screen says so rather than
- * leaving Arabic text in a left-to-right layout with no explanation.
+ * promised what a tap could not deliver. `setLanguage` persists the choice,
+ * records it on the profile and flips the direction; the flip takes effect on
+ * the next launch, so this screen has to say so. The alternative was shipping
+ * `expo-updates` purely to call `reloadAsync()`, which means an OTA check at
+ * every launch for drivers on patchy signal — a large bill for one tap.
  */
 
 import { useState } from 'react';
@@ -72,23 +73,23 @@ export default function AccountTab() {
   const { profile } = useSession();
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
-  const [stuck, setStuck] = useState(false);
+  const [restartNeeded, setRestartNeeded] = useState(false);
 
   const name = profile?.full_name?.trim() ?? '';
   const isDriver = profile?.role === 'driver';
   const current = getLanguage();
 
   /**
-   * Control returning here means the relaunch did not happen — `reloadAsync` is
-   * a no-op in Expo Go and can fail in a dev client. The preference is already
-   * stored by then, so the next manual start is correct; the user just has to
-   * perform it.
+   * `forceRTL` lands on the next launch, so the notice is the design rather than
+   * an error path. It is shown only after an actual change: telling someone to
+   * restart when they re-picked the language they were already reading would be
+   * noise.
    */
   async function choose(next: Language) {
     setPicking(false);
     if (next === current) return;
     await setLanguage(next);
-    setStuck(true);
+    setRestartNeeded(true);
   }
 
   return (
@@ -112,7 +113,7 @@ export default function AccountTab() {
           </Text>
         </View>
 
-        {stuck && <Notice icon="info">{t('account.language.hint')}</Notice>}
+        {restartNeeded && <Notice icon="info">{t('account.language.hint')}</Notice>}
 
         <DetailGroup label={t('account.details')}>
           <DetailRow label={t('auth.phone')} value={safeText(profile?.phone ?? '—')} />
