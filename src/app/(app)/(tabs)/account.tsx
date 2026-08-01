@@ -1,5 +1,7 @@
 /**
- * Account.
+ * X2 · Account.
+ *
+ * One component serves both roles; only the role line and the tab bar differ.
  *
  * Sign-out used to live as a text link in the corner of every masthead. Moving
  * it here is what let the header shrink to a back chevron, and it is also where
@@ -7,94 +9,205 @@
  *
  * WHAT THIS SCREEN MAY SAY
  *
- * Only what `profiles` actually holds: name, phone, role. No tier, no rating, no
- * loads-completed, no member-since. PRODUCT.md and CLAUDE.md §5 forbid
+ * Only what `profiles` actually holds: name, phone, role, language. No tier, no
+ * rating, no loads-completed, no member-since. PRODUCT.md and CLAUDE.md §5 forbid
  * fabricating proof, and an account screen is exactly where a plausible-looking
  * invented number would go unchallenged. The one claim it does repeat —
  * "replies in minutes, 7 days a week" — is a commitment the live website already
  * makes in public.
+ *
+ * NO TRUCK ROW. The handoff draws "Truck / 10-ton" and there is no such field:
+ * `profiles` is id, role, full_name, phone, language and nothing else. The value
+ * would have to be invented, so the row does not exist. This is a deliberate
+ * departure from the handoff, recorded in OPEN_ISSUES.
+ *
+ * THE LANGUAGE ROW LEADS SOMEWHERE. Before P7 it was read-only, because React
+ * Native applies RTL natively and needs a relaunch — so a picker would have
+ * promised what a tap could not deliver. `setLanguage` delivers it now: it
+ * persists the choice, flips the direction and relaunches. If the relaunch does
+ * not happen (Expo Go has no `reloadAsync`), the screen says so rather than
+ * leaving Arabic text in a left-to-right layout with no explanation.
  */
 
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Screen } from '@/components/ui';
-import { getLanguage, t } from '@/i18n';
+import { Icon } from '@/components/icon';
+import { PressableSurface, SecondaryButton, SelectRow } from '@/components/primitives';
+import { arabicIfNeeded } from '@/components/text-direction';
+import { DetailGroup, DetailRow, Notice } from '@/components/ui';
+import { align, getLanguage, t, type Language } from '@/i18n';
 import { signOut } from '@/lib/auth';
+import { setLanguage } from '@/lib/language';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { useSession } from '@/lib/session';
-import { GUTTER_INK, space } from '@/theme/tokens';
-import { Avatar, Button, ListRow, PageTitle, RowGroup, Section } from '@/components/legacy';
+import {
+  GUTTER_INK,
+  TABBAR_CLEARANCE_3,
+  alpha,
+  color,
+  font,
+  radius,
+  space,
+} from '@/theme/tokens';
+
+/** Each language names itself, in itself. Nobody looks for "Arabic" in English. */
+const LANGUAGE_NAME: Record<Language, string> = { en: 'English', ar: 'العربية' };
+
+/** Two words at most. A third initial is noise at 64px. */
+function initialsOf(name: string): string {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0] ?? '')
+      .join('')
+      .toUpperCase() || 'T'
+  );
+}
 
 export default function AccountTab() {
   const { profile } = useSession();
+  const insets = useSafeAreaInsets();
+  const [picking, setPicking] = useState(false);
+  const [stuck, setStuck] = useState(false);
 
   const name = profile?.full_name?.trim() ?? '';
   const isDriver = profile?.role === 'driver';
+  const current = getLanguage();
+
+  /**
+   * Control returning here means the relaunch did not happen — `reloadAsync` is
+   * a no-op in Expo Go and can fail in a dev client. The preference is already
+   * stored by then, so the next manual start is correct; the user just has to
+   * perform it.
+   */
+  async function choose(next: Language) {
+    setPicking(false);
+    if (next === current) return;
+    await setLanguage(next);
+    setStuck(true);
+  }
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <PageTitle>{t('account.title')}</PageTitle>
-
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.identity}>
-          <Avatar name={name || 'T'} size={64} />
-          <RowGroup style={styles.identityRows}>
-            <ListRow
-              icon={isDriver ? 'truck' : 'loads'}
-              title={safeText(name)}
-              subtitle={isDriver ? t('account.role.driver') : t('account.role.shipper')}
-              last
-            />
-          </RowGroup>
+          <View style={styles.avatar}>
+            <Text style={styles.initials}>{initialsOf(name)}</Text>
+          </View>
+          <Text style={styles.name} numberOfLines={1}>
+            {safeText(name)}
+          </Text>
+          <Text style={styles.role}>
+            {isDriver ? t('account.role.driver') : t('account.role.shipper')}
+          </Text>
         </View>
 
-        <Section title={t('account.details')}>
-          <View style={styles.group}>
-            <RowGroup>
-              <ListRow icon="phone" title={t('auth.phone')} subtitle={safeText(profile?.phone ?? '—')} />
-              <ListRow
-                icon="language"
-                title={t('account.language')}
-                // Read-only on purpose: React Native applies RTL at the native
-                // level and needs a reload to flip it, so a picker here would
-                // promise something a tap cannot deliver (STACK.md §5).
-                subtitle={getLanguage() === 'ar' ? 'العربية' : 'English'}
-                last
-              />
-            </RowGroup>
-          </View>
-        </Section>
+        {stuck && <Notice icon="info">{t('account.language.hint')}</Notice>}
 
-        <Section title={t('account.help')}>
-          <View style={styles.group}>
-            <RowGroup>
-              <ListRow
-                icon="whatsapp"
-                tone="orange"
-                title={t('whatsapp.action')}
-                subtitle={t('account.help.detail')}
-                chevron
-                last
-                onPress={() => {
-                  Linking.openURL(whatsappLink(t('app.name'))).catch(() => {});
-                }}
-              />
-            </RowGroup>
-          </View>
-        </Section>
+        <DetailGroup label={t('account.details')}>
+          <DetailRow label={t('auth.phone')} value={safeText(profile?.phone ?? '—')} />
+          <DetailRow
+            label={t('account.language')}
+            value={LANGUAGE_NAME[current]}
+            onPress={() => setPicking(true)}
+          />
+        </DetailGroup>
+
+        <DetailGroup label={t('account.help')}>
+          <DetailRow
+            label={t('whatsapp.action')}
+            value={t('account.help.detail')}
+            onPress={() => {
+              Linking.openURL(whatsappLink(t('app.name'))).catch(() => {});
+            }}
+          />
+        </DetailGroup>
 
         <View style={styles.out}>
-          <Button label={t('auth.signOut')} variant="secondary" icon="signOut" onPress={signOut} />
+          <SecondaryButton label={t('auth.signOut')} onPress={signOut} />
         </View>
       </ScrollView>
-    </Screen>
+
+      {/*
+        SelectRow rather than a plain list: it carries the three-way selection
+        signal — border, fill, filled radio — which is the rule for a screen
+        where someone is answering a question one-handed.
+      */}
+      <Modal visible={picking} transparent animationType="fade" onRequestClose={() => setPicking(false)}>
+        <View style={styles.scrim}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>{t('account.language')}</Text>
+              <PressableSurface
+                onPress={() => setPicking(false)}
+                accessibilityLabel={t('common.close')}
+              >
+                <Icon name="close" size={22} tint={color.iconGrey} />
+              </PressableSurface>
+            </View>
+
+            {(['en', 'ar'] as const).map((lang) => (
+              <SelectRow
+                key={lang}
+                title={LANGUAGE_NAME[lang]}
+                selected={lang === current}
+                onPress={() => {
+                  void choose(lang);
+                }}
+                ground="ink"
+              />
+            ))}
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: space.xxxl, gap: space.xxl },
-  identity: { alignItems: 'center', gap: space.md, paddingHorizontal: GUTTER_INK },
-  identityRows: { alignSelf: 'stretch' },
-  group: { paddingHorizontal: GUTTER_INK },
-  out: { paddingHorizontal: GUTTER_INK, paddingTop: space.sm },
+  screen: { flex: 1, backgroundColor: color.ink },
+  scroll: { paddingHorizontal: GUTTER_INK, gap: space.xxl },
+
+  identity: { alignItems: 'center', gap: space.xs },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: color.raised,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.sm,
+  },
+  initials: { ...arabicIfNeeded(font.statement), color: color.accentLight },
+  name: { ...arabicIfNeeded(font.statement), color: color.lightText },
+  role: { ...arabicIfNeeded(font.body), color: alpha.onInk.body },
+
+  out: { marginTop: space.sm },
+
+  scrim: { flex: 1, backgroundColor: 'rgba(11,12,15,.72)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: color.surface,
+    borderTopStartRadius: radius.sheet,
+    borderTopEndRadius: radius.sheet,
+    padding: GUTTER_INK,
+    paddingBottom: space.xxxl,
+    gap: space.md,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.xs,
+  },
+  sheetTitle: { ...arabicIfNeeded(font.title), color: color.lightText, textAlign: align.start },
 });

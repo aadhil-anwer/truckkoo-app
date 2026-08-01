@@ -497,7 +497,10 @@ const en = {
   "common.error.title": "We could not load that",
   "common.error.explain": "Check your connection and try again. Nothing was lost.",
 
-  "common.close": "Done",
+  // The accessible name of a dismiss X, in the picker sheet and on X2's
+  // language sheet. It said "Done" until P7, which is what a screen reader
+  // announced for a control that commits nothing and discards the sheet.
+  "common.close": "Close",
   "common.search": "Search",
   "common.noMatches": "Nothing matches that. Try a shorter word.",
   "common.back": "Back",
