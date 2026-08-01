@@ -42,6 +42,14 @@ cities, and truck types.
    (`marginStart`, `paddingEnd`, `start`/`end`). Never `left`/`right`. All
    user-facing strings go through `t()` in `src/i18n`. React Native does **not**
    flip `textAlign: 'left'` under RTL — use `align.start` from `src/i18n`.
+   **Never compose a sentence from fragments at a call site.** `t()` takes typed
+   placeholders — `t('drv.offer.detour', { km })` — so each language owns its own
+   word order, and units live *inside* the string: `${n} km` renders a Latin "km"
+   in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
+   arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
+   and adding a third to silence a hit is the failure it exists to prevent.
+   The Arabic dictionary is complete as of P7, but **177 of its strings are
+   unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
    deliberately claims none of these. Public claims we *must* stay consistent
@@ -188,9 +196,10 @@ only check that matters, which is whether a pin is in the right town.
 design system but built none of the 32 screens, so the old vocabulary lives there
 on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
 the list of screens still awaiting their phase; when it is empty, delete the file.
-**Nothing new may import from it.** After P5 that list is the four auth screens,
-`post-load.tsx`, `loads.tsx` and `account.tsx` — every driver and tracking screen
-is off it.
+**Nothing new may import from it.** After P7 that list is the four auth screens and
+`post-load.tsx` — every driver, tracking, loads and account screen is off it, and
+`load-card.tsx` is deleted. Those five are P2's to replace with N1–N6, so the
+file cannot go until P2 ships.
 
 **Navigation is a floating tab bar** (`src/app/(app)/(tabs)/`), role-aware — a
 pill at the thumb, not a bar welded to the bottom edge. Tabs are hidden with
@@ -260,7 +269,8 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 447 tests
+npm run verify    # typecheck + lint + 508 tests
+npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
 ```
 

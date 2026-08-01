@@ -9,6 +9,127 @@ an entry only when it is actually closed.
 
 ---
 
+## P7 · Shared + Arabic (2026-08-01)
+
+Specced in `docs/superpowers/specs/2026-08-01-redesign-p7-shared-arabic-design.md`.
+X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
+completed, and the audit tooling was built. No backend change — `npm run test:db`
+was run against a fresh `db reset` to confirm it.
+
+### 177 Arabic strings have never been read by someone who reads Arabic
+
+The dictionary went from 173 of 387 keys to all 387. They are not all of one
+kind, and the difference matters:
+
+- **Harvested.** Lifted verbatim from the live bilingual site (`~/truckkoo`) or
+  from the handoff's X3/X4, which specify finished Arabic for a whole home
+  screen and a whole question screen.
+- **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
+  words in Arabic order — no new vocabulary.
+- **Drafted — 177 of them.** Not from either source. They sit in one delimited
+  `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
+  `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
+  searching 387 lines.
+
+P7's claim is that every string exists, every placeholder survives translation,
+and no numeral is Latin. **It is not a claim that the Arabic is right.**
+
+`npm run preview:rtl` writes `.superpowers/rtl-proof.md` — every string, grouped
+by screen, each row marked harvested or draft — which exists so this review is
+possible without running the app.
+
+**Done when:** a native Arabic reader has been through the proof-sheet and the
+`UNPROOFED DRAFTS` block has been emptied into the body of the dictionary.
+
+### The language switch has never been seen relaunching a real app
+
+`expo-updates` was added for `reloadAsync`, and `src/lib/language.ts` is the only
+caller of `I18nManager.forceRTL` — deliberately, because forceRTL takes effect
+only on the *next* launch and so must always be paired with a relaunch.
+
+The tests cover the decision: one relaunch heals a language/direction mismatch,
+a matching pair relaunches never (which is what stops an infinite loop), and a
+rejected `reloadAsync` does not surface as a failed language change. None of that
+proves a real Android build actually comes back up in Arabic. If the relaunch
+silently does not happen, the user gets Arabic text in a left-to-right layout;
+X2 renders `account.language.hint` in that case, which is a fallback rather than
+the design.
+
+Nearly shipped worse: the edit that moved the direction decision into
+`loadLanguage()` deleted `I18nManager.allowRTL(true)` with it, and `forceRTL` is
+ignored on a build that has not allowed RTL. Lint caught it as an unused import.
+
+**Done when:** someone changes the language on a real Android phone and the app
+returns, mirrored, in the other language.
+
+### `profiles.language` is written by nothing, so it is `'en'` for every row
+
+The column exists (0001), carries both an INSERT and an UPDATE grant, and has a
+`check (language in ('en','ar'))`. Nothing has ever written it.
+
+P7 put the preference in SecureStore instead, because it has to be readable
+before a session exists — the auth screens need a direction too. That is the
+right home for the *boot* decision, but it leaves a column in the database
+claiming every user reads English, which anything server-side (a notification, an
+ops screen, an export) would believe.
+
+Not fixed here because P7 is a no-backend phase and this is a client write to a
+granted column that nobody asked for.
+
+**Done when:** either `setLanguage` also writes `profiles.language`, or the
+column is dropped as dead.
+
+### X2 has no truck row, because `profiles` has no truck
+
+The handoff's X2 draws `Truck / 10-ton`. `profiles` holds `id`, `role`,
+`full_name`, `phone`, `language` and nothing else, so the value would have to be
+invented — and an account screen is exactly where a plausible invented fact goes
+unchallenged (CLAUDE.md #5). The row does not exist rather than showing a
+placeholder.
+
+A driver's truck does exist in `trucks`, reachable per-trip via `useTripTruck`.
+There is no "my truck" read, and adding one is a backend change.
+
+**Done when:** a `driver_truck()` read exists, or the handoff's row is formally
+dropped from the design.
+
+### X1 issues one position RPC per in-transit load
+
+Each moving card calls `useTripPosition` for itself, at the 60s interval that
+hook already polls at. For a shipper with three trucks moving that is three
+requests a minute; the screen was drawn for that scale.
+
+The alternative was an ETA computed on the client from elapsed time, which P6
+deleted on purpose — `progressOf` and `interpolate` are gone and a card is just
+as capable of inventing a position as a map marker is.
+
+**Done when:** it becomes a problem, at which point the fix is a batched
+`trip_positions_for(load_ids[])` rather than a client-side estimate.
+
+### `legacy.tsx` survives P7, and that is a decision
+
+`grep -rl "components/legacy" src/app` returns exactly five files: the four auth
+screens and `post-load.tsx`. All five are P2's to replace with N1–N6, and P2 is
+deferred pending an SMS provider. Restyling screens that P2 deletes would be work
+thrown away.
+
+`loads.tsx`, `account.tsx` and `src/components/load-card.tsx` are off it — the
+last one deleted outright.
+
+**Done when:** P2 ships and the file can be deleted.
+
+### `npm run verify` exhausts memory on at least one machine
+
+Running the full jest suite at default parallelism was killed with exit 137
+during P7. `npx jest --maxWorkers=2`, plus `npm run typecheck` and `npm run lint`
+separately, does the same work and completes. Not reproduced elsewhere yet, so it
+may be local rather than a property of the suite.
+
+**Done when:** it is confirmed on a second machine, and if real, `--maxWorkers`
+is pinned in `jest.config.js`.
+
+---
+
 ## The redesign (2026-07-30)
 
 Specced in `docs/superpowers/specs/2026-07-30-redesign-p0-foundations-design.md`
@@ -1099,12 +1220,20 @@ share it.
 The whole driver surface is verified by tests only. Two specific risks that tests
 cannot reach:
 
-- **Arabic, RTL.** The strings exist in both languages and every screen uses
-  `arabicIfNeeded` and `align.start`, but nobody has looked at a driver screen in
-  Arabic. DoD 7 asks for exactly this and it cannot be automated. The one place
-  it is most likely to be wrong is `OfferCard`'s detour line, which composes four
-  fragments (`about`, a number, `km`, `extra on your route`) — a word order that
-  is correct in English and merely plausible in Arabic.
+- **Arabic, RTL — NARROWED BY P7, NOT CLOSED.** The detour line named here was
+  the worked example, and it is fixed: `drv.offer.detour` is one interpolated
+  key per language now, so the Arabic places both the number and the unit
+  itself. The strings that "exist in both languages" actually did not — 214 of
+  387 keys had no Arabic at all, including every tab label and every status
+  pill; P7 completed the dictionary, and 177 of those strings are still
+  unproofed drafts (see the P7 section at the top of this file).
+  `tests/components/rtl.test.tsx` now asserts the mechanical rules and
+  `tests/unit/no-literals.test.ts` guards the lexical ones.
+
+  **What is still open is the original claim: nobody has LOOKED at a driver
+  screen in Arabic.** React Native applies RTL natively — flipping
+  `flexDirection`, `marginStart` and the view tree — and the test renderer
+  reproduces none of it, so a green suite says nothing about layout on a phone.
 - **The 64px delivery button and the photo step**, which is the only part of the
   product that touches the camera and a private bucket at the same time.
 
@@ -1176,7 +1305,8 @@ actually arrives on a cheap Android phone, that the 60s/500m interval behaves in
 a moving vehicle, or what the battery cost is over eleven hours.
 
 This compounds with issue 30: **no driver screen has been seen on a device at
-all.**
+all** — in either language. P7 narrowed the Arabic half of 30 to a layout
+question, and a layout question can only be settled here.
 
 **Done when:** a driver account is driven end to end on a real Android phone,
 including a trip that reports positions and one that is denied permission.
