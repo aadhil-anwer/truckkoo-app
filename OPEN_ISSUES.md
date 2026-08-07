@@ -9,6 +9,95 @@ an entry only when it is actually closed.
 
 ---
 
+## Found on a device (2026-08-02)
+
+The first run of this app on an Android device, ever. Three findings, and the
+third invalidates a rule the whole codebase is built on.
+
+### `align.start` is backwards — React Native already flips `textAlign` under RTL
+
+`CLAUDE.md` says "React Native does **not** flip `textAlign: 'left'` under RTL —
+use `align.start`". **That is false on both platforms**, and `align.start` is
+therefore inverted everywhere it is used.
+
+```kotlin
+// react-native/ReactAndroid/.../views/text/TextAttributeProps.kt
+"left"  -> if (isRTL) Gravity.RIGHT else Gravity.LEFT
+"right" -> if (isRTL) Gravity.LEFT  else Gravity.RIGHT
+```
+```objc
+// react-native/Libraries/Text/RCTTextAttributes.mm
+if (_layoutDirection == UIUserInterfaceLayoutDirectionRightToLeft) {
+  if (alignment == NSTextAlignmentRight)     alignment = NSTextAlignmentLeft;
+  else if (alignment == NSTextAlignmentLeft) alignment = NSTextAlignmentRight;
+}
+```
+
+`align.start` returns `'right'` under RTL, RN flips that to LEFT, and the text
+lands on the wrong edge.
+
+**Measured on the sign-in screen, Arabic, second launch** (native RTL confirmed
+active):
+
+| Element | LTR | RTL | |
+|---|---|---|---|
+| brand `تركو`, positioned by flex | x 62–109 | x 973–1020 | flipped correctly |
+| field label `البريد الإلكتروني`, `textAlign: align.start` | x 61–256 | x 61–256 | **did not move** |
+
+**The fix is the identity.** `start` is `'left'` and `end` is `'right'`, with no
+`isRTL` read, because RN does the flipping. Better still for the `start` case:
+omit `textAlign` entirely and let the default (`auto`, i.e. natural) follow the
+paragraph direction.
+
+**This is not a small change.** 26 files use `align.*`, `tests/unit/i18n.test.ts`
+asserts the current inverted behaviour as if it were correct, and
+`tests/unit/no-literals.test.ts` bans the literal `'left'` that is in fact the
+right answer. All three, plus the `CLAUDE.md` rule, move together.
+
+**Done when:** `align` is the identity, the tests assert the new rule, `CLAUDE.md`
+is corrected, and a device run shows a label on the correct edge in Arabic.
+
+### A secondary, real problem: direction values freeze at import
+
+`const styles = StyleSheet.create({ x: { textAlign: align.start } })` at module
+scope captures whatever the getter returned at import time. Proved in jest: the
+getter stays live, the stylesheet does not. `arabicIfNeeded` freezes the same way,
+so an Arabic font step can be missed too.
+
+`ui.tsx` and `primitives.tsx` avoid it by calling `StyleSheet.flatten([...])`
+inside render; 26 screen and component files do not. Fixing the entry above makes
+the values constant, which makes the freeze harmless — but the pattern is a trap
+for the next direction-dependent value someone adds.
+
+### Every heading on the five legacy screens is invisible
+
+`legacy.tsx` sets `title` and `pageTitle` to `color.inkText` (`#16171A`) — the
+near-black for the **cream** ground — and those screens render on ink
+(`#0B0C0F`). Roughly 1.1:1. "Sign in" and "Create your account" cannot be read,
+in either language, and they are the first screens a new user sees.
+
+`tests/unit/contrast.test.ts` computes every ratio from the tokens but never sees
+`legacy.tsx`, which is how this shipped. The same file uses `color.inkText` for
+body, section, list and route text on ink.
+
+**Done when:** the legacy styles use `color.lightText` / `alpha.onInk.*`, and the
+contrast test covers `legacy.tsx` rather than tokens alone.
+
+### A phone already set to Arabic reads Arabic in a left-to-right layout, once
+
+`forceRTL` applies on the *next* launch. Launch 1 on an Arabic device is Arabic
+text in an LTR layout with nothing explaining it; launch 2 is correct. Both
+confirmed on the emulator.
+
+X2's "reopen the app" notice only fires after an in-app change, so this path is
+silent. It is the cost of dropping `expo-updates`, and it is worse than that
+decision assumed: it hits users who never touch the language switch.
+
+**Done when:** the first run in a mismatched direction says something, or the
+relaunch happens by itself.
+
+---
+
 ## P7 · Shared + Arabic (2026-08-01)
 
 Specced in `docs/superpowers/specs/2026-08-01-redesign-p7-shared-arabic-design.md`.
