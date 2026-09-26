@@ -9,6 +9,58 @@ an entry only when it is actually closed.
 
 ---
 
+## Detection and scheduled jobs (2026-09-26)
+
+What landed: `.github/workflows/ci.yml` runs `verify`, the three SQL suites on a
+Postgres-only local stack, and `scripts/check-migrations.mjs` (numbering, and no
+applied migration edited) on every push and PR. Migration 0034 enables pg_cron
+and pg_net and schedules the offer sweep (5 min), position retention (daily),
+a stuck-load alarm (5 min) and a watcher that alerts on failed cron runs
+(15 min). `.github/workflows/drift.yml` compares the repo's migrations with
+production daily. All verified locally, including the jobs firing under the
+real scheduler; none of it has run on GitHub or production yet.
+
+### 0034 is not in production, and the alarm has nowhere to send
+
+Until 0034 is pushed, the sweeps are still buttons. After it is, alerts are
+recorded in `private.ops_alerts` but **sent nowhere** until a webhook is set:
+
+```sql
+insert into private.app_settings (key, value)
+values ('alert_webhook_url', '"https://hooks.slack.com/…"'::jsonb)
+on conflict (key) do update set value = excluded.value;
+```
+
+The body is `{"text": …}` (Slack, Google Chat, and most chat webhooks). WhatsApp
+needs a provider in between. Threshold: `stuck_alert_minutes` (default 30).
+
+**Done when:** 0034 is applied, a webhook is set, and a deliberately stale test
+load has produced a message on a dispatcher's phone.
+
+### Drift and CI need repository setup
+
+`drift.yml` warns and passes until the `SUPABASE_DB_URL` secret exists (Session
+pooler string — the direct host is IPv6-only). Branch protection on `main`
+should require the three `ci` jobs, or CI reports failures nobody is blocked by.
+
+### The scheduled path audits as the nil UUID
+
+`ops_audit.actor_id` is NOT NULL and `log_ops` reads `auth.uid()`, which cron
+does not have, so `private.log_system` writes `00000000-…`. The console's
+`ops_audit_log()` shows those rows with no actor name. Only sweeps that changed
+something are logged; "did the job run" lives in `cron.job_run_details`, pruned
+to 14 days by `watch-cron`.
+
+### Still not detected: production crashes, and whole-flow breakage
+
+The two largest remaining gaps. No crash reporting exists in release builds —
+`AppErrorBoundary` logs only under `__DEV__` (needs a Sentry DSN). No canary
+walks post → offer → accept → deliver against production (needs test accounts
+and a decision on how the dispatch step is performed, because `create_offer` is
+revoked from every client role and a new privileged path is a stop-and-ask).
+
+---
+
 ## Driver surface after the first demo (2026-09-26)
 
 ### Declared trips are hidden, not removed
@@ -32,7 +84,8 @@ hidden, or are deleted with their migration history left intact.
 
 `driver_trips()` and the month columns on `driver_earnings()`. An APK with Past
 trips against a database without 0033 shows the history's retry state, not a
-crash. Push with `npx supabase db push` before handing out a build.
+crash. Push with `npx supabase db push` before handing out a build. The daily
+`drift.yml` check fails while this (or any migration) is unapplied.
 
 ### The city list never retries after one failure
 

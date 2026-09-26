@@ -1532,6 +1532,100 @@ select assert_true(
      from private.ops_audit a where a.action = 'ops_sweep_positions'),
   'and the sweep is audited with its reason, like every privileged write');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 10. Migration 0034 — scheduled jobs and the stuck-load alarm
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- The scheduled path skips require_ops(), so it must be unreachable from every
+-- client role — including a real dispatcher, who has the ops_ buttons instead.
+select assert_true(
+  (select bool_and(not has_function_privilege(r, f, 'execute'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array[
+            'private.system_sweep_expired_offers()',
+            'private.system_sweep_positions()',
+            'private.system_watch_loads()',
+            'private.system_watch_cron()',
+            'private.system_raise_alert(text, text, jsonb)',
+            'private.log_system(text, text, text, jsonb)',
+            'private.setting_text(text)']) f),
+  'no client role can execute a system_ function');
+
+select assert_true(
+  (select bool_and(not has_table_privilege(r, t, 'select'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array['private.load_watch', 'private.ops_alerts']) t),
+  'the alarm tables are unreadable by any client role');
+
+select assert_true(
+  (select count(*) = 4 from cron.job
+    where jobname in ('sweep-expired-offers', 'watch-loads', 'watch-cron', 'sweep-positions')
+      and active),
+  'all four jobs are scheduled and active');
+
+-- ─── 10a. the offer sweep runs without a dispatcher ─────────────────────────
+
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                          goods_description, status)
+select 'f3f3f3f3-0000-4000-8000-000000000034', '11111111-0000-4000-8000-00000000aaaa',
+       (select min(id) from public.cities), (select max(id) from public.cities),
+       current_date + 1, current_date + 2, 'Ignored-offer cargo', 'matched';
+
+insert into public.offers (load_id, driver_id, status, source, expires_at)
+values ('f3f3f3f3-0000-4000-8000-000000000034', '22222222-0000-4000-8000-00000000bbbb',
+        'pending', 'ops', now() - interval '1 hour');
+
+select assert_true((select private.system_sweep_expired_offers() >= 1),
+  'the scheduled sweep expires an ignored offer');
+select assert_true(
+  (select status = 'finding_truck' from public.loads
+    where id = 'f3f3f3f3-0000-4000-8000-000000000034'),
+  'and returns its load to a human, as the button does');
+select assert_true(
+  (select count(*) = 1 from private.ops_audit
+    where action = 'system_sweep_expired_offers'
+      and actor_id = '00000000-0000-0000-0000-000000000000'),
+  'and is audited as the system actor');
+
+-- ─── 10b. the alarm ─────────────────────────────────────────────────────────
+
+delete from private.app_settings where key = 'alert_webhook_url';
+select private.system_watch_loads();
+select assert_true(
+  (select count(*) = 1 from private.load_watch
+    where load_id = 'f3f3f3f3-0000-4000-8000-000000000034'
+      and status = 'finding_truck' and alerted_at is null),
+  'a waiting load starts a clock and does not alert at once');
+
+update private.load_watch set first_seen_at = now() - interval '2 hours'
+ where load_id = 'f3f3f3f3-0000-4000-8000-000000000034';
+
+select assert_true((select private.system_watch_loads() >= 1),
+  'past the threshold, it alerts');
+select assert_true(
+  (select count(*) = 1 from private.ops_alerts
+    where kind = 'stuck_loads' and request_id is null
+      and detail->'load_ids' ? 'f3f3f3f3-0000-4000-8000-000000000034'),
+  'the alert is recorded even with no webhook configured');
+select assert_true((select private.system_watch_loads() = 0),
+  'and a load alerts once, not every five minutes');
+
+update public.loads set status = 'assigned'
+ where id = 'f3f3f3f3-0000-4000-8000-000000000034';
+select private.system_watch_loads();
+select assert_true(
+  (select not exists (select 1 from private.load_watch
+                       where load_id = 'f3f3f3f3-0000-4000-8000-000000000034')),
+  'a wait that ended is forgotten');
+
+insert into private.app_settings (key, value)
+values ('alert_webhook_url', '"http://127.0.0.1:9/alert"'::jsonb);
+select private.system_raise_alert('test', 'hello', '{}'::jsonb);
+select assert_true(
+  (select request_id is not null from private.ops_alerts
+    where kind = 'test' order by id desc limit 1),
+  'with a webhook set, the alert is queued to pg_net');
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;
