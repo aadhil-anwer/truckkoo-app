@@ -202,10 +202,15 @@ only check that matters, which is whether a pin is in the right town.
 design system but built none of the 32 screens, so the old vocabulary lives there
 on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
 the list of screens still awaiting their phase; when it is empty, delete the file.
-**Nothing new may import from it.** After P7 that list is the four auth screens and
-`post-load.tsx` — every driver, tracking, loads and account screen is off it, and
-`load-card.tsx` is deleted. Those five are P2's to replace with N1–N6, so the
-file cannot go until P2 ships.
+**Nothing new may import from it.** Since the P2 interim (2026-09-26) that list is
+`post-load.tsx` alone — still reached by "Send this route again" on the shipper
+home and T5. Move that onto the booking flow and the file can go.
+
+**Getting in is N1–N6 on email, for now.** The handoff's N2/N3 are a phone
+number and a one-time code over WhatsApp; until Meta's side is ready the same
+one-question flow asks for an email and a password (`src/lib/auth-draft.ts`,
+P2 spec §0b). The password is never put in the shared draft. The Gate owns where
+a new session goes — do not navigate from the password screen.
 
 **Navigation is a floating tab bar** (`src/app/(app)/(tabs)/`), role-aware — a
 pill at the thumb, not a bar welded to the bottom edge. Tabs are hidden with

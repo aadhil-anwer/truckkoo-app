@@ -353,17 +353,43 @@ as capable of inventing a position as a map marker is.
 **Done when:** it becomes a problem, at which point the fix is a batched
 `trip_positions_for(load_ids[])` rather than a client-side estimate.
 
-### `legacy.tsx` survives P7, and that is a decision
+### `legacy.tsx` survives, for one screen
 
-`grep -rl "components/legacy" src/app` returns exactly five files: the four auth
-screens and `post-load.tsx`. All five are P2's to replace with N1–N6, and P2 is
-deferred pending an SMS provider. Restyling screens that P2 deletes would be work
-thrown away.
+`grep -rl "components/legacy" src/app` returns `post-load.tsx` alone. The four
+auth screens came off it on 2026-09-26 (the P2 interim, below). `post-load.tsx` is
+still the target of "Send this route again" on the shipper home and T5.
 
-`loads.tsx`, `account.tsx` and `src/components/load-card.tsx` are off it — the
-last one deleted outright.
+**Done when:** "send again" pre-fills the booking flow instead, and the file can
+be deleted.
 
-**Done when:** P2 ships and the file can be deleted.
+### P2 runs on email until WhatsApp codes land — INTERIM 2026-09-26
+
+The auth screens were never redesigned, because P2 was parked; on a device they
+looked nothing like the handoff. N1, N4, N4b, N5 and N6 are now built as drawn.
+N2/N3 ask for an email and a password in the same cream one-question shape, since
+the codes need Meta's side (verified business, Cloud API number, approved
+template, permanent token) and that is not ready.
+
+What differs from the handoff, on purpose, until then:
+
+- **N1 has two paths** ("Get started" / "I already have an account"). A code does
+  not care whether an account is new; an email and password do, and guessing
+  would make a second account for anyone who mistypes their address.
+- **The number is asked after the name, and is skippable** — as it always was. It
+  becomes the real N2 (first, required) when codes land. Omani mobiles only; the
+  six GCC prefixes arrive with the codes, where they are enforced.
+- **N1's two decorative pins are not drawn**: `cities` is not readable signed
+  out, and coordinates are not invented in a screen.
+- **No plate question.** Never drawn, always optional; dispatch adds it.
+
+Also fixed on the way: `TertiaryButton` was ink-only, so on cream it rendered .5
+white on #F4F0E9 — S8's "Skip — I do not know the weight" and S5's "Show more
+days" were real paths nobody could see. It takes a `ground` now.
+
+**Unverified:** none of this has been run on a device, and no sign-up has been
+completed against the hosted project — only rendered on web.
+
+**Done when:** WhatsApp codes ship and N1 goes back to one primary.
 
 ### `npm run verify` exhausted memory — RESOLVED 2026-08-01
 

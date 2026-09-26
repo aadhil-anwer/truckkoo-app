@@ -79,10 +79,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, next) => {
-      setSession(next);
-      // A brand-new signup has a session before its profile row exists, so this
-      // may legitimately come back null for a moment.
+      // Profile first, THEN the session, so the Gate never sees a session without
+      // the profile that goes with it. The other order routed every returning
+      // user through the role question for a frame — "Which one are you?",
+      // flashed at someone who answered it months ago.
+      //
+      // A brand-new signup has no profile row yet, so this legitimately comes
+      // back null — and that is exactly the state the Gate sends to the role.
       await loadProfile(next?.user.id);
+      setSession(next);
       setLoading(false);
     });
 

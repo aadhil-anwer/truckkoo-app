@@ -31,9 +31,9 @@ export default function Index() {
     );
   }
 
-  if (!session) return <Redirect href="/sign-in" />;
-  // Signed in but the profile row was never created: signup owns finishing it.
-  if (!profile) return <Redirect href="/sign-up" />;
+  if (!session) return <Redirect href="/welcome" />;
+  // Signed in but the profile row was never created: the setup questions own it.
+  if (!profile) return <Redirect href="/role" />;
 
   return <Redirect href={profile.role === 'driver' ? '/driver' : '/customer'} />;
 }

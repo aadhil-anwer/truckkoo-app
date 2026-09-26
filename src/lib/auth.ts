@@ -14,6 +14,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
 import { t } from '@/i18n';
+import { OMAN_DIAL } from './auth-draft';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
 
@@ -286,6 +287,35 @@ export async function createTruck(input: {
   });
 
   if (error) return { ok: false, message: t('error.generic') };
+  return { ok: true };
+}
+
+/**
+ * The last step of getting in: write the profile, and for a driver the truck.
+ *
+ * The phone is stored in E.164 (`+96891234567`) — the form a dispatcher's dialer
+ * and a WhatsApp link both take without reformatting.
+ *
+ * If the truck insert fails, the account still exists and works; the driver just
+ * is not matched on capacity until a truck is added. That is reported, not
+ * rolled back — undoing an account someone just made is the worse failure.
+ */
+export async function finishSetup(input: {
+  role: 'shipper' | 'driver';
+  fullName: string;
+  omaniMobile: string | null;
+  truckType: string | null;
+}): Promise<AuthResult> {
+  const profile = await createProfile({
+    role: input.role,
+    fullName: input.fullName,
+    phone: input.omaniMobile ? `${OMAN_DIAL}${input.omaniMobile}` : null,
+  });
+  if (!profile.ok) return profile;
+
+  if (input.role === 'driver' && input.truckType) {
+    return createTruck({ truckType: input.truckType });
+  }
   return { ok: true };
 }
 

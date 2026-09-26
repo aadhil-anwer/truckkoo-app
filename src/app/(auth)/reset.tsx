@@ -9,17 +9,17 @@
  * The Gate in `_layout.tsx` deliberately does not redirect away from this route:
  * the exchange creates a real session, and without the exemption the user would
  * be bounced to their loads mid-reset with the password unchanged.
+ *
+ * A cream question like every other step of getting in — one field, one action.
  */
-
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Screen } from '@/components/ui';
-import { align, t } from '@/i18n';
+import { LinkProblem } from '@/components/auth/link-problem';
+import { QuestionShell } from '@/components/booking/shells';
+import { TextField } from '@/components/primitives';
+import { t } from '@/i18n';
 import { completePasswordReset } from '@/lib/auth';
-import { GUTTER_INK, color, font, space } from '@/theme/tokens';
-import { ActionBar, Button, EmptyState, Field, Input, PageTitle } from '@/components/legacy';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -27,15 +27,12 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function onSubmit() {
-    setFormError(null);
-    setPasswordError(null);
-
+    setError(null);
     if (password.length < 8) {
-      setPasswordError(t('error.password.short'));
+      setError(t('error.password.short'));
       return;
     }
 
@@ -44,80 +41,48 @@ export default function ResetPassword() {
     setBusy(false);
 
     if (!result.ok) {
-      setFormError(result.message);
+      setError(result.message);
       return;
     }
 
     // Signed in on the new password. Leaving the reset route re-arms the Gate,
-    // which sends them to their own side of the app (or to finish signup).
-    router.replace('/sign-in');
+    // which sends them to their own side of the app (or to finish setup).
+    router.replace('/welcome');
   }
 
   if (!code) {
-    return (
-      <Screen>
-        <View style={styles.flex}>
-          <EmptyState
-            icon="alert"
-            title={t('auth.reset.title')}
-            explain={t('auth.reset.invalid')}
-          />
-        </View>
-        <ActionBar>
-          <Button label={t('auth.submit.signIn')} onPress={() => router.replace('/sign-in')} />
-        </ActionBar>
-      </Screen>
-    );
+    return <LinkProblem title={t('auth.reset.title')} explain={t('auth.reset.invalid')} />;
   }
 
   return (
-    <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <PageTitle detail={t('auth.reset.explain')}>{t('auth.reset.title')}</PageTitle>
-
-          <View style={styles.form}>
-            <Field label={t('auth.reset.password')}>
-              <Input
-                value={password}
-                onChangeText={setPassword}
-                placeholder={t('auth.password.placeholder')}
-                autoCapitalize="none"
-                autoComplete="new-password"
-                textContentType="newPassword"
-                secureTextEntry
-                error={passwordError}
-                returnKeyType="go"
-                onSubmitEditing={onSubmit}
-              />
-            </Field>
-
-            {!!formError && (
-              <Text style={styles.formError} accessibilityLiveRegion="polite">
-                {formError}
-              </Text>
-            )}
-          </View>
-        </ScrollView>
-
-        <ActionBar>
-          <Button label={t('auth.reset.submit')} onPress={onSubmit} loading={busy} />
-        </ActionBar>
-      </KeyboardAvoidingView>
-    </Screen>
+    <QuestionShell
+      step={1}
+      total={1}
+      question={t('auth.reset.title')}
+      helper={t('auth.reset.explain')}
+      onBack={() => router.replace('/welcome')}
+      cta={t('auth.reset.submit')}
+      ctaDisabled={password.length === 0}
+      ctaLoading={busy}
+      onCta={onSubmit}
+    >
+      <TextField
+        value={password}
+        onChangeText={(v) => {
+          setPassword(v);
+          setError(null);
+        }}
+        error={error}
+        placeholder={t('auth.password.placeholder')}
+        accessibilityLabel={t('auth.reset.password')}
+        autoFocus
+        secureTextEntry
+        autoCapitalize="none"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={onSubmit}
+      />
+    </QuestionShell>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingBottom: space.xl },
-  form: { paddingHorizontal: GUTTER_INK, gap: space.lg },
-  formError: { ...font.bodySmall, color: color.danger, textAlign: align.start },
-});
