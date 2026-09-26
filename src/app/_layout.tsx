@@ -19,6 +19,7 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
+import { AppErrorBoundary } from '@/components/app-error-boundary';
 import { Notice } from '@/components/ui';
 import { t } from '@/i18n';
 import { loadLanguage, restartPending } from '@/lib/language';
@@ -62,6 +63,8 @@ if (Platform.OS !== 'web') {
     focusManager.setFocused(status === 'active');
   });
 }
+
+export { AppErrorBoundary as ErrorBoundary };
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts(FONT_ASSETS);
