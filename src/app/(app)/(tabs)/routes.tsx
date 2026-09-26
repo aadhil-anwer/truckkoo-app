@@ -26,6 +26,7 @@ import { Notice, QuestionHeading, RouteRail, SectionLabel, Skeleton, StatusPill 
 import { align, localized, t } from '@/i18n';
 import { formatWeight, formatWindow } from '@/lib/format';
 import { cityIndex, useCities, useMyLegs } from '@/lib/queries';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
   TABBAR_CLEARANCE_3,
@@ -50,6 +51,7 @@ export default function RoutesTab() {
   };
 
   const open = (legs.data ?? []).filter((l) => l.status === 'open');
+  useAnnounceOnError(legs.isError, t('common.error.title'));
 
   return (
     <View style={styles.screen}>

@@ -9,6 +9,88 @@ an entry only when it is actually closed.
 
 ---
 
+## Sentry (2026-09-26)
+
+`src/lib/monitoring.ts`, initialised first in `_layout.tsx`; render crashes
+reach it through `AppErrorBoundary`, which expo-router would otherwise swallow.
+Off in development (`enabled: !__DEV__`), so it is **only proven by a preview
+or production build** — nothing has been sent to it yet.
+
+Deliberately narrower than Sentry's quick-start, for SECURITY.md's "PII never
+enters logs": `sendDefaultPii: false`, no session replay, no feedback widget
+(English-only UI outside `t()`), console breadcrumbs dropped, phone-number-shaped
+digit runs scrubbed from exception text. Names and cargo text in an error
+message are **not** detectable by pattern and would still get through.
+
+Open:
+
+- **Source maps do not upload yet.** The Expo plugin needs `SENTRY_ORG`,
+  `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` as EAS secrets; without them release
+  stack traces stay minified.
+- **Turn on "Prevent Storing of IP Addresses"** in the Sentry project settings.
+  `sendDefaultPii: false` stops the SDK sending it; Sentry still infers it at
+  ingestion unless told not to.
+- **0035's `report_client_error` now overlaps.** It was built with client
+  wiring left undone; Sentry covers the same job plus native crashes and
+  symbolicated traces. Decide whether 0035 stays (data stays in our own
+  database) or its client half is dropped — do not wire both.
+- **Oman's PDPL (Royal Decree 6/2022)** likely treats device-identifying error
+  reports as personal data leaving the country. Not legal advice — have the
+  privacy policy name Sentry as a processor before launch, and check with
+  someone who knows the law.
+
+## Detection and scheduled jobs (2026-09-26)
+
+What landed: `.github/workflows/ci.yml` runs `verify`, the three SQL suites on a
+Postgres-only local stack, and `scripts/check-migrations.mjs` (numbering, and no
+applied migration edited) on every push and PR. Migration 0034 enables pg_cron
+and pg_net and schedules the offer sweep (5 min), position retention (daily),
+a stuck-load alarm (5 min) and a watcher that alerts on failed cron runs
+(15 min). `.github/workflows/drift.yml` compares the repo's migrations with
+production daily. All verified locally, including the jobs firing under the
+real scheduler; none of it has run on GitHub or production yet.
+
+### 0034 is not in production, and the alarm has nowhere to send
+
+Until 0034 is pushed, the sweeps are still buttons. After it is, alerts are
+recorded in `private.ops_alerts` but **sent nowhere** until a webhook is set:
+
+```sql
+insert into private.app_settings (key, value)
+values ('alert_webhook_url', '"https://hooks.slack.com/…"'::jsonb)
+on conflict (key) do update set value = excluded.value;
+```
+
+The body is `{"text": …}` (Slack, Google Chat, and most chat webhooks). WhatsApp
+needs a provider in between. Threshold: `stuck_alert_minutes` (default 30).
+
+**Done when:** 0034 is applied, a webhook is set, and a deliberately stale test
+load has produced a message on a dispatcher's phone.
+
+### Drift and CI need repository setup
+
+`drift.yml` warns and passes until the `SUPABASE_DB_URL` secret exists (Session
+pooler string — the direct host is IPv6-only). Branch protection on `main`
+should require the three `ci` jobs, or CI reports failures nobody is blocked by.
+
+### The scheduled path audits as the nil UUID
+
+`ops_audit.actor_id` is NOT NULL and `log_ops` reads `auth.uid()`, which cron
+does not have, so `private.log_system` writes `00000000-…`. The console's
+`ops_audit_log()` shows those rows with no actor name. Only sweeps that changed
+something are logged; "did the job run" lives in `cron.job_run_details`, pruned
+to 14 days by `watch-cron`.
+
+### Still not detected: production crashes, and whole-flow breakage
+
+The two largest remaining gaps. No crash reporting exists in release builds —
+`AppErrorBoundary` logs only under `__DEV__` (needs a Sentry DSN). No canary
+walks post → offer → accept → deliver against production (needs test accounts
+and a decision on how the dispatch step is performed, because `create_offer` is
+revoked from every client role and a new privileged path is a stop-and-ask).
+
+---
+
 ## Driver surface after the first demo (2026-09-26)
 
 ### Declared trips are hidden, not removed
@@ -32,7 +114,8 @@ hidden, or are deleted with their migration history left intact.
 
 `driver_trips()` and the month columns on `driver_earnings()`. An APK with Past
 trips against a database without 0033 shows the history's retry state, not a
-crash. Push with `npx supabase db push` before handing out a build.
+crash. Push with `npx supabase db push` before handing out a build. The daily
+`drift.yml` check fails while this (or any migration) is unapplied.
 
 ### The city list never retries after one failure
 
@@ -1273,6 +1356,41 @@ Not covered by the suite, and worth knowing before trusting it:
 - `post-load`, `post-leg`, `trip/[id]`, and all four auth screens have no tests.
   Issue 18 was a driver-blocking bug in `sign-up.tsx` that no test could have
   caught; the hook underneath it is pinned now, the screen still is not.
+
+  **Attempted 2026-09-26, abandoned rather than shipped broken.** A full
+  `sign-up.tsx` walkthrough (account → role → details, both roles) hit a
+  reproducible RNTL/Jest fault: the first test in the file to
+  `fireEvent.press` the screen's `PrimaryButton` ("Next"/"Create account")
+  leaves something in a bad state — "You seem to have overlapping act()
+  calls" — and every render in every test *after* that one comes back empty
+  (`toJSON()` is `null`, `queryAllByRole` finds nothing), even a bare
+  `render(<SignUp />)` with no interaction at all. Isolated by bisection:
+  - Renders with no interaction: fine, repeatably.
+  - `fireEvent.changeText`: fine.
+  - Pressing a raw `Pressable` (`Choice`, no animation): fine.
+  - Pressing `PrimaryButton` specifically (`usePressScale`'s
+    `Animated.timing(..., { useNativeDriver: true })` on press-in/out): breaks
+    every subsequent render in the file, unconditionally.
+  - Mocking `Animated.timing` to a synchronous no-op did **not** fix it.
+  - Waiting up to 500ms (`await act(async () => { await sleep(500) })`) after
+    the press did **not** fix it — ruling out "just needs more time to
+    flush."
+  - Explicit `unmount()` before the test ends did **not** fix it either.
+
+  So the state corruption is not a timing race, it looks structural, and it
+  reproduces with `PrimaryButton` (shared by every screen in the app) inside
+  *this* screen's tree specifically — the same component is pressed
+  hundreds of times across `shipper-screens.test.tsx` /
+  `driver-screens.test.tsx` with no such failure, so whatever combination
+  triggers it is not simply "press a PrimaryButton in a test." Recorded
+  rather than worked around with a same-file-single-test rule, which would
+  quietly cap this screen at one interactive test forever.
+
+  **Done when:** someone with more Jest/RNTL-internals time than this pass
+  had finds the actual interaction (candidates: `KeyboardAvoidingView`
+  combined with `Animated`'s JS-driven fallback under Jest's fake native
+  module, or something about `Screen`'s `SafeAreaView` nesting specific to
+  this screen), or reproduces it minimally enough to file upstream.
 - `completeEmailConfirmation` / `completePasswordReset` — the two flows that have
   never been exercised at all. Needs Mailpit or a device.
 - RTL *layout*. `align` and `directionArrow` are tested; whether the horizontal

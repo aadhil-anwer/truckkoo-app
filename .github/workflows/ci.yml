@@ -1,0 +1,65 @@
+# Every check this repo has, on every push and pull request.
+#
+# Until this file existed, `npm run verify` and `npm run test:db` ran only when
+# someone remembered to run them. The SQL suites are the ones that matter most:
+# `advance_trip` raised on every call for months because nothing called it, and
+# it was ops_console.sql that found it. A check that can be skipped is skipped.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: typecheck · lint · jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  migrations:
+    name: migrations are append-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: node scripts/check-migrations.mjs local
+      - if: github.event_name == 'pull_request'
+        run: node scripts/check-migrations.mjs diff "origin/${{ github.base_ref }}"
+      - if: github.event_name == 'push'
+        run: node scripts/check-migrations.mjs diff "${{ github.event.before }}"
+
+  database:
+    name: SQL suites (isolation · pricing · ops · scheduled jobs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+      # Only Postgres is needed; the rest of the stack is minutes of pulling
+      # images the suites never touch.
+      - run: >
+          supabase start -x
+          studio,imgproxy,vector,logflare,supavisor,edge-runtime,mailpit,realtime,storage-api,postgrest,gotrue,kong,postgres-meta
+      - run: npm run test:db

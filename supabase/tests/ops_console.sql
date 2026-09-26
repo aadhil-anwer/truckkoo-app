@@ -1532,6 +1532,213 @@ select assert_true(
      from private.ops_audit a where a.action = 'ops_sweep_positions'),
   'and the sweep is audited with its reason, like every privileged write');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 10. Migration 0034 — scheduled jobs and the stuck-load alarm
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- The scheduled path skips require_ops(), so it must be unreachable from every
+-- client role — including a real dispatcher, who has the ops_ buttons instead.
+select assert_true(
+  (select bool_and(not has_function_privilege(r, f, 'execute'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array[
+            'private.system_sweep_expired_offers()',
+            'private.system_sweep_positions()',
+            'private.system_watch_loads()',
+            'private.system_watch_cron()',
+            'private.system_raise_alert(text, text, jsonb)',
+            'private.log_system(text, text, text, jsonb)',
+            'private.setting_text(text)']) f),
+  'no client role can execute a system_ function');
+
+select assert_true(
+  (select bool_and(not has_table_privilege(r, t, 'select'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array['private.load_watch', 'private.ops_alerts']) t),
+  'the alarm tables are unreadable by any client role');
+
+select assert_true(
+  (select count(*) = 4 from cron.job
+    where jobname in ('sweep-expired-offers', 'watch-loads', 'watch-cron', 'sweep-positions')
+      and active),
+  'all four jobs are scheduled and active');
+
+-- ─── 10a. the offer sweep runs without a dispatcher ─────────────────────────
+
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                          goods_description, status)
+select 'f3f3f3f3-0000-4000-8000-000000000034', '11111111-0000-4000-8000-00000000aaaa',
+       (select min(id) from public.cities), (select max(id) from public.cities),
+       current_date + 1, current_date + 2, 'Ignored-offer cargo', 'matched';
+
+insert into public.offers (load_id, driver_id, status, source, expires_at)
+values ('f3f3f3f3-0000-4000-8000-000000000034', '22222222-0000-4000-8000-00000000bbbb',
+        'pending', 'ops', now() - interval '1 hour');
+
+select assert_true((select private.system_sweep_expired_offers() >= 1),
+  'the scheduled sweep expires an ignored offer');
+select assert_true(
+  (select status = 'finding_truck' from public.loads
+    where id = 'f3f3f3f3-0000-4000-8000-000000000034'),
+  'and returns its load to a human, as the button does');
+select assert_true(
+  (select count(*) = 1 from private.ops_audit
+    where action = 'system_sweep_expired_offers'
+      and actor_id = '00000000-0000-0000-0000-000000000000'),
+  'and is audited as the system actor');
+
+-- ─── 10b. the alarm ─────────────────────────────────────────────────────────
+
+delete from private.app_settings where key = 'alert_webhook_url';
+select private.system_watch_loads();
+select assert_true(
+  (select count(*) = 1 from private.load_watch
+    where load_id = 'f3f3f3f3-0000-4000-8000-000000000034'
+      and status = 'finding_truck' and alerted_at is null),
+  'a waiting load starts a clock and does not alert at once');
+
+update private.load_watch set first_seen_at = now() - interval '2 hours'
+ where load_id = 'f3f3f3f3-0000-4000-8000-000000000034';
+
+select assert_true((select private.system_watch_loads() >= 1),
+  'past the threshold, it alerts');
+select assert_true(
+  (select count(*) = 1 from private.ops_alerts
+    where kind = 'stuck_loads' and request_id is null
+      and detail->'load_ids' ? 'f3f3f3f3-0000-4000-8000-000000000034'),
+  'the alert is recorded even with no webhook configured');
+select assert_true((select private.system_watch_loads() = 0),
+  'and a load alerts once, not every five minutes');
+
+update public.loads set status = 'assigned'
+ where id = 'f3f3f3f3-0000-4000-8000-000000000034';
+select private.system_watch_loads();
+select assert_true(
+  (select not exists (select 1 from private.load_watch
+                       where load_id = 'f3f3f3f3-0000-4000-8000-000000000034')),
+  'a wait that ended is forgotten');
+
+insert into private.app_settings (key, value)
+values ('alert_webhook_url', '"http://127.0.0.1:9/alert"'::jsonb);
+select private.system_raise_alert('test', 'hello', '{}'::jsonb);
+select assert_true(
+  (select request_id is not null from private.ops_alerts
+    where kind = 'test' order by id desc limit 1),
+  'with a webhook set, the alert is queued to pg_net');
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 11. Migration 0035 — client errors, app config, outside health check
+-- ════════════════════════════════════════════════════════════════════════════
+
+select assert_true(
+  not has_function_privilege('anon',
+    'public.report_client_error(text, text, text, text, text, text, text, boolean)', 'execute')
+  and not has_function_privilege('anon', 'public.app_config()', 'execute'),
+  'neither new RPC is anonymous — there are no per-IP limits (0004)');
+
+select assert_true(
+  (select bool_and(not has_function_privilege(r, f, 'execute'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array['private.system_watch_errors()',
+                       'private.system_sweep_client_errors()',
+                       'private.system_health()',
+                       'private.error_fingerprint(text, text, text, text)']) f),
+  'no client role can execute the monitoring internals');
+
+select assert_true(
+  (select bool_and(not has_table_privilege(r, t, 'select'))
+     from unnest(array['anon', 'authenticated', 'truckkoo_monitor']) r,
+          unnest(array['private.client_errors', 'private.error_groups']) t),
+  'reported errors are unreadable by every client role and by the monitor');
+
+select assert_true(
+  has_function_privilege('truckkoo_monitor', 'private.system_health()', 'execute')
+  and has_table_privilege('truckkoo_monitor', 'supabase_migrations.schema_migrations', 'select')
+  and not has_function_privilege('truckkoo_monitor', 'private.system_watch_loads()', 'execute')
+  and not has_table_privilege('truckkoo_monitor', 'public.loads', 'select')
+  and not (select rolcanlogin from pg_roles where rolname = 'truckkoo_monitor'),
+  'the monitor can ask for health and read the ledger, nothing else, and cannot log in until a human says so');
+
+-- ─── 11a. reporting ─────────────────────────────────────────────────────────
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select public.report_client_error('query',
+  'load 3f2a0000-0000-4000-8000-000000000001 not found', 'P0002', 'load/3f2a0000-0000-4000-8000-000000000001',
+  '1.0.0', 'android', '14', true);
+select public.report_client_error('query',
+  'load 91bc0000-0000-4000-8000-000000000009 not found', 'P0002', 'load/91bc0000-0000-4000-8000-000000000009',
+  '1.0.1', 'android', '14', true);
+select assert_raises($$select public.report_client_error('sql', 'x')$$,
+  'an unknown kind is refused');
+select public.report_client_error('crash',
+  'spoof' || chr(8238) || 'txt' || chr(7), null, null, '1.0.0', 'ios', '17', true);
+select public.report_client_error('crash', 'only in a dev build', null, null, '1.0.0', 'ios', '17', false);
+select act_as_reset();
+
+select assert_true(
+  (select total = 2 and last_version = '1.0.1' from private.error_groups
+    where sample_message like 'load % not found'),
+  'the same bug with different ids is one group, not two');
+select assert_true(
+  (select count(*) = 0 from private.client_errors
+    where message like '%' || chr(8238) || '%' or message like '%' || chr(7) || '%'),
+  'bidi overrides and control characters are stripped before a person reads them');
+select assert_true(
+  (select count(*) = 1 from private.client_errors
+    where actor_id = '22222222-0000-4000-8000-00000000bbbb' and message = 'spoof txt '),
+  'and the rest of the message survives');
+
+-- ─── 11b. alerting ──────────────────────────────────────────────────────────
+
+delete from private.app_settings where key = 'alert_webhook_url';
+select assert_true((select private.system_watch_errors() = 1),
+  'new error groups raise one alert');
+select assert_true(
+  (select (detail->>'count')::int = 2 from private.ops_alerts
+    where kind = 'new_client_errors' order by id desc limit 1),
+  'covering the release-build groups only — the dev-build crash does not page anyone');
+select assert_true((select private.system_watch_errors() = 0),
+  'and a group alerts as new exactly once');
+
+update private.app_settings set value = '3'::jsonb where key = 'error_spike_count';
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select public.report_client_error('mutation', 'accept failed', 'P0001', 'offers', '1.0.1', 'android', '14', true)
+  from generate_series(1, 3);
+select act_as_reset();
+update private.error_groups set alerted_new_at = now() where alerted_new_at is null;
+select assert_true((select private.system_watch_errors() = 1),
+  'a group past the spike threshold in 15 minutes alerts');
+select assert_true((select private.system_watch_errors() = 0),
+  'and not again within the hour');
+
+-- The reports above count toward the cap; start this one from zero.
+delete from private.rate_events where action = 'report_client_error';
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+do $$
+begin
+  for i in 1..60 loop
+    perform public.report_client_error('crash', 'loop ' || i, null, null, '1.0.0', 'android', '14', true);
+  end loop;
+end $$;
+select assert_raises($$select public.report_client_error('crash', 'one too many')$$,
+  'a crash loop on one phone is capped, not stored forever');
+select act_as_reset();
+
+-- ─── 11c. app config and health ─────────────────────────────────────────────
+
+select act_as('11111111-0000-4000-8000-00000000aaaa');
+select assert_true(
+  (select min_app_version = '1.0.0' and android_store_url like 'https://play.google.com/%'
+     from public.app_config()),
+  'a signed-in user reads the minimum version and where to update');
+select act_as_reset();
+
+select assert_true(
+  (select (h->>'ok')::boolean = false
+      and h->'problems' ? 'alert_webhook_url is not set — alerts are recorded but not sent'
+     from (select private.system_health() as h) x),
+  'health is not ok while alerts have nowhere to go');
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;

@@ -70,7 +70,8 @@
           "isIosBackgroundLocationEnabled": false
         }
       ],
-      "./plugins/with-first-launch-direction"
+      "./plugins/with-first-launch-direction",
+      "@sentry/react-native/expo"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -35,27 +35,29 @@ export default function TruckSize() {
       cta={t('action.continue')}
       onCta={() => router.push('/book/weight')}
     >
-      <SelectCard
-        title={t('book.truck.auto')}
-        body={t('book.truck.autoBody')}
-        icon="question"
-        selected={draft.truckPreference === 'auto'}
-        onPress={() => update({ truckPreference: 'auto' })}
-      />
-
-      <View style={{ marginTop: space.md }}>
-        <SectionLabel ground="cream">{t('book.truck.or')}</SectionLabel>
-      </View>
-
-      {(types ?? []).map((type) => (
-        <SelectRow
-          key={type.code}
-          title={localized(type)}
-          subtitle={type.description_en ?? undefined}
-          selected={draft.truckPreference === type.code}
-          onPress={() => update({ truckPreference: type.code })}
+      <View accessibilityRole="radiogroup" accessibilityLabel={t('book.truck.q')}>
+        <SelectCard
+          title={t('book.truck.auto')}
+          body={t('book.truck.autoBody')}
+          icon="question"
+          selected={draft.truckPreference === 'auto'}
+          onPress={() => update({ truckPreference: 'auto' })}
         />
-      ))}
+
+        <View style={{ marginTop: space.md }}>
+          <SectionLabel ground="cream">{t('book.truck.or')}</SectionLabel>
+        </View>
+
+        {(types ?? []).map((type) => (
+          <SelectRow
+            key={type.code}
+            title={localized(type)}
+            subtitle={type.description_en ?? undefined}
+            selected={draft.truckPreference === type.code}
+            onPress={() => update({ truckPreference: type.code })}
+          />
+        ))}
+      </View>
     </QuestionShell>
   );
 }

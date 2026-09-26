@@ -76,33 +76,37 @@ export default function LegWhen() {
       ctaDisabled={!draft.departFrom || postLeg.isPending}
       onCta={submit}
     >
-      {days.map((iso, i) => (
-        <SelectRow
-          key={iso}
-          title={nameFor(iso, i)}
-          subtitle={i < 2 ? formatLongDay(iso) : undefined}
-          selected={draft.departFrom === iso}
-          onPress={() => set({ departFrom: iso })}
-        />
-      ))}
+      <View accessibilityRole="radiogroup" accessibilityLabel={t('drv.when.q')}>
+        {days.map((iso, i) => (
+          <SelectRow
+            key={iso}
+            title={nameFor(iso, i)}
+            subtitle={i < 2 ? formatLongDay(iso) : undefined}
+            selected={draft.departFrom === iso}
+            onPress={() => set({ departFrom: iso })}
+          />
+        ))}
+      </View>
 
       <View style={styles.second}>
         <SectionLabel ground="cream">{t('drv.when.empty.q')}</SectionLabel>
 
-        <SelectCard
-          title={t('drv.when.empty')}
-          body={t('drv.when.empty.hint')}
-          icon="truck"
-          selected={draft.isEmpty}
-          onPress={() => set({ isEmpty: true, freeKg: null })}
-        />
-        <SelectCard
-          title={t('drv.when.part')}
-          body={t('drv.when.part.hint')}
-          icon="goods"
-          selected={!draft.isEmpty}
-          onPress={() => set({ isEmpty: false })}
-        />
+        <View accessibilityRole="radiogroup" accessibilityLabel={t('drv.when.empty.q')}>
+          <SelectCard
+            title={t('drv.when.empty')}
+            body={t('drv.when.empty.hint')}
+            icon="truck"
+            selected={draft.isEmpty}
+            onPress={() => set({ isEmpty: true, freeKg: null })}
+          />
+          <SelectCard
+            title={t('drv.when.part')}
+            body={t('drv.when.part.hint')}
+            icon="goods"
+            selected={!draft.isEmpty}
+            onPress={() => set({ isEmpty: false })}
+          />
+        </View>
 
         {/* Revealed by the choice, never before it: a field asking how much room
             is left on an empty truck is a question with no answer. */}

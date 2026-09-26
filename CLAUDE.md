@@ -278,7 +278,15 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 npm run verify    # typecheck + lint + 541 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
+node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
 ```
+
+`.github/workflows/ci.yml` runs all of the above on every push and PR, and
+`drift.yml` checks daily that production has applied exactly the migrations in
+this repo. **Scheduled work is pg_cron (0034), not a button.** A new periodic
+job is a `private.system_*` function with no client grant, scheduled in its
+migration, audited through `private.log_system`; `watch-cron` alerts when any
+job run fails. Never schedule an `ops_*` RPC — `require_ops()` rejects cron.
 
 `tests/README.md` says what the suite does *not* cover. `OPEN_ISSUES.md` is the
 live list of what is unverified, deferred, or temporarily weakened — read it

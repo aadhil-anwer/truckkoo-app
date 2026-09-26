@@ -1,0 +1,48 @@
+# Is production alive, and are its own alarms working?
+#
+# Every in-database alarm (0034, 0035) goes silent if the database, pg_cron or
+# pg_net is what broke. This runs outside all three and posts straight to the
+# alert webhook, so "nothing heard" and "everything fine" stop looking the same.
+#
+# SETUP (OPEN_ISSUES, "Monitoring"):
+#   secret SUPABASE_DB_URL    Session pooler string for the truckkoo_monitor
+#                             role — health + migration ledger, nothing else.
+#   secret ALERT_WEBHOOK_URL  same chat webhook as app_settings.alert_webhook_url.
+#
+# GitHub runs scheduled workflows late under load and DISABLES them after 60
+# days without a commit to the repository. A red run also emails whoever last
+# edited this file's schedule.
+
+name: health
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ask production
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL is not set — production health is NOT being checked."
+            exit 0
+          fi
+          node scripts/check-health.mjs

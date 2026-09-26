@@ -48,6 +48,7 @@ import {
   type Load,
   type LoadStatus,
 } from '@/lib/queries';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
   TABBAR_CLEARANCE_3,
@@ -122,6 +123,7 @@ export default function LoadsTab() {
   const active = all.filter((l) => LIVE.includes(l.status));
   const past = all.filter((l) => !LIVE.includes(l.status));
   const shown = view === 'live' ? active : past;
+  useAnnounceOnError(loads.isError, t('common.error.title'));
 
   return (
     <View style={styles.screen}>

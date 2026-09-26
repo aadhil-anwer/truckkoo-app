@@ -109,4 +109,27 @@ describe('X2 · account', () => {
     await fireEvent.press(screen.getByLabelText('Language, English'));
     expect(screen.getByLabelText('Close')).toBeTruthy();
   });
+
+  /**
+   * The two language options previously had no group ancestor at all. This
+   * asserts the semantic marker is present — NOT that a screen reader reads
+   * it, which needs a real device: `accessible={true}` would make VoiceOver/
+   * TalkBack announce the group, but it also merges every child into one
+   * opaque node, which would make the two options individually unreachable —
+   * a worse regression than the one being fixed. So this stays unverified,
+   * same as every other on-device accessibility claim in OPEN_ISSUES.md.
+   */
+  it('marks the language choice as a group, without merging its options into one node', async () => {
+    useSession.mockReturnValue(session('driver'));
+    await render(<AccountTab />);
+    await fireEvent.press(screen.getByLabelText('Language, English'));
+
+    const group = screen.getByLabelText('Language');
+    expect(group.props.accessibilityRole).toBe('radiogroup');
+    expect(group.props.accessible).not.toBe(true);
+
+    // Both options must still be their own reachable radios.
+    expect(screen.getByRole('radio', { name: 'English' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'العربية' })).toBeTruthy();
+  });
 });

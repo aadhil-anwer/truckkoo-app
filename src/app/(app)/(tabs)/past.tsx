@@ -31,6 +31,7 @@ import { formatOmanDay } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
 import { cityIndex, useCities, useDriverEarnings, useDriverPastTrips } from '@/lib/queries';
 import { safeText } from '@/lib/safe-text';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
   TABBAR_CLEARANCE_3,
@@ -58,6 +59,7 @@ export default function PastTripsTab() {
   const rows = trips.data ?? [];
   const month = earnings.data;
   const monthAmount = month ? formatMoney(month.month_baisa, 'OMR') : null;
+  useAnnounceOnError(trips.isError, t('common.error.title'));
 
   function refetchAll() {
     trips.refetch();

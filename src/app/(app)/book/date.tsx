@@ -10,6 +10,7 @@
  * vocabulary, nothing new to understand, and it keeps working in Expo Go.
  */
 import { useState } from 'react';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { QuestionShell } from '@/components/booking/shells';
@@ -53,17 +54,19 @@ export default function CollectionDate() {
       ctaDisabled={!chosen}
       onCta={() => router.push('/book/cargo')}
     >
-      {(chosenHidden ? Array.from({ length: FAR }, (_, i) => isoToday(i)) : days).map(
-        (iso, i) => (
-          <SelectRow
-            key={iso}
-            title={nameFor(iso, i)}
-            subtitle={i < 2 ? formatLongDay(iso) : undefined}
-            selected={chosen === iso}
-            onPress={() => update({ collectionDate: iso })}
-          />
-        ),
-      )}
+      <View accessibilityRole="radiogroup" accessibilityLabel={t('book.date.q')}>
+        {(chosenHidden ? Array.from({ length: FAR }, (_, i) => isoToday(i)) : days).map(
+          (iso, i) => (
+            <SelectRow
+              key={iso}
+              title={nameFor(iso, i)}
+              subtitle={i < 2 ? formatLongDay(iso) : undefined}
+              selected={chosen === iso}
+              onPress={() => update({ collectionDate: iso })}
+            />
+          ),
+        )}
+      </View>
 
       {!expanded && !chosenHidden && (
         <TertiaryButton label={t('book.date.more')} onPress={() => setExpanded(true)} />

@@ -85,6 +85,14 @@ jest.mock('@/lib/supabase', () => ({
   signOutEverywhere: jest.fn(),
 }));
 
+// Sentry's native module does not exist under jest. `wrap` must stay an
+// identity so the root layout still renders its own component.
+jest.mock('@sentry/react-native', () => ({
+  init: jest.fn(),
+  captureException: jest.fn(),
+  wrap: (c: unknown) => c,
+}));
+
 // Any escape from the mock above should fail the test, loudly, rather than
 // hanging until the suite times out.
 global.fetch = jest.fn(() => {

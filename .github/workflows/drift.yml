@@ -1,0 +1,40 @@
+# Does production run the schema this repo describes?
+#
+# OPEN_ISSUES once read "Migration 0033 is not in production yet" — true, and
+# known only because someone wrote it down. This turns that sentence into a
+# daily red check, in both directions: a migration merged but never applied, and
+# a change applied to production by hand that no migration records.
+#
+# Read-only. It selects from supabase_migrations.schema_migrations and never
+# applies anything; applying stays a deliberate human step.
+#
+# SETUP: repository secret SUPABASE_DB_URL — the Session pooler connection
+# string from the Supabase dashboard (Connect → Session pooler). The direct
+# db.<ref>.supabase.co host is IPv6-only and GitHub's runners are not.
+# Prefer a read-only Postgres role for it over the `postgres` user.
+
+name: schema drift
+
+on:
+  schedule:
+    - cron: '23 5 * * *' # 09:23 in Muscat
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: compare repo migrations with production
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL is not set — production drift is NOT being checked."
+            exit 0
+          fi
+          node scripts/check-migrations.mjs drift
