@@ -127,8 +127,13 @@ export function useCities() {
     queryKey: ['cities'],
     enabled: !!session,
     staleTime: Infinity,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    // The app-wide default (_layout.tsx) turns this off; reference data is the
+    // one case worth overriding it for. `staleTime: Infinity` means a failed
+    // fetch is never retried by react-query's own staleness clock, so without
+    // this a bad-signal failure at sign-up or on first launch renders "—" on
+    // every city name until the process is killed (OPEN_ISSUES.md). Requires
+    // `focusManager` wired to `AppState` (done once, in _layout.tsx) — RN has
+    // no window-focus event for react-query's default listener to hear.
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<City[]> => {
       const { data, error } = await supabase
@@ -149,8 +154,7 @@ export function useTruckTypes() {
     // truck picker on step 3 renders nothing.
     enabled: !!session,
     staleTime: Infinity,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    // See useCities just above — same failure mode, same fix.
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<TruckType[]> => {
       const { data, error } = await supabase

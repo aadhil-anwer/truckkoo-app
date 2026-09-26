@@ -136,6 +136,7 @@ export default function LoadsTab() {
             refreshing={loads.isRefetching}
             onRefresh={() => {
               loads.refetch();
+              cities.refetch();
             }}
             tintColor={color.lightText}
           />

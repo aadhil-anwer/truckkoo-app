@@ -173,6 +173,19 @@ describe('DriverHome', () => {
    * `offers`/`trips` were doing. A driver at a dock on one bar must not lose
    * their one way back to a delivery in progress this way.
    */
+  /**
+   * REGRESSION. `useCities` has `staleTime: Infinity`, so once its one fetch
+   * fails it never retries on its own — every city name renders "—" until
+   * the process is killed. Pull-to-refresh is one of its two recovery paths
+   * (the other is the app regaining foreground), and it used to refresh
+   * offers/earnings/trips while leaving cities exactly as failed as before.
+   */
+  it('reaches the city list from pull-to-refresh, not just offers/trips', async () => {
+    await render(<DriverHome />);
+    await screen.getByTestId('driver-scroll').props.refreshControl.props.onRefresh();
+    expect(queries.useCities().refetch).toHaveBeenCalled();
+  });
+
   it('offers its own retry when the active job itself fails to load', async () => {
     (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
     (queries.useDriverTrip as jest.Mock).mockReturnValue(FAILED);
@@ -258,6 +271,42 @@ describe('DriverHome', () => {
       // shipper's load to the dispatcher, so one that fails silently strands it.
       expect.objectContaining({ onError: expect.any(Function) }),
     );
+  });
+
+  /**
+   * REGRESSION. Both buttons used to share one `busy` flag keyed only on the
+   * offer id, not on which action was in flight — so declining an offer made
+   * the "Take it" button spin, as if the driver had pressed the opposite one.
+   */
+  it('spins "Take it", not "Pass", while an accept is in flight', async () => {
+    withDriverOffer();
+    (queries.useRespondToOffer as jest.Mock).mockReturnValue({
+      mutate: mockRespondMutate,
+      isPending: true,
+      variables: { offerId: OFFER_ID, accept: true },
+    });
+    await render(<DriverHome />);
+    expect(screen.getByLabelText('Take it — 78.000 OMR').props.accessibilityState).toMatchObject({
+      busy: true,
+    });
+    // The wrong button must not also read as busy — only guarded against a
+    // double-press while the other one is in flight.
+    expect(screen.getByLabelText('Pass').props.accessibilityState).toEqual({ disabled: true });
+  });
+
+  it('spins "Pass", not "Take it", while a decline is in flight', async () => {
+    withDriverOffer();
+    (queries.useRespondToOffer as jest.Mock).mockReturnValue({
+      mutate: mockRespondMutate,
+      isPending: true,
+      variables: { offerId: OFFER_ID, accept: false },
+    });
+    await render(<DriverHome />);
+    expect(screen.getByLabelText('Take it — 78.000 OMR').props.accessibilityState).toMatchObject({
+      busy: false,
+      disabled: true,
+    });
+    expect(screen.getByLabelText('Pass').props.accessibilityState).toEqual({ disabled: true });
   });
 
   it('says another driver took the load, rather than blaming the app', async () => {
@@ -372,6 +421,12 @@ describe('OffersTab', () => {
 
     await fireEvent.press(screen.getByLabelText('Pass'));
     expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy();
+  });
+
+  it('reaches the city list from pull-to-refresh, not just offers', async () => {
+    await render(<OffersTab />);
+    await screen.getByTestId('offers-scroll').props.refreshControl.props.onRefresh();
+    expect(queries.useCities().refetch).toHaveBeenCalled();
   });
 });
 

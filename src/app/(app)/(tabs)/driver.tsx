@@ -102,6 +102,7 @@ export default function DriverHome() {
     offers.refetch();
     earnings.refetch();
     trips.refetch();
+    cities.refetch();
   }
 
   /**
@@ -142,6 +143,7 @@ export default function DriverHome() {
       <View style={styles.bloom} pointerEvents="none" />
 
       <ScrollView
+        testID="driver-scroll"
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
@@ -249,7 +251,16 @@ export default function DriverHome() {
               onPress={() => router.push(`/offer/${offer.offer_id}`)}
               onTake={() => answer(offer.offer_id, true)}
               onPass={() => answer(offer.offer_id, false)}
-              busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
+              takeBusy={
+                respond.isPending &&
+                respond.variables?.offerId === offer.offer_id &&
+                respond.variables.accept
+              }
+              passBusy={
+                respond.isPending &&
+                respond.variables?.offerId === offer.offer_id &&
+                !respond.variables.accept
+              }
             />
           ))}
 
