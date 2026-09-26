@@ -79,12 +79,14 @@ export function stepsFor(d: AuthDraft): AuthStep[] {
 }
 
 export function stepPosition(d: AuthDraft, step: AuthStep): { step: number; total: number } {
-  // Signing in to an account that never finished setup lands on the role
-  // question with a sign-in draft, whose path has no role step. Count it as the
-  // setup it now is, from its own first question.
+  // A screen reached without walking here — a reload, a deep link, or signing
+  // in to an account that never finished setup — can hold a draft whose path
+  // does not contain it. The account steps then count as a fresh email sitting;
+  // the setup steps as setup from its own first question. Never "0 / 4".
+  const account = step === 'email' || step === 'password';
   const steps = stepsFor(d).includes(step)
     ? stepsFor(d)
-    : stepsFor({ ...d, mode: 'signUp', viaEmail: false });
+    : stepsFor(account ? { ...d, viaEmail: true } : { ...d, mode: 'signUp', viaEmail: false });
   return { step: steps.indexOf(step) + 1, total: steps.length };
 }
 

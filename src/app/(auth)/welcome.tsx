@@ -75,9 +75,13 @@ export default function Welcome() {
       </Text>
 
       <View style={[styles.content, { paddingBottom: insets.bottom + space.xl }]}>
-        <QuestionHeading size="hero" ground="ink">
-          {t('auth.welcome.title')}
-        </QuestionHeading>
+        {/* Narrower than the column, so the line breaks where the handoff's does
+            ("…needs / to go.") instead of stranding "go." alone. */}
+        <View style={styles.headline}>
+          <QuestionHeading size="hero" ground="ink">
+            {t('auth.welcome.title')}
+          </QuestionHeading>
+        </View>
         <Text style={[arabicIfNeeded(font.body), styles.body]}>{t('auth.welcome.body')}</Text>
 
         <View style={styles.actions}>
@@ -130,6 +134,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: GUTTER_INK,
     gap: space.md,
   },
+  headline: { maxWidth: 330 },
   body: { color: alpha.onInk.body, textAlign: align.start, maxWidth: 300 },
   actions: { marginTop: space.lg, gap: space.sm },
   error: { color: color.dangerLight, textAlign: 'center' },

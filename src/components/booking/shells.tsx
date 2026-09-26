@@ -15,6 +15,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,6 +33,9 @@ import { arabicIfNeeded } from '@/components/text-direction';
  * implementation of the same chrome — which is the thing this file exists to
  * prevent.
  */
+
+/** Below this width a 42px question no longer fits the answer above the fold. */
+const NARROW = 360;
 
 /**
  * A cream question: one question, its helper, the answer, and a pinned action.
@@ -74,6 +78,7 @@ export function QuestionShell({
   above?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   return (
     <View style={[styles.cream, { paddingTop: insets.top + space.sm }]}>
       <KeyboardAvoidingView
@@ -90,7 +95,13 @@ export function QuestionShell({
           showsVerticalScrollIndicator={false}
         >
           {above}
-          <QuestionHeading ground="cream">{question}</QuestionHeading>
+          {/* The handoff sets 42px at a 390pt frame and says not to scale. Below
+              360pt — the SE-class phones this audience still carries — that
+              wraps every question to three lines and pushes the answers under
+              the fold, so there it steps down to the sheet size instead. */}
+          <QuestionHeading ground="cream" size={width < NARROW ? 'question' : 'display'}>
+            {question}
+          </QuestionHeading>
           {!!helper && (
             <Text
               style={[arabicIfNeeded(font.body), styles.helper]}

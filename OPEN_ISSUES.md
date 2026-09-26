@@ -381,6 +381,9 @@ What differs from the handoff, on purpose, until then:
 - **N1's two decorative pins are not drawn**: `cities` is not readable signed
   out, and coordinates are not invented in a screen.
 - **No plate question.** Never drawn, always optional; dispatch adds it.
+- **Questions step down to 32px below 360pt wide** (every cream question, not
+  just auth). The handoff says not to scale its 42px; at 320pt that wrapped every
+  question to three lines and pushed N4's second choice under the fold.
 
 Also fixed on the way: `TertiaryButton` was ink-only, so on cream it rendered .5
 white on #F4F0E9 — S8's "Skip — I do not know the weight" and S5's "Show more
