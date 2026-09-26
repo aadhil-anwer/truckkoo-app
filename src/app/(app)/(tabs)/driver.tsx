@@ -47,6 +47,7 @@ import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
 import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   cityIndex,
   useCities,
@@ -97,6 +98,8 @@ export default function DriverHome() {
 
   const busy = offers.isPending || trips.isPending;
   const failed = offers.isError || trips.isError;
+  useAnnounceOnError(failed, t('common.error.title'));
+  useAnnounceOnError(job.isError, t('common.error.title'));
 
   function refetchAll() {
     offers.refetch();

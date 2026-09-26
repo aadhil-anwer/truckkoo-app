@@ -26,6 +26,7 @@ import { QuestionHeading, SectionLabel, Skeleton } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { DECLARED_TRIPS } from '@/lib/features';
 import { cityIndex, useCities, useDriverOffers, useRespondToOffer } from '@/lib/queries';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
   TABBAR_CLEARANCE_3,
@@ -52,6 +53,7 @@ export default function OffersTab() {
   };
 
   const pending = offers.data ?? [];
+  useAnnounceOnError(offers.isError, t('common.error.title'));
 
   function refetchAll() {
     offers.refetch();

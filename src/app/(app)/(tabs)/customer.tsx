@@ -39,6 +39,7 @@ import {
 import { CityPin, Corridor, MapCanvas, Scrim, framingFor } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { useSession } from '@/lib/session';
+import { useAnnounceOnError } from '@/lib/use-announce-error';
 import { formatWeight, formatWindow } from '@/lib/format';
 import { align, directionArrow, localized, t, type StringKey } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -86,6 +87,8 @@ export default function ShipperHome() {
     refetch();
     cities.refetch();
   }
+
+  useAnnounceOnError(isError, t('common.error.title'));
 
   const live = useMemo(() => (loads ?? []).filter((l) => LIVE.includes(l.status)), [loads]);
   const finished = useMemo(() => (loads ?? []).filter((l) => !LIVE.includes(l.status)), [loads]);
