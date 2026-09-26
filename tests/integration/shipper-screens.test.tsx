@@ -425,6 +425,35 @@ describe('TrackLoad', () => {
       expect(screen.getByLabelText('Call the driver')).toBeTruthy();
     });
 
+    /**
+     * REGRESSION. This button used to discard the driver's phone entirely and
+     * message Truckkoo's own WhatsApp line instead — "Call the driver" that
+     * did not call the driver. A shipper waiting at a gate for a specific
+     * person needs to reach that person, not restate the question to a
+     * dispatcher who already answered it.
+     */
+    it('dials the driver directly when their phone is on file', async () => {
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      (queries.useTripCounterpart as jest.Mock).mockReturnValue(
+        ok({ full_name: 'Salim Al Hinai', phone: '96899112233', role: 'driver' }),
+      );
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Call the driver'));
+      expect(openURL).toHaveBeenCalledWith('tel:96899112233');
+    });
+
+    it('falls back to the human backstop when the driver has no phone on file', async () => {
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      (queries.useTripCounterpart as jest.Mock).mockReturnValue(
+        ok({ full_name: 'Salim Al Hinai', phone: null, role: 'driver' }),
+      );
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Call the driver'));
+      const url = openURL.mock.calls[0][0];
+      expect(url.startsWith('https://wa.me/96875172824?text=')).toBe(true);
+      expect(decodeURIComponent(url)).toContain('Salim Al Hinai');
+    });
+
     it('sanitises the driver name before rendering it', async () => {
       // A name is user-supplied text arriving from another tenant. SECURITY.md §7.
       const RLO = '‮';
