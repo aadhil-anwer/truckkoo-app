@@ -157,17 +157,19 @@ export default function AccountTab() {
               </PressableSurface>
             </View>
 
-            {(['en', 'ar'] as const).map((lang) => (
-              <SelectRow
-                key={lang}
-                title={LANGUAGE_NAME[lang]}
-                selected={lang === current}
-                onPress={() => {
-                  void choose(lang);
-                }}
-                ground="ink"
-              />
-            ))}
+            <View accessibilityRole="radiogroup" accessibilityLabel={t('account.language')}>
+              {(['en', 'ar'] as const).map((lang) => (
+                <SelectRow
+                  key={lang}
+                  title={LANGUAGE_NAME[lang]}
+                  selected={lang === current}
+                  onPress={() => {
+                    void choose(lang);
+                  }}
+                  ground="ink"
+                />
+              ))}
+            </View>
           </View>
         </View>
       </Modal>
