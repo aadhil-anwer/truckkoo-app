@@ -1273,6 +1273,41 @@ Not covered by the suite, and worth knowing before trusting it:
 - `post-load`, `post-leg`, `trip/[id]`, and all four auth screens have no tests.
   Issue 18 was a driver-blocking bug in `sign-up.tsx` that no test could have
   caught; the hook underneath it is pinned now, the screen still is not.
+
+  **Attempted 2026-09-26, abandoned rather than shipped broken.** A full
+  `sign-up.tsx` walkthrough (account → role → details, both roles) hit a
+  reproducible RNTL/Jest fault: the first test in the file to
+  `fireEvent.press` the screen's `PrimaryButton` ("Next"/"Create account")
+  leaves something in a bad state — "You seem to have overlapping act()
+  calls" — and every render in every test *after* that one comes back empty
+  (`toJSON()` is `null`, `queryAllByRole` finds nothing), even a bare
+  `render(<SignUp />)` with no interaction at all. Isolated by bisection:
+  - Renders with no interaction: fine, repeatably.
+  - `fireEvent.changeText`: fine.
+  - Pressing a raw `Pressable` (`Choice`, no animation): fine.
+  - Pressing `PrimaryButton` specifically (`usePressScale`'s
+    `Animated.timing(..., { useNativeDriver: true })` on press-in/out): breaks
+    every subsequent render in the file, unconditionally.
+  - Mocking `Animated.timing` to a synchronous no-op did **not** fix it.
+  - Waiting up to 500ms (`await act(async () => { await sleep(500) })`) after
+    the press did **not** fix it — ruling out "just needs more time to
+    flush."
+  - Explicit `unmount()` before the test ends did **not** fix it either.
+
+  So the state corruption is not a timing race, it looks structural, and it
+  reproduces with `PrimaryButton` (shared by every screen in the app) inside
+  *this* screen's tree specifically — the same component is pressed
+  hundreds of times across `shipper-screens.test.tsx` /
+  `driver-screens.test.tsx` with no such failure, so whatever combination
+  triggers it is not simply "press a PrimaryButton in a test." Recorded
+  rather than worked around with a same-file-single-test rule, which would
+  quietly cap this screen at one interactive test forever.
+
+  **Done when:** someone with more Jest/RNTL-internals time than this pass
+  had finds the actual interaction (candidates: `KeyboardAvoidingView`
+  combined with `Animated`'s JS-driven fallback under Jest's fake native
+  module, or something about `Screen`'s `SafeAreaView` nesting specific to
+  this screen), or reproduces it minimally enough to file upstream.
 - `completeEmailConfirmation` / `completePasswordReset` — the two flows that have
   never been exercised at all. Needs Mailpit or a device.
 - RTL *layout*. `align` and `directionArrow` are tested; whether the horizontal
