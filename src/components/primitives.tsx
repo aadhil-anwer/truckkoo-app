@@ -207,20 +207,25 @@ export function PressableSurface({
   ground = 'ink',
   style,
   accessibilityLabel,
+  disabled = false,
 }: {
   children: ReactNode;
   onPress?: () => void;
   ground?: Ground;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         style,
+        disabled && { opacity: 0.4 },
         pressed && {
           backgroundColor:
             ground === 'ink' ? 'rgba(247,245,242,.04)' : 'rgba(22,23,26,.03)',

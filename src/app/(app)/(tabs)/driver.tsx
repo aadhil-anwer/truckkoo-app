@@ -102,6 +102,7 @@ export default function DriverHome() {
     offers.refetch();
     earnings.refetch();
     trips.refetch();
+    cities.refetch();
   }
 
   /**
@@ -142,6 +143,7 @@ export default function DriverHome() {
       <View style={styles.bloom} pointerEvents="none" />
 
       <ScrollView
+        testID="driver-scroll"
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
@@ -166,7 +168,10 @@ export default function DriverHome() {
           <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
         )}
 
-        {/* The job just taken, in full. */}
+        {/* The job just taken, in full. Its own retry, independent of the
+            offers/trips gate below: this is the card that leads to "Mark
+            delivered", and a driver at a dock on one bar must not be stuck
+            behind a permanent skeleton because only THIS query failed. */}
         {!!lead &&
           (job.data ? (
             <JobCard
@@ -175,6 +180,15 @@ export default function DriverHome() {
               destination={cityName(job.data.dest_city)}
               onOpen={() => router.push(`/trip/${lead.id}`)}
             />
+          ) : job.isError ? (
+            <PressableSurface
+              onPress={() => job.refetch()}
+              accessibilityLabel={t('common.error.aria')}
+              style={styles.retry}
+            >
+              <Text style={styles.retryText}>{t('common.error.title')}</Text>
+              <Text style={styles.retryAction}>{t('common.retry')}</Text>
+            </PressableSurface>
           ) : (
             <Skeleton height={300} round={radius.offer} />
           ))}
@@ -237,7 +251,16 @@ export default function DriverHome() {
               onPress={() => router.push(`/offer/${offer.offer_id}`)}
               onTake={() => answer(offer.offer_id, true)}
               onPass={() => answer(offer.offer_id, false)}
-              busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
+              takeBusy={
+                respond.isPending &&
+                respond.variables?.offerId === offer.offer_id &&
+                respond.variables.accept
+              }
+              passBusy={
+                respond.isPending &&
+                respond.variables?.offerId === offer.offer_id &&
+                !respond.variables.accept
+              }
             />
           ))}
 

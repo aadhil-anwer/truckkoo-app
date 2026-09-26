@@ -207,7 +207,7 @@ describe('TrackLoad', () => {
     expect(screen.getByText('Muscat')).toBeTruthy();
     expect(screen.getByText('Salalah')).toBeTruthy();
     expect(screen.getByText('Building materials')).toBeTruthy();
-    expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
+    expect(screen.getByText('Reference AAAAAAAA')).toBeTruthy();
   });
 
   it('says the load is not ours rather than 403-ing it', async () => {
@@ -263,7 +263,7 @@ describe('TrackLoad', () => {
 
       const url = openURL.mock.calls[0][0];
       expect(url.startsWith('https://wa.me/96875172824?text=')).toBe(true);
-      expect(decodeURIComponent(url)).toContain('NO. AAAAAAAA');
+      expect(decodeURIComponent(url)).toContain('Reference AAAAAAAA');
     });
 
     it('shows no price and no accept button before one exists', async () => {
@@ -425,6 +425,35 @@ describe('TrackLoad', () => {
       expect(screen.getByLabelText('Call the driver')).toBeTruthy();
     });
 
+    /**
+     * REGRESSION. This button used to discard the driver's phone entirely and
+     * message Truckkoo's own WhatsApp line instead — "Call the driver" that
+     * did not call the driver. A shipper waiting at a gate for a specific
+     * person needs to reach that person, not restate the question to a
+     * dispatcher who already answered it.
+     */
+    it('dials the driver directly when their phone is on file', async () => {
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      (queries.useTripCounterpart as jest.Mock).mockReturnValue(
+        ok({ full_name: 'Salim Al Hinai', phone: '96899112233', role: 'driver' }),
+      );
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Call the driver'));
+      expect(openURL).toHaveBeenCalledWith('tel:96899112233');
+    });
+
+    it('falls back to the human backstop when the driver has no phone on file', async () => {
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      (queries.useTripCounterpart as jest.Mock).mockReturnValue(
+        ok({ full_name: 'Salim Al Hinai', phone: null, role: 'driver' }),
+      );
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Call the driver'));
+      const url = openURL.mock.calls[0][0];
+      expect(url.startsWith('https://wa.me/96875172824?text=')).toBe(true);
+      expect(decodeURIComponent(url)).toContain('Salim Al Hinai');
+    });
+
     it('sanitises the driver name before rendering it', async () => {
       // A name is user-supplied text arriving from another tenant. SECURITY.md §7.
       const RLO = '‮';
@@ -541,7 +570,9 @@ describe('TrackLoad', () => {
       expect(screen.getByText('Delivered.')).toBeTruthy();
       expect(screen.getByText('Paid to driver')).toBeTruthy();
       expect(screen.getByText('150.000 OMR')).toBeTruthy();
-      expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
+      // T5's receipt states the reference beside its own translated label, so
+      // this row shows the bare code — no "NO." baked in by reference().
+      expect(screen.getByText('AAAAAAAA')).toBeTruthy();
     });
 
     it('asks for a rating, and says why it matters', async () => {

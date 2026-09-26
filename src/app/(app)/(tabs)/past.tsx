@@ -62,6 +62,7 @@ export default function PastTripsTab() {
   function refetchAll() {
     trips.refetch();
     earnings.refetch();
+    cities.refetch();
   }
 
   return (

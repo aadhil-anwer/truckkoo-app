@@ -64,6 +64,7 @@ export default function RoutesTab() {
             refreshing={legs.isRefetching}
             onRefresh={() => {
               legs.refetch();
+              cities.refetch();
             }}
             tintColor={color.lightText}
           />

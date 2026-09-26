@@ -68,7 +68,7 @@ export default function ShipperHome() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useSession();
-  const { data: cities } = useCities();
+  const cities = useCities();
   const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
   const { data: truckTypes } = useTruckTypes();
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
@@ -76,8 +76,16 @@ export default function ShipperHome() {
   // band; the map fits there instead of under them (ISSUES.md 1.2).
   const [band, setBand] = useState<{ top: number; bottom: number } | undefined>(undefined);
 
-  const index = cityIndex(cities);
+  const index = cityIndex(cities.data);
   const truckName = new Map((truckTypes ?? []).map((tt) => [tt.code, localized(tt)]));
+
+  // A failed one-shot city fetch (staleTime: Infinity) never retries on its
+  // own; pull-to-refresh is this screen's other recovery path besides
+  // foregrounding the app, so it has to reach this query too, not just loads.
+  function refetchAll() {
+    refetch();
+    cities.refetch();
+  }
 
   const live = useMemo(() => (loads ?? []).filter((l) => LIVE.includes(l.status)), [loads]);
   const finished = useMemo(() => (loads ?? []).filter((l) => !LIVE.includes(l.status)), [loads]);
@@ -142,7 +150,7 @@ export default function ShipperHome() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={refetchAll}
             tintColor={color.lightText}
           />
         }

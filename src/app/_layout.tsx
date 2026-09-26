@@ -7,12 +7,12 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, I18nManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, I18nManager, Platform, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   SafeAreaInsetsContext,
   SafeAreaProvider,
@@ -48,6 +48,20 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * react-query's default "window focus" listener is a browser `focus` event —
+ * it does not exist here, so `refetchOnWindowFocus: true` on a query (used by
+ * `useCities`/`useTruckTypes` to recover from a failed fetch) would silently
+ * never fire without this. `AppState` is the React Native equivalent: a
+ * `background` → `active` transition is what "brought the app back" means on
+ * a phone.
+ */
+if (Platform.OS !== 'web') {
+  AppState.addEventListener('change', (status) => {
+    focusManager.setFocused(status === 'active');
+  });
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts(FONT_ASSETS);

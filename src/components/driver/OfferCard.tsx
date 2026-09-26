@@ -17,7 +17,7 @@
  * caught the app lying about.
  */
 
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { DriverMoney } from './Money';
 import { Icon } from '@/components/icon';
@@ -39,7 +39,8 @@ export function OfferCard({
   onPress,
   onTake,
   onPass,
-  busy = false,
+  takeBusy = false,
+  passBusy = false,
 }: {
   offer: DriverOffer;
   origin: string;
@@ -49,7 +50,14 @@ export function OfferCard({
   onPress?: () => void;
   onTake: () => void;
   onPass?: () => void;
-  busy?: boolean;
+  /**
+   * Which of the two buttons is mid-request. Kept separate — not one
+   * `busy` — because a driver who pressed "Pass" must not watch "Take it"
+   * spin instead: they are answering the same offer in opposite directions,
+   * and the wrong button lighting up reads as having pressed the wrong one.
+   */
+  takeBusy?: boolean;
+  passBusy?: boolean;
 }) {
   const amount = formatMoney(offer.payout_baisa, offer.currency as Currency);
   // The label carries the amount, so the thing a driver is agreeing to is in the
@@ -97,23 +105,33 @@ export function OfferCard({
         )}
       </View>
 
-      <PrimaryButton label={takeLabel} onPress={onTake} loading={busy} />
+      <PrimaryButton label={takeLabel} onPress={onTake} loading={takeBusy} disabled={passBusy} />
 
       <View style={styles.secondary}>
         {!!onPress && (
-          <PressableSurface onPress={onPress} accessibilityLabel={t('drv.offer.details')}>
+          <PressableSurface
+            onPress={onPress}
+            accessibilityLabel={t('drv.offer.details')}
+            disabled={takeBusy || passBusy}
+          >
             <Text style={styles.secondaryText}>{t('drv.offer.details')}</Text>
           </PressableSurface>
         )}
         {!!onPass && (
           // Saying no must be as easy to hit as saying yes. A 16pt "no" beside a
-          // 44pt "yes" is a design that lies about the choice.
+          // 44pt "yes" is a design that lies about the choice. And the two
+          // buttons never share one loading signal — see takeBusy/passBusy.
           <PressableSurface
             onPress={onPass}
             accessibilityLabel={t('drv.offer.pass')}
+            disabled={takeBusy || passBusy}
             style={styles.pass}
           >
-            <Text style={styles.secondaryText}>{t('drv.offer.pass')}</Text>
+            {passBusy ? (
+              <ActivityIndicator color={alpha.onInk.body} />
+            ) : (
+              <Text style={styles.secondaryText}>{t('drv.offer.pass')}</Text>
+            )}
           </PressableSurface>
         )}
       </View>

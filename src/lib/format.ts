@@ -103,15 +103,19 @@ export function isoToday(offsetDays = 0): string {
 /**
  * A short human reference for a consignment. Never show a raw uuid to a driver
  * reading a number down a phone line.
+ *
+ * Returns the bare code with no label — "NO." / "Reference" is a translated
+ * word, not part of the reference, so a caller wraps this with `t()`
+ * (`label.referenceNamed`) rather than this function composing the sentence.
  */
 export function reference(id: string): string {
-  return `NO. ${id.slice(0, 8).toUpperCase()}`;
+  return id.slice(0, 8).toUpperCase();
 }
 
 /** Weight, or the explicit "not given" case. Never a blank cell. */
 export function formatWeight(kg: number | null | undefined, fallback: string): string {
   if (!kg) return fallback;
-  return localizeDigits(`${new Intl.NumberFormat(locale()).format(kg)} kg`);
+  return t('book.weight.value', { weight: formatNumber(kg) });
 }
 
 /**

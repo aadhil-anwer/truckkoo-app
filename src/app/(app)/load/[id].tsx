@@ -260,7 +260,11 @@ export default function TrackLoad() {
           <BackButton onPress={() => router.back()} />
           {/* T5's receipt states the reference with a label, so repeating it up
               here would be the app saying the same thing twice in one frame. */}
-          {!delivered && <Text style={styles.reference}>{reference(load.id)}</Text>}
+          {!delivered && (
+            <Text style={styles.reference}>
+              {t('label.referenceNamed', { ref: reference(load.id) })}
+            </Text>
+          )}
         </View>
 
         <View
@@ -322,7 +326,17 @@ export default function TrackLoad() {
           <PrimaryButton
             label={t('track.assigned.call')}
             icon="phone"
-            onPress={() => askHuman(counterpart.data ? safeText(counterpart.data.full_name) : undefined)}
+            onPress={() => {
+              // A button labelled "Call the driver" must call the driver —
+              // it used to discard their phone and message Truckkoo instead.
+              // The human backstop is still the fallback when none is on file.
+              const phone = counterpart.data?.phone;
+              if (phone) {
+                Linking.openURL(`tel:${phone}`).catch(() => {});
+              } else {
+                askHuman(counterpart.data ? safeText(counterpart.data.full_name) : undefined);
+              }
+            }}
           />
         ) : delivered ? (
           <>

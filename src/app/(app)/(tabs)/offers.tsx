@@ -53,6 +53,11 @@ export default function OffersTab() {
 
   const pending = offers.data ?? [];
 
+  function refetchAll() {
+    offers.refetch();
+    cities.refetch();
+  }
+
   /**
    * Answer an offer. The decline path carries the same error handling as the
    * accept path: since 0013 a decline is what returns the shipper's load to the
@@ -76,6 +81,7 @@ export default function OffersTab() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        testID="offers-scroll"
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + space.lg, paddingBottom: TABBAR_CLEARANCE_3 },
@@ -84,7 +90,7 @@ export default function OffersTab() {
         refreshControl={
           <RefreshControl
             refreshing={offers.isRefetching}
-            onRefresh={offers.refetch}
+            onRefresh={refetchAll}
             tintColor={color.lightText}
           />
         }
@@ -134,7 +140,16 @@ export default function OffersTab() {
             onPress={() => router.push(`/offer/${offer.offer_id}`)}
             onTake={() => answer(offer.offer_id, true)}
             onPass={() => answer(offer.offer_id, false)}
-            busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
+            takeBusy={
+              respond.isPending &&
+              respond.variables?.offerId === offer.offer_id &&
+              respond.variables.accept
+            }
+            passBusy={
+              respond.isPending &&
+              respond.variables?.offerId === offer.offer_id &&
+              !respond.variables.accept
+            }
           />
         ))}
       </ScrollView>

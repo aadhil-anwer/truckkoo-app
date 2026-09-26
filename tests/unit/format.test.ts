@@ -116,7 +116,7 @@ describe('isoToday', () => {
 
 describe('reference', () => {
   it('shortens a uuid to something readable down a phone line', () => {
-    expect(reference('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')).toBe('NO. AAAAAAAA');
+    expect(reference('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')).toBe('AAAAAAAA');
   });
 
   it('never exposes the full uuid', () => {
@@ -238,7 +238,10 @@ describe('Arabic-Indic wiring', () => {
       () => ({ format: () => '8,000' }) as unknown as Intl.NumberFormat,
     );
     const out = formatWeight(8000, 'Not given');
-    expect(out).toBe('٨,٠٠٠ kg');
+    // The unit itself is translated too — a Latin "kg" in Arabic copy is the
+    // exact bug CLAUDE.md #4 bans (units live inside the string, not composed
+    // at the call site).
+    expect(out).toBe('٨,٠٠٠ كجم');
     expect(out).not.toMatch(/[0-9]/);
   });
 });
