@@ -26,7 +26,7 @@ import { DriverMoney } from '@/components/driver/Money';
 import { BackButton, PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { RouteRail, SectionLabel, Sheet, Skeleton } from '@/components/ui';
-import { CityPin, Corridor, DetourSpur, MapCanvas, Scrim } from '@/map';
+import { CityPin, Corridor, DetourSpur, MapCanvas, Scrim, framingFor, useMapBand } from '@/map';
 import { align, formatNumber, localized, t } from '@/i18n';
 import { formatWeight, formatWindow } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
@@ -40,6 +40,7 @@ import {
 import { safeText } from '@/lib/safe-text';
 import {
   GUTTER_SHEET,
+  MIN_TARGET,
   alpha,
   color,
   font,
@@ -75,6 +76,12 @@ export default function OfferDetail() {
   // one thing they may read directly — they declared them.
   const leg = data?.leg_id ? (legs ?? []).find((l) => l.id === data.leg_id) : undefined;
   const legOrigin = leg ? index.get(leg.origin_city) : undefined;
+
+  // The close-up only when the whole picture fits in it (framingFor), fitted to
+  // the band between the back button and the sheet (useMapBand).
+  const band = useMapBand();
+  const framing = framingFor([from, to, legOrigin]);
+  const mapFit = { top: insets.top + space.sm + MIN_TARGET, bottom: band.sheetTop };
 
   function take() {
     setError(null);
@@ -133,7 +140,7 @@ export default function OfferDetail() {
       <View style={styles.mapArea} pointerEvents="none">
         {mapWidth > 0 && (
           <>
-            <MapCanvas framing="domestic" width={mapWidth} height={MAP_HEIGHT}>
+            <MapCanvas framing={framing} width={mapWidth} height={MAP_HEIGHT} fit={mapFit}>
               {from && to && (
                 <>
                   {/* The load's own journey: a real movement, drawn solid. */}
@@ -167,62 +174,63 @@ export default function OfferDetail() {
         style={styles.sheetScroll}
         contentContainerStyle={styles.sheetContent}
         showsVerticalScrollIndicator={false}
+        onLayout={band.onScrollLayout}
       >
-        <Sheet style={{ paddingBottom: insets.bottom + space.xl }}>
-          <DriverMoney
-            payout={data.payout_baisa}
-            collect={data.collect_baisa}
-            owed={data.owed_baisa}
-            currency={data.currency}
-          />
-
-          <View style={styles.block}>
-            {!!from && !!to && (
-              <RouteRail origin={localized(from)} destination={localized(to)} />
-            )}
-          </View>
-
-          <View style={styles.facts}>
-            {data.detour_km != null && (
-              <Fact
-                label={t('drv.offer.detourLabel')}
-                value={t('drv.offer.detour', { km: formatNumber(Math.round(data.detour_km)) })}
-              />
-            )}
-            <Fact label={t('book.review.cargo')} value={safeText(data.goods)} />
-            {data.weight_kg != null && (
-              <Fact label={t('book.review.weight')} value={formatWeight(data.weight_kg, '')} />
-            )}
-            <Fact
-              label={t('book.review.collect')}
-              value={formatWindow(data.pickup_from, data.pickup_to)}
+        <View onLayout={band.onSheetLayout}>
+          <Sheet style={{ paddingBottom: insets.bottom + space.xl }}>
+            <DriverMoney
+              payout={data.payout_baisa}
+              collect={data.collect_baisa}
+              owed={data.owed_baisa}
+              currency={data.currency}
             />
-          </View>
 
-          {/* Absent when either number is unknown — a driver planning a second
+            <View style={styles.block}>
+              {!!from && !!to && <RouteRail origin={localized(from)} destination={localized(to)} />}
+            </View>
+
+            <View style={styles.facts}>
+              {data.detour_km != null && (
+                <Fact
+                  label={t('drv.offer.detourLabel')}
+                  value={t('drv.offer.detour', { km: formatNumber(Math.round(data.detour_km)) })}
+                />
+              )}
+              <Fact label={t('book.review.cargo')} value={safeText(data.goods)} />
+              {data.weight_kg != null && (
+                <Fact label={t('book.review.weight')} value={formatWeight(data.weight_kg, '')} />
+              )}
+              <Fact
+                label={t('book.review.collect')}
+                value={formatWindow(data.pickup_from, data.pickup_to)}
+              />
+            </View>
+
+            {/* Absent when either number is unknown — a driver planning a second
               load on a guess is worse off than one told nothing. */}
-          {data.free_after_kg != null && (
-            <Text style={styles.capacity}>
-              {t('drv.offer.freeAfter', { weight: formatWeight(data.free_after_kg, '') })}
-            </Text>
-          )}
+            {data.free_after_kg != null && (
+              <Text style={styles.capacity}>
+                {t('drv.offer.freeAfter', { weight: formatWeight(data.free_after_kg, '') })}
+              </Text>
+            )}
 
-          {!!error && <Text style={styles.error}>{error}</Text>}
+            {!!error && <Text style={styles.error}>{error}</Text>}
 
-          <PrimaryButton
-            label={amount ? t('drv.offer.take', { amount }) : t('drv.offer.take.bare')}
-            onPress={take}
-            loading={respond.isPending && respond.variables?.accept === true}
-          />
+            <PrimaryButton
+              label={amount ? t('drv.offer.take', { amount }) : t('drv.offer.take.bare')}
+              onPress={take}
+              loading={respond.isPending && respond.variables?.accept === true}
+            />
 
-          <PressableSurface
-            onPress={pass}
-            accessibilityLabel={t('drv.offer.pass')}
-            style={styles.pass}
-          >
-            <Text style={styles.passText}>{t('drv.offer.pass')}</Text>
-          </PressableSurface>
-        </Sheet>
+            <PressableSurface
+              onPress={pass}
+              accessibilityLabel={t('drv.offer.pass')}
+              style={styles.pass}
+            >
+              <Text style={styles.passText}>{t('drv.offer.pass')}</Text>
+            </PressableSurface>
+          </Sheet>
+        </View>
       </ScrollView>
     </View>
   );

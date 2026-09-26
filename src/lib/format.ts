@@ -40,6 +40,22 @@ export function formatWindow(from: string, to: string): string {
   return localizeDigits(from === to ? day(from) : `${day(from)} – ${day(to)}`);
 }
 
+/**
+ * The day something happened, from a `timestamptz`, as a day IN OMAN: "19 Sep".
+ *
+ * A delivery at 1am in Muscat is the previous evening in UTC and further back
+ * west of it, and a driver's record must not move a delivery to a day it did not
+ * happen on — the same reason the month total buckets in Asia/Muscat (0033).
+ * Oman has no daylight saving, so a fixed +4h shift read in UTC is exact, and
+ * avoids depending on the engine's time-zone data.
+ */
+export function formatOmanDay(iso: string): string {
+  const shifted = new Date(new Date(iso).getTime() + 4 * 3600_000);
+  return localizeDigits(
+    shifted.toLocaleDateString(locale(), { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+  );
+}
+
 /** Long form with a weekday, for a picker row where the choice must be obvious. */
 export function formatLongDay(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);

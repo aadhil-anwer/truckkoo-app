@@ -25,6 +25,12 @@
  * The live trip keeps a home here even though D7 owns the job: the driver tabs
  * are home / offers / routes / account, so with no jobs tab this is the only
  * route to a delivery in progress.
+ *
+ * A TAKEN LOAD TAKES OVER HOME. Once a driver has said yes, the newest job leads
+ * the screen as a full card and pending offers leave it — they stay on the
+ * Offers tab, whose badge still counts them. A driver on the road is answering
+ * "where am I going", not "what else could I carry". Any other job still open
+ * keeps the compact row, so none is left without a way back to it.
  */
 
 import { useMemo, useState } from 'react';
@@ -33,17 +39,20 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
+import { JobCard } from '@/components/driver/JobCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
 import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
-import { formatMoney, type Currency } from '@/lib/money';
+import { formatMoney } from '@/lib/money';
+import { DECLARED_TRIPS } from '@/lib/features';
 import {
   cityIndex,
   useCities,
   useDriverEarnings,
   useDriverOffers,
+  useDriverTrip,
   useMyTrips,
   useRespondToOffer,
 } from '@/lib/queries';
@@ -77,9 +86,14 @@ export default function DriverHome() {
   const pending = offers.data ?? [];
   const week = earnings.data;
   const weekAmount = week ? formatMoney(week.week_baisa, 'OMR') : null;
-  const trip = (trips.data ?? []).find(
+  // Newest first — `useMyTrips` orders by created_at desc — so the job just
+  // taken is the one that leads.
+  const active = (trips.data ?? []).filter(
     (tr) => tr.status === 'assigned' || tr.status === 'in_transit',
   );
+  const lead = active[0];
+  const others = active.slice(1);
+  const job = useDriverTrip(lead?.id);
 
   const busy = offers.isPending || trips.isPending;
   const failed = offers.isError || trips.isError;
@@ -114,8 +128,9 @@ export default function DriverHome() {
     );
   }
 
-  const greeting =
-    pending.length === 0
+  const greeting = lead
+    ? t('drv.home.onJob')
+    : pending.length === 0
       ? t('drv.home.greeting.none')
       : `${formatNumber(pending.length)} ${
           pending.length === 1 ? t('drv.home.greeting.one') : t('drv.home.greeting.some')
@@ -151,21 +166,35 @@ export default function DriverHome() {
           <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
         )}
 
-        {/* The job in progress, if there is one. Compact: it is a way back to
-            D7, not a second decision competing with the offer below it. */}
-        {!!trip && (
+        {/* The job just taken, in full. */}
+        {!!lead &&
+          (job.data ? (
+            <JobCard
+              job={job.data}
+              origin={cityName(job.data.origin_city)}
+              destination={cityName(job.data.dest_city)}
+              onOpen={() => router.push(`/trip/${lead.id}`)}
+            />
+          ) : (
+            <Skeleton height={300} round={radius.offer} />
+          ))}
+
+        {/* Any other open job, compact: a way back to D7, never lost. Neutral,
+            because the lead card's button already holds the one accent. */}
+        {others.map((tr) => (
           <PressableSurface
-            onPress={() => router.push(`/trip/${trip.id}`)}
-            accessibilityLabel={t(`status.${trip.status}` as StringKey)}
+            key={tr.id}
+            onPress={() => router.push(`/trip/${tr.id}`)}
+            accessibilityLabel={t(`status.${tr.status}` as StringKey)}
             style={styles.job}
           >
             <Icon name="truck" size={22} tint={color.lightText} />
             <View style={styles.jobText}>
-              <StatusPill label={t(`status.${trip.status}` as StringKey)} tone="accent" />
+              <StatusPill label={t(`status.${tr.status}` as StringKey)} tone="neutral" />
             </View>
             <Icon name="chevron" size={18} tint={alpha.onInk.tertiary} />
           </PressableSurface>
-        )}
+        ))}
 
         {!!error && <Text style={styles.error}>{error}</Text>}
 
@@ -187,33 +216,38 @@ export default function DriverHome() {
           </PressableSurface>
         )}
 
-        {!busy && !failed && pending.length === 0 && (
+        {!busy && !failed && !lead && pending.length === 0 && (
           <View style={styles.empty}>
             <QuestionHeading ground="ink" size="question">
-              {t('drv.none.title')}
+              {DECLARED_TRIPS ? t('drv.none.title') : t('drv.waiting.title')}
             </QuestionHeading>
-            <Text style={styles.body}>{t('drv.none.body')}</Text>
+            <Text style={styles.body}>
+              {DECLARED_TRIPS ? t('drv.none.body') : t('drv.waiting.body')}
+            </Text>
           </View>
         )}
 
-        {pending.map((offer) => (
-          <OfferCard
-            key={offer.offer_id}
-            offer={offer}
-            origin={cityName(offer.origin_city)}
-            destination={cityName(offer.dest_city)}
-            onPress={() => router.push(`/offer/${offer.offer_id}`)}
-            onTake={() => answer(offer.offer_id, true)}
-            onPass={() => answer(offer.offer_id, false)}
-            busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
-          />
-        ))}
+        {!lead &&
+          pending.map((offer) => (
+            <OfferCard
+              key={offer.offer_id}
+              offer={offer}
+              origin={cityName(offer.origin_city)}
+              destination={cityName(offer.dest_city)}
+              onPress={() => router.push(`/offer/${offer.offer_id}`)}
+              onTake={() => answer(offer.offer_id, true)}
+              onPass={() => answer(offer.offer_id, false)}
+              busy={respond.isPending && respond.variables?.offerId === offer.offer_id}
+            />
+          ))}
 
         {/* Declaring a route is what produces offers, so it is reachable whether
             the book is empty or full. It sits in the flow rather than pinned:
             the tab bar already floats at the thumb, and a second floating bar
             above it is two things competing for the same 80pt. */}
-        {!busy && !failed && (
+        {/* Hidden on a job: the job card's button is the screen's one accent.
+            Hidden entirely while declared trips are unreleased. */}
+        {DECLARED_TRIPS && !busy && !failed && !lead && (
           <View style={styles.add}>
             <PrimaryButton
               label={t('drv.none.add')}

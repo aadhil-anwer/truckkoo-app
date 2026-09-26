@@ -128,6 +128,7 @@ jest.mock('@/lib/queries', () => {
     useDriverOffers: jest.fn(),
     useDriverOffer: jest.fn(),
     useDriverEarnings: jest.fn(),
+    useDriverPastTrips: jest.fn(),
     useAdvanceTrip: jest.fn(),
     usePostLeg: jest.fn(),
     useDriverTrip: jest.fn(),
@@ -300,6 +301,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverOffers').mockReturnValue(ok([]));
   m('useDriverOffer').mockReturnValue(ok(null));
   m('useDriverEarnings').mockReturnValue(ok(null));
+  m('useDriverPastTrips').mockReturnValue(ok([]));
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useDriverTrip').mockReturnValue(ok(null));
   // DEFAULT: NO FIX. A trip nobody has reported on is the state every trip

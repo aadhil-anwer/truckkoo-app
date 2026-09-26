@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton, StepHeader, TertiaryButton } from '@/components/primitives';
 import { QuestionHeading, Sheet } from '@/components/ui';
 import { MapCanvas, Scrim, type Framing } from '@/map';
-import { GUTTER_CREAM, GUTTER_INK, color, font, space } from '@/theme/tokens';
+import { GUTTER_CREAM, GUTTER_INK, MIN_TARGET, color, font, space } from '@/theme/tokens';
 import { align } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 /**
@@ -148,7 +148,13 @@ export function MapStepShell({
       >
         {size.width > 0 && (
           <>
-            <MapCanvas framing={framing} width={size.width} height={size.height}>
+            {/* Fitted below the step header that floats over the map's top. */}
+            <MapCanvas
+              framing={framing}
+              width={size.width}
+              height={size.height}
+              fit={{ top: insets.top + space.sm + MIN_TARGET }}
+            >
               {overlay?.(size)}
             </MapCanvas>
             {/* Keeps the header legible over land without hiding the corridor. */}

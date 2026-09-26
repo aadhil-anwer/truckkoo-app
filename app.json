@@ -69,7 +69,8 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isIosBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "./plugins/with-first-launch-direction"
     ],
     "experiments": {
       "typedRoutes": true,

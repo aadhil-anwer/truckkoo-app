@@ -36,7 +36,9 @@ import LegRoute from '@/app/(app)/leg/route';
 import LegWhen from '@/app/(app)/leg/when';
 import TripDetail from '@/app/(app)/trip/[id]';
 import OffersTab from '@/app/(app)/(tabs)/offers';
+import PastTripsTab from '@/app/(app)/(tabs)/past';
 import RoutesTab from '@/app/(app)/(tabs)/routes';
+import * as features from '@/lib/features';
 import * as queries from '@/lib/queries';
 import { clearLegDraft } from '@/lib/leg-draft';
 import { flat } from '../helpers/style';
@@ -77,6 +79,15 @@ beforeEach(() => {
   clearLegDraft();
 });
 
+/**
+ * Turn the unreleased declared-trips feature on for one test. The screens read
+ * the flag at render time, so the hidden path stays exercised while it is off.
+ */
+const withDeclaredTrips = () => {
+  jest.replaceProperty(features, 'DECLARED_TRIPS', true);
+};
+afterEach(() => jest.restoreAllMocks());
+
 /** One composed offer, as `driver_offers()` returns it. */
 const withDriverOffer = () => {
   (queries.useDriverOffers as jest.Mock).mockReturnValue(ok([driverOffer()]));
@@ -85,10 +96,12 @@ const withDriverOffer = () => {
 /* ─── D1 / D3 · the driver's home ────────────────────────────────────────── */
 
 describe('DriverHome', () => {
-  it('names the consequence, not the empty state', async () => {
+  it('names the consequence, not the empty state — once declared trips ship', async () => {
     // "No offers yet" tells a driver nothing they can act on. The matching
     // engine is worth nothing until drivers declare legs, so the emptiest screen
-    // in the app is the one that has to sell the habit hardest.
+    // in the app is the one that has to sell the habit hardest. Hidden while
+    // unreleased; tested with the flag on so it cannot rot while it waits.
+    withDeclaredTrips();
     await render(<DriverHome />);
     expect(screen.getByText('An empty book here means an empty truck.')).toBeTruthy();
     expect(screen.getByLabelText('Add a trip you are making')).toBeTruthy();
@@ -146,9 +159,57 @@ describe('DriverHome', () => {
     // There is no jobs tab: home / offers / routes / account. Without this a
     // driver mid-delivery has no route back to D7.
     (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
     await render(<DriverHome />);
-    await fireEvent.press(screen.getByLabelText('Truck assigned'));
+    await fireEvent.press(screen.getByText('Open this job'));
     expect(mockPush).toHaveBeenCalledWith('/trip/trip-1');
+  });
+
+  it('lets a taken load take over home, and leaves the offers on their tab', async () => {
+    // Asked for after the first device run: with a job accepted, home showed the
+    // job as a small row and every other offer underneath it at full size.
+    withDriverOffer();
+    (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+    await render(<DriverHome />);
+
+    expect(screen.getByText('Your job')).toBeTruthy();
+    expect(screen.getByText('Muscat')).toBeTruthy();
+    expect(screen.getByText('Salalah')).toBeTruthy();
+    expect(screen.getByText('78.000')).toBeTruthy();
+    // No offer card, and no second accent action competing with the job's.
+    expect(screen.queryByLabelText('Take it — 78.000 OMR')).toBeNull();
+    expect(screen.queryByText('Add a trip you are making')).toBeNull();
+  });
+
+  it('leads with the newest job and keeps a way back to any other', async () => {
+    const older: Trip = { ...trip, id: 'trip-0', status: 'in_transit' };
+    // useMyTrips orders newest first, as the query does.
+    (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip, older]));
+    (queries.useDriverTrip as jest.Mock).mockImplementation((id?: string) =>
+      ok(id === 'trip-1' ? driverTrip() : null),
+    );
+    await render(<DriverHome />);
+
+    expect(queries.useDriverTrip).toHaveBeenCalledWith('trip-1');
+    await fireEvent.press(screen.getByLabelText('On the road'));
+    expect(mockPush).toHaveBeenCalledWith('/trip/trip-0');
+  });
+
+  it('shows the offers again once there is no job', async () => {
+    withDriverOffer();
+    await render(<DriverHome />);
+    expect(screen.getByLabelText('Take it — 78.000 OMR')).toBeTruthy();
+    expect(screen.queryByText('Open this job')).toBeNull();
+  });
+
+  it('does not sell declaring trips while that feature is unreleased', async () => {
+    // DECLARED_TRIPS is off (src/lib/features.ts): no way into the leg flow from
+    // home, and an empty state that says what happens instead of asking for legs.
+    await render(<DriverHome />);
+    expect(screen.queryByText('Add a trip you are making')).toBeNull();
+    expect(screen.queryByText('An empty book here means an empty truck.')).toBeNull();
+    expect(screen.getByText('No loads for you yet')).toBeTruthy();
   });
 
   it('opens the offer in full rather than deciding on a card alone', async () => {
@@ -257,8 +318,14 @@ describe('OfferDetail', () => {
 
 describe('OffersTab', () => {
   it('makes the same argument as D3 when there is nothing to answer', async () => {
+    withDeclaredTrips();
     await render(<OffersTab />);
     expect(screen.getByText('An empty book here means an empty truck.')).toBeTruthy();
+  });
+
+  it('says what happens instead while declared trips are unreleased', async () => {
+    await render(<OffersTab />);
+    expect(screen.getByText('No loads for you yet')).toBeTruthy();
   });
 
   it('does not show a driver any load they have no offer for', async () => {
@@ -406,12 +473,106 @@ describe('RoutesTab', () => {
   });
 });
 
+/* ─── Past trips ─────────────────────────────────────────────────────────── */
+
+const pastTrip = (over: Partial<queries.PastTrip> = {}): queries.PastTrip => ({
+  trip_id: 'trip-9',
+  origin_city: 1,
+  dest_city: 2,
+  goods: 'Fresh produce crates',
+  weight_kg: 5000,
+  payout_baisa: 45000,
+  currency: 'OMR',
+  // 22:30 UTC on the 18th is 02:30 on the 19th in Muscat.
+  delivered_at: '2026-09-18T22:30:00Z',
+  ...over,
+});
+
+describe('PastTrips', () => {
+  it('leads with the month, as the database totalled it', async () => {
+    (queries.useDriverEarnings as jest.Mock).mockReturnValue(
+      ok({ week_baisa: 0, week_trips: 0, all_time_trips: 2, month_baisa: 230000, month_trips: 2 }),
+    );
+    (queries.useDriverPastTrips as jest.Mock).mockReturnValue(ok([pastTrip()]));
+    await render(<PastTripsTab />);
+    expect(screen.getByText('THIS MONTH')).toBeTruthy();
+    // The screen shows the SQL total, not a sum of the rows it happens to have.
+    expect(screen.getByText('230.000 OMR · 2 trips')).toBeTruthy();
+  });
+
+  it('says one trip, not one trips', async () => {
+    (queries.useDriverEarnings as jest.Mock).mockReturnValue(
+      ok({ week_baisa: 0, week_trips: 0, all_time_trips: 1, month_baisa: 45000, month_trips: 1 }),
+    );
+    await render(<PastTripsTab />);
+    expect(screen.getByText('45.000 OMR · 1 trip')).toBeTruthy();
+  });
+
+  it('shows no month line before anything was delivered this month', async () => {
+    (queries.useDriverEarnings as jest.Mock).mockReturnValue(
+      ok({ week_baisa: 0, week_trips: 0, all_time_trips: 3, month_baisa: 0, month_trips: 0 }),
+    );
+    await render(<PastTripsTab />);
+    expect(screen.queryByText('THIS MONTH')).toBeNull();
+  });
+
+  it('lists each trip with its route, its day in Oman, and what it paid', async () => {
+    (queries.useDriverPastTrips as jest.Mock).mockReturnValue(ok([pastTrip()]));
+    await render(<PastTripsTab />);
+    expect(screen.getByText('Muscat')).toBeTruthy();
+    expect(screen.getByText('Salalah')).toBeTruthy();
+    expect(screen.getByText('45.000 OMR')).toBeTruthy();
+    // The 19th, because that is the day it was in Muscat — not the 18th of UTC.
+    expect(screen.getByText('Sep 19 · Fresh produce crates')).toBeTruthy();
+  });
+
+  it('opens the finished job when a row is tapped', async () => {
+    (queries.useDriverPastTrips as jest.Mock).mockReturnValue(ok([pastTrip()]));
+    await render(<PastTripsTab />);
+    await fireEvent.press(
+      screen.getByLabelText('Muscat to Salalah, delivered Sep 19, 45.000 OMR'),
+    );
+    expect(mockPush).toHaveBeenCalledWith('/trip/trip-9');
+  });
+
+  it('shows no amount rather than a wrong one when the price is missing', async () => {
+    (queries.useDriverPastTrips as jest.Mock).mockReturnValue(
+      ok([pastTrip({ payout_baisa: null })]),
+    );
+    await render(<PastTripsTab />);
+    expect(screen.queryByText(/OMR/)).toBeNull();
+  });
+
+  it('says plainly when there is nothing yet', async () => {
+    await render(<PastTripsTab />);
+    expect(screen.getByText('No trips yet')).toBeTruthy();
+  });
+
+  it('offers a retry when the history fails to load', async () => {
+    (queries.useDriverPastTrips as jest.Mock).mockReturnValue(FAILED);
+    await render(<PastTripsTab />);
+    expect(screen.getByLabelText(/try again|error/i)).toBeTruthy();
+  });
+});
+
 /* ─── D7 · on the job ────────────────────────────────────────────────────── */
 
 describe('OnTheJob', () => {
   beforeEach(() => {
     mockParams.current = { id: 'trip-1' };
     (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+  });
+
+  it('is a record once delivered — nothing left to press', async () => {
+    // Opened from Past trips. It used to offer "Yes, it is loaded" on a
+    // delivered load, a button the server could only refuse.
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({ status: 'delivered' })));
+    await render(<TripDetail />);
+    expect(screen.getByText('DELIVERED')).toBeTruthy();
+    expect(screen.getByText('78.000')).toBeTruthy();
+    expect(screen.queryByText('Yes, it is loaded')).toBeNull();
+    expect(screen.queryByLabelText('I have delivered it')).toBeNull();
+    expect(screen.queryByLabelText('Take a photo')).toBeNull();
   });
 
   it('shows what the driver earns beside where it drops', async () => {

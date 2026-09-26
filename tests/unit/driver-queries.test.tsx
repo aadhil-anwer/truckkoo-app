@@ -16,7 +16,12 @@ import type { ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { useDriverEarnings, useDriverOffer, useDriverOffers } from '@/lib/queries';
+import {
+  useDriverEarnings,
+  useDriverOffer,
+  useDriverOffers,
+  useDriverPastTrips,
+} from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
 let client: QueryClient;
@@ -106,15 +111,30 @@ describe('useDriverOffer', () => {
 describe('useDriverEarnings', () => {
   it('turns the bigints into numbers, because money must never concatenate', async () => {
     (supabase.rpc as jest.Mock).mockResolvedValue({
-      data: [{ week_baisa: '78000', week_trips: '1', all_time_trips: '4' }],
+      data: [
+        {
+          week_baisa: '78000',
+          week_trips: '1',
+          all_time_trips: '4',
+          month_baisa: '230000',
+          month_trips: '2',
+        },
+      ],
       error: null,
     });
 
     const { result } = await renderHook(() => useDriverEarnings(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data).toEqual({ week_baisa: 78000, week_trips: 1, all_time_trips: 4 });
+    expect(result.current.data).toEqual({
+      week_baisa: 78000,
+      week_trips: 1,
+      all_time_trips: 4,
+      month_baisa: 230000,
+      month_trips: 2,
+    });
     expect(typeof result.current.data?.week_baisa).toBe('number');
+    expect(typeof result.current.data?.month_baisa).toBe('number');
   });
 
   it('is null when there is no row to read', async () => {
@@ -124,5 +144,52 @@ describe('useDriverEarnings', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toBeNull();
+  });
+});
+
+describe('useDriverPastTrips', () => {
+  it('reads the composed history and never adds the money up itself', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: [
+        {
+          trip_id: 't1',
+          origin_city: '7',
+          dest_city: '1',
+          goods: 'Fresh produce crates',
+          weight_kg: 5000,
+          payout_baisa: '45000',
+          currency: 'OMR',
+          delivered_at: '2026-09-19T08:00:00+00:00',
+        },
+      ],
+      error: null,
+    });
+
+    const { result } = await renderHook(() => useDriverPastTrips(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(supabase.rpc).toHaveBeenCalledWith('driver_trips');
+    expect(result.current.data?.[0]).toMatchObject({ origin_city: 7, payout_baisa: 45000 });
+    expect(typeof result.current.data?.[0].payout_baisa).toBe('number');
+  });
+
+  it('keeps a missing payout missing, rather than turning it into 0', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: [
+        {
+          trip_id: 't2',
+          origin_city: 1,
+          dest_city: 2,
+          goods: 'x',
+          payout_baisa: null,
+          currency: 'OMR',
+          delivered_at: '2026-09-19T08:00:00+00:00',
+        },
+      ],
+      error: null,
+    });
+    const { result } = await renderHook(() => useDriverPastTrips(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.[0].payout_baisa).toBeNull();
   });
 });

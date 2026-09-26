@@ -36,7 +36,7 @@ import {
   Skeleton,
   StatusPill,
 } from '@/components/ui';
-import { CityPin, Corridor, MapCanvas, Scrim } from '@/map';
+import { CityPin, Corridor, MapCanvas, Scrim, framingFor } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { useSession } from '@/lib/session';
 import { formatWeight, formatWindow } from '@/lib/format';
@@ -72,6 +72,9 @@ export default function ShipperHome() {
   const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
   const { data: truckTypes } = useTruckTypes();
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+  // The gap between the greeting and the search block is the map's visible
+  // band; the map fits there instead of under them (ISSUES.md 1.2).
+  const [band, setBand] = useState<{ top: number; bottom: number } | undefined>(undefined);
 
   const index = cityIndex(cities);
   const truckName = new Map((truckTypes ?? []).map((tt) => [tt.code, localized(tt)]));
@@ -103,7 +106,12 @@ export default function ShipperHome() {
       >
         {mapSize.width > 0 && (
           <>
-            <MapCanvas framing="domestic" width={mapSize.width} height={mapSize.height}>
+            <MapCanvas
+              framing={framingFor([from, to])}
+              width={mapSize.width}
+              height={mapSize.height}
+              fit={band}
+            >
               {from && to && (
                 <>
                   <Corridor
@@ -157,7 +165,13 @@ export default function ShipperHome() {
         )}
 
         {/* Clears the map's busiest area before the content starts. */}
-        <View style={firstRun ? styles.spacerShort : styles.spacer} />
+        <View
+          style={firstRun ? styles.spacerShort : styles.spacer}
+          onLayout={(e) => {
+            const { y, height } = e.nativeEvent.layout;
+            setBand({ top: y, bottom: y + height });
+          }}
+        />
 
         <PressableSurface
           onPress={() => router.push('/book/origin')}
@@ -299,7 +313,7 @@ const styles = StyleSheet.create({
   greeting: { ...arabicIfNeeded(font.statement), color: color.lightText, textAlign: align.start },
   firstRun: { gap: space.sm, marginTop: space.xxl, maxWidth: 300 },
   body: { ...arabicIfNeeded(font.body), color: alpha.onInk.body, textAlign: align.start },
-  spacer: { height: 150 },
+  spacer: { height: 190 },
   spacerShort: { height: 40 },
 
   entry: {

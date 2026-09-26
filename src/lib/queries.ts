@@ -426,7 +426,14 @@ export function useDriverOffer(offerId: string | undefined) {
 }
 
 /** The week starts on Sunday — Oman's weekend is Friday–Saturday. Server-side. */
-export type DriverEarnings = { week_baisa: number; week_trips: number; all_time_trips: number };
+export type DriverEarnings = {
+  week_baisa: number;
+  week_trips: number;
+  all_time_trips: number;
+  /** Oman's calendar month (0033). The Past trips headline. */
+  month_baisa: number;
+  month_trips: number;
+};
 
 export function useDriverEarnings() {
   return useQuery({
@@ -442,7 +449,46 @@ export function useDriverEarnings() {
         week_baisa: Number(r.week_baisa),
         week_trips: Number(r.week_trips),
         all_time_trips: Number(r.all_time_trips),
+        month_baisa: Number(r.month_baisa ?? 0),
+        month_trips: Number(r.month_trips ?? 0),
       };
+    },
+  });
+}
+
+/** One delivered trip, as `driver_trips()` composes it (0033). */
+export type PastTrip = {
+  trip_id: string;
+  origin_city: number;
+  dest_city: number;
+  goods: string;
+  weight_kg: number | null;
+  payout_baisa: number | null;
+  currency: string;
+  delivered_at: string;
+};
+
+/**
+ * The driver's delivered trips, newest first. The payout is computed in SQL
+ * (`private.payout_for`), never here — see CLAUDE.md.
+ */
+export function useDriverPastTrips() {
+  return useQuery({
+    queryKey: ['driver', 'past'],
+    queryFn: async (): Promise<PastTrip[]> => {
+      const { data, error } = await supabase.rpc('driver_trips');
+      if (error) throw error;
+      // bigint arrives as a string over PostgREST; convert once, here.
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        trip_id: String(r.trip_id),
+        origin_city: Number(r.origin_city),
+        dest_city: Number(r.dest_city),
+        goods: String(r.goods ?? ''),
+        weight_kg: r.weight_kg == null ? null : Number(r.weight_kg),
+        payout_baisa: r.payout_baisa == null ? null : Number(r.payout_baisa),
+        currency: String(r.currency ?? 'OMR'),
+        delivered_at: String(r.delivered_at),
+      }));
     },
   });
 }

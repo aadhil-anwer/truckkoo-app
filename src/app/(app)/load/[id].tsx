@@ -64,7 +64,7 @@ import {
   Timeline,
 } from '@/components/ui';
 import { arabicIfNeeded } from '@/components/text-direction';
-import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, roadKm } from '@/map';
+import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, roadKm } from '@/map';
 import { align, formatNumber, getLanguage, localized, t } from '@/i18n';
 import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
@@ -92,7 +92,17 @@ import {
   type TripCounterpart,
   type TripTruck,
 } from '@/lib/queries';
-import { GUTTER_INK, alpha, color, elevation, font, hairline, radius, space } from '@/theme/tokens';
+import {
+  GUTTER_INK,
+  MIN_TARGET,
+  alpha,
+  color,
+  elevation,
+  font,
+  hairline,
+  radius,
+  space,
+} from '@/theme/tokens';
 
 /** A driver has it, so the line is a commitment rather than an intention. */
 const COMMITTED: Load['status'][] = ['assigned', 'in_transit', 'delivered', 'closed'];
@@ -113,6 +123,9 @@ export default function TrackLoad() {
   // from the window rather than from `onLayout`. One less frame where the
   // coastline is not there yet, and the geometry is assertable in a test.
   const { width: mapWidth } = useWindowDimensions();
+  // Where the content starts over the map, measured, so the map fits above it
+  // rather than drawing its route under the headline (ISSUES.md 1.2).
+  const [contentTop, setContentTop] = useState<number | undefined>(undefined);
 
   const index = useMemo(() => cityIndex(cities), [cities]);
 
@@ -131,6 +144,11 @@ export default function TrackLoad() {
 
   const origin = load ? index.get(load.origin_city) : undefined;
   const dest = load ? index.get(load.dest_city) : undefined;
+  const truckAt =
+    position.data?.lat != null && position.data.lng != null
+      ? { lng: position.data.lng, lat: position.data.lat }
+      : undefined;
+  const framing = framingFor([origin, dest, truckAt]);
 
   const truckName = useMemo(() => {
     const m = new Map<string, string>();
@@ -199,7 +217,12 @@ export default function TrackLoad() {
       <View style={styles.mapArea} pointerEvents="none">
         {mapWidth > 0 && (
           <>
-            <MapCanvas framing="domestic" width={mapWidth} height={MAP_HEIGHT}>
+            <MapCanvas
+              framing={framing}
+              width={mapWidth}
+              height={MAP_HEIGHT}
+              fit={{ top: insets.top + space.md + MIN_TARGET, bottom: contentTop }}
+            >
               <Corridor
                 from={{ lng: origin.lng, lat: origin.lat }}
                 to={{ lng: dest.lng, lat: dest.lat }}
@@ -240,7 +263,10 @@ export default function TrackLoad() {
           {!delivered && <Text style={styles.reference}>{reference(load.id)}</Text>}
         </View>
 
-        <View style={styles.spacer} />
+        <View
+          style={styles.spacer}
+          onLayout={(e) => setContentTop(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+        />
 
         {(status === 'posted' || status === 'finding_truck') && <Waiting />}
         {status === 'quoted' && <Priced load={load} />}
@@ -803,7 +829,8 @@ const styles = StyleSheet.create({
   loading: { paddingHorizontal: GUTTER_INK, gap: space.lg },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reference: { ...font.reference, color: alpha.onInk.tertiary },
-  spacer: { height: 130 },
+  // Tall enough that the route has a band of its own above the headline.
+  spacer: { height: 190 },
   missing: { gap: space.sm, marginTop: space.xxl, maxWidth: 320 },
 
   block: { gap: space.md, alignItems: 'flex-start' },

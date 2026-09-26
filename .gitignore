@@ -58,3 +58,6 @@ example
 # Installers and archives downloaded into the repo by accident. A 133 MB Chrome
 # .deb was committed once and blocked every push until history was rewritten.
 *.deb
+
+# Browser-automation screenshots and logs (design audits).
+/.playwright-mcp/

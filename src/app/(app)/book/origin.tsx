@@ -12,7 +12,7 @@ import { MapStepShell } from '@/components/booking/shells';
 import { CityList } from '@/components/booking/CityList';
 import { PrimaryButton } from '@/components/primitives';
 import { QuestionHeading } from '@/components/ui';
-import { CityPin } from '@/map';
+import { CityPin, framingFor } from '@/map';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities } from '@/lib/queries';
 import { align, localized, t } from '@/i18n';
@@ -33,7 +33,8 @@ export default function Origin() {
     <MapStepShell
       step={stepNumber('origin')}
       total={TOTAL_STEPS}
-      framing="domestic"
+      // The chosen city decides: a pickup in Salalah must not be an invisible pin.
+      framing={framingFor([chosen])}
       onBack={() => router.back()}
       overlay={() =>
         (cities ?? []).map((c) => (

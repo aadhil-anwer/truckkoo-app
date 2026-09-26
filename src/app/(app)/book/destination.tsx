@@ -16,7 +16,7 @@ import { CityList } from '@/components/booking/CityList';
 import { PrimaryButton, PressableSurface } from '@/components/primitives';
 import { Chip, Notice, QuestionHeading, RouteRail, SectionLabel } from '@/components/ui';
 import { Icon } from '@/components/icon';
-import { CityPin, Corridor, roadKm } from '@/map';
+import { CityPin, Corridor, roadKm, framingFor } from '@/map';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities, useMyLoads } from '@/lib/queries';
 import { align, formatNumber, t, type StringKey } from '@/i18n';
@@ -37,10 +37,11 @@ export default function Destination() {
 
   if (!ready) return null;
 
-  // Domestic while everything is in Oman; the map pulls back the moment the
-  // destination leaves the country. That is S10.
+  // Pulls back the moment the destination leaves the country — that is S10 —
+  // and also when a domestic route leaves the northern close-up (Salalah, Duqm,
+  // Sur), which it used to draw off-screen.
   const crossBorder = draft.destinationCountry !== 'OM';
-  const framing = crossBorder ? 'regional' : 'domestic';
+  const framing = crossBorder ? 'regional' : framingFor([origin, dest]);
 
   const km = origin && dest ? roadKm(origin, dest) : null;
   const shown = (cities ?? []).filter((c) => c.country === draft.destinationCountry);

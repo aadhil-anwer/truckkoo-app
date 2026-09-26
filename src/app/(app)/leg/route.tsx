@@ -21,7 +21,7 @@ import { MapStepShell } from '@/components/booking/shells';
 import { PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { Chip, QuestionHeading, SectionLabel } from '@/components/ui';
-import { CityPin, Corridor } from '@/map';
+import { CityPin, Corridor, framingFor } from '@/map';
 import { align, directionArrow, localized, t } from '@/i18n';
 import { getLegDraft, updateLegDraft } from '@/lib/leg-draft';
 import { cityIndex, useCities, useMyLegs } from '@/lib/queries';
@@ -71,7 +71,7 @@ export default function LegRoute() {
     <MapStepShell
       step={1}
       total={2}
-      framing="domestic"
+      framing={framingFor([origin, dest])}
       onBack={() => router.back()}
       overlay={() => (
         <>

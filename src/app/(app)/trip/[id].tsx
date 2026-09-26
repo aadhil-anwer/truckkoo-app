@@ -42,8 +42,8 @@ import { Icon } from '@/components/icon';
 import { BackButton, PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
-import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker } from '@/map';
-import { align, localized, t } from '@/i18n';
+import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
+import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
 import { usePositionReporter } from '@/lib/position';
@@ -52,6 +52,7 @@ import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
   GUTTER_SHEET,
+  MIN_TARGET,
   alpha,
   color,
   font,
@@ -88,6 +89,16 @@ export default function TripScreen() {
 
   const origin = trip ? index.get(trip.origin_city) : undefined;
   const dest = trip ? index.get(trip.dest_city) : undefined;
+
+  // The truck counts toward the framing: one the picture leaves out is a truck
+  // the driver cannot see themselves on.
+  const band = useMapBand();
+  const truckAt =
+    position.data?.lat != null && position.data.lng != null
+      ? { lng: position.data.lng, lat: position.data.lat }
+      : undefined;
+  const framing = framingFor([origin, dest, truckAt]);
+  const mapFit = { top: insets.top + space.sm + MIN_TARGET, bottom: band.sheetTop };
 
   async function takePhoto() {
     setError(null);
@@ -170,13 +181,18 @@ export default function TripScreen() {
   }
 
   const collected = trip.status === 'in_transit';
+  // A finished job is a record, opened from Past trips: nothing left to press.
+  // Without this the screen offered "collected" on a delivered load, and the
+  // server refused the transition — a button that could only ever fail.
+  const done =
+    trip.status === 'delivered' || trip.status === 'closed' || trip.status === 'cancelled';
 
   return (
     <View style={styles.screen}>
       <View style={styles.mapArea} pointerEvents="none">
         {mapWidth > 0 && (
           <>
-            <MapCanvas framing="domestic" width={mapWidth} height={MAP_HEIGHT}>
+            <MapCanvas framing={framing} width={mapWidth} height={MAP_HEIGHT} fit={mapFit}>
               {origin && dest && (
                 <>
                   {/* Committed: the driver has this load. */}
@@ -207,8 +223,9 @@ export default function TripScreen() {
       <View style={[styles.nav, { paddingTop: insets.top + space.sm }]}>
         <BackButton onPress={() => router.back()} />
         <StatusPill
-          label={collected ? t('status.in_transit') : t('status.assigned')}
-          tone="accent"
+          label={t(`status.${trip.status}` as StringKey)}
+          // The accent is the live state. A finished job has none.
+          tone={done ? 'neutral' : 'accent'}
         />
       </View>
 
@@ -216,7 +233,9 @@ export default function TripScreen() {
         style={styles.sheetScroll}
         contentContainerStyle={styles.sheetContent}
         showsVerticalScrollIndicator={false}
+        onLayout={band.onScrollLayout}
       >
+        <View onLayout={band.onSheetLayout}>
         <Sheet style={{ paddingBottom: insets.bottom + space.xl }}>
           <View style={styles.factRow}>
             <View style={styles.fact}>
@@ -262,7 +281,7 @@ export default function TripScreen() {
             </View>
           )}
 
-          {collected && (
+          {collected && !done && (
             <Pressable
               onPress={takePhoto}
               disabled={uploading}
@@ -320,24 +339,27 @@ export default function TripScreen() {
               the app is broken, where a press that says what is missing teaches
               them what to do next. The guard is in the handler, and in the
               database behind it. */}
-          <View style={styles.action}>
-            {collected ? (
-              <PrimaryButton
-                label={uploading ? t('trip.uploading') : t('drv.job.delivered')}
-                tall
-                onPress={confirmDelivered}
-                loading={uploading || advance.isPending}
-              />
-            ) : (
-              <PrimaryButton
-                label={t('trip.collect.action')}
-                tall
-                onPress={confirmCollected}
-                loading={advance.isPending}
-              />
-            )}
-          </View>
+          {!done && (
+            <View style={styles.action}>
+              {collected ? (
+                <PrimaryButton
+                  label={uploading ? t('trip.uploading') : t('drv.job.delivered')}
+                  tall
+                  onPress={confirmDelivered}
+                  loading={uploading || advance.isPending}
+                />
+              ) : (
+                <PrimaryButton
+                  label={t('trip.collect.action')}
+                  tall
+                  onPress={confirmCollected}
+                  loading={advance.isPending}
+                />
+              )}
+            </View>
+          )}
         </Sheet>
+        </View>
       </ScrollView>
     </View>
   );

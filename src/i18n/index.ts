@@ -85,6 +85,8 @@ const en = {
   'drv.home.greeting.one': 'load wants your truck',
   'drv.home.greeting.some': 'loads want your truck',
   'drv.home.greeting.none': 'Nothing offered yet',
+  // Home's headline while a load is taken. Offers wait on the Offers tab.
+  'drv.home.onJob': 'Your job',
   'drv.home.week': '{amount} this week',
   'drv.money.keep': 'You keep',
   'drv.money.collect': 'Collect from the shipper',
@@ -119,6 +121,19 @@ const en = {
   'drv.none.body':
     'We only send loads that sit on a route you have told us about. Add the trips you already drive and they start landing here.',
   'drv.none.add': 'Add a trip you are making',
+  // While declared trips are hidden (src/lib/features.ts), the empty state
+  // cannot sell them. It says what will happen instead.
+  'drv.waiting.title': 'No loads for you yet',
+  'drv.waiting.body': 'When a load fits your truck, it shows up here for you to take or pass.',
+  // Past trips (0033).
+  'drv.past.title': 'Past trips',
+  'drv.past.month': 'This month',
+  'drv.past.monthTotal': '{amount} · {count} trips',
+  'drv.past.monthTotal.one': '{amount} · 1 trip',
+  'drv.past.row': '{date} · {goods}',
+  'drv.past.aria': '{origin} to {destination}, delivered {date}, {amount}',
+  'drv.past.none.title': 'No trips yet',
+  'drv.past.none.body': 'Loads you deliver appear here, with what each one paid.',
   'drv.route.q': 'Where are you driving?',
   'drv.route.help': 'We only send you loads that sit on this line.',
   'drv.route.from': 'LEAVING FROM',
@@ -143,6 +158,7 @@ const en = {
   'drv.job.delivered': 'I have delivered it',
   'drv.job.problem': 'Report a problem',
   'drv.job.call': 'Call the shipper',
+  'drv.job.open': 'Open this job',
   // ── P6 · where the truck is ──────────────────────────────────────────────
   'pos.now': 'just now',
   'pos.min': 'min ago',
@@ -348,6 +364,7 @@ const en = {
   "tab.loads": "Loads",
   "tab.offers": "Offers",
   "tab.routes": "Routes",
+  "tab.past": "Past trips",
   "tab.account": "Account",
 
   // ── shipper home ──────────────────────────────────────────────────────────
@@ -386,6 +403,9 @@ const en = {
   "account.help.detail": "We reply in minutes, 7 days a week",
   "account.language": "Language",
   "account.language.hint": "Restart the app after changing this",
+  // Shown by the root layout when a launch boots in the wrong direction — the
+  // flag that fixes it only lands on the next launch. No "restart" jargon.
+  "app.direction.reopen": "Close Truckkoo and open it again. The screen will then face the right way.",
 
   // ── stepped flows ─────────────────────────────────────────────────────────
   // Both posting flows are now a sequence of one-question screens with a pinned
@@ -999,6 +1019,20 @@ const ar: Partial<Record<StringKey, string>> = {
   'common.error.explain': 'تحقق من اتصالك وحاول مرة أخرى. لم يُفقد شيء.',
   'common.noMatches': 'لا يوجد ما يطابق ذلك. جرّب كلمة أقصر.',
   'account.language.hint': 'أعد تشغيل التطبيق بعد تغيير هذا',
+  'app.direction.reopen': 'أغلق تركو ثم افتحه من جديد، وستظهر الشاشة بالاتجاه الصحيح.',
+  'drv.home.onJob': 'مهمتك',
+  'drv.job.open': 'افتح هذه المهمة',
+  'drv.waiting.title': 'لا توجد شحنات لك بعد',
+  'drv.waiting.body': 'عندما تناسب شحنةٌ شاحنتك، تظهر هنا لتقبلها أو تتركها.',
+  'drv.past.title': 'الرحلات السابقة',
+  'drv.past.month': 'هذا الشهر',
+  'drv.past.monthTotal': '{amount} · {count} رحلات',
+  'drv.past.monthTotal.one': '{amount} · رحلة واحدة',
+  'drv.past.row': '{date} · {goods}',
+  'drv.past.aria': 'من {origin} إلى {destination}، سُلّمت {date}، {amount}',
+  'drv.past.none.title': 'لا توجد رحلات بعد',
+  'drv.past.none.body': 'تظهر هنا الشحنات التي توصلها، مع ما دفعته كل واحدة.',
+  'tab.past': 'الرحلات السابقة',
 
   'post.load.title': 'ما الذي تريد نقله؟',
   'post.load.submit': 'أرسل إلى تركو',

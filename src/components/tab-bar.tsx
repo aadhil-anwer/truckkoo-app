@@ -28,6 +28,7 @@ const ROUTE_ICON: Record<string, IconName> = {
   loads: 'loads',
   offers: 'offers',
   routes: 'routes',
+  past: 'pastTrips',
   account: 'account',
 };
 

@@ -36,6 +36,9 @@ const NAMED = {
   loads: 'loads',
   offers: 'bell',
   routes: 'routes',
+  // The trips a driver has done: the truck, not a clock. A history glyph would
+  // be the first icon in the set that names a UI idea rather than a thing.
+  pastTrips: 'truck',
   account: 'account',
 
   // movement — these mirror

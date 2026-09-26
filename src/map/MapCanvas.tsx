@@ -15,7 +15,7 @@ import Svg, { G, Path, Rect } from 'react-native-svg';
 import { geoPath, type GeoProjection } from 'd3-geo';
 
 import geometry from './geometry.json';
-import { projectionFor, type Framing } from './framing';
+import { projectionFor, type FitBox, type Framing } from './framing';
 import { map } from '@/theme/tokens';
 
 const ProjectionContext = createContext<GeoProjection | null>(null);
@@ -37,16 +37,27 @@ export function MapCanvas({
   framing,
   width,
   height,
+  fit,
   children,
 }: {
   framing: Framing;
   width: number;
   height: number;
+  /** The visible band, when chrome covers part of the map. See `FitBox`. */
+  fit?: FitBox;
   children?: ReactNode;
 }) {
+  const fitTop = fit?.top;
+  const fitBottom = fit?.bottom;
   const projection = useMemo(
-    () => projectionFor(framing, width, height),
-    [framing, width, height],
+    () =>
+      projectionFor(
+        framing,
+        width,
+        height,
+        fitTop == null && fitBottom == null ? undefined : { top: fitTop, bottom: fitBottom },
+      ),
+    [framing, width, height, fitTop, fitBottom],
   );
 
   const { omanPath, neighbourPaths } = useMemo(() => {

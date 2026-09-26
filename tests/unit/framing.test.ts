@@ -11,12 +11,15 @@
  * product the wrong way.
  */
 
-import { BBOX, project, projectionFor } from '@/map/framing';
+import { BBOX, framingFor, project, projectionFor } from '@/map/framing';
 
 const MUSCAT = { lng: 58.408, lat: 23.588 };
 const BARKA = { lng: 57.89, lat: 23.706 };
 const SALALAH = { lng: 54.092, lat: 17.02 };
 const KHASAB = { lng: 56.246, lat: 26.179 };
+const NIZWA = { lng: 57.533, lat: 22.933 };
+const SUR = { lng: 59.529, lat: 22.567 };
+const DUBAI = { lng: 55.271, lat: 25.205 };
 
 describe('projectionFor', () => {
   it('places a domestic city inside the domestic viewport', () => {
@@ -95,5 +98,110 @@ describe('project', () => {
     // be loud.
     const p = projectionFor('domestic', 390, 470);
     expect(() => project(p, Number.NaN, Number.NaN)).toThrow(/unprojectable/);
+  });
+});
+
+describe('framingFor — the picture follows the route', () => {
+  /**
+   * Found on a device, 2026-09-26: every map screen passed "domestic", so an
+   * offer to Salalah or a trip to Sur drew its whole route off-screen and the
+   * driver saw a black rectangle.
+   */
+  it('keeps the close-up when every point is inside it', () => {
+    expect(framingFor([MUSCAT, BARKA])).toBe('domestic');
+    expect(framingFor([MUSCAT, NIZWA])).toBe('domestic');
+  });
+
+  it('frames the route itself when it leaves the close-up, with every point on the map', () => {
+    for (const pts of [
+      [NIZWA, SALALAH],
+      [MUSCAT, DUBAI],
+      // Sur is just south of the close-up's edge — the case that looked fine on
+      // paper and showed nothing on a phone.
+      [MUSCAT, SUR],
+      // The truck counts, so a reported position is never off the map.
+      [MUSCAT, BARKA, { lng: 56.0, lat: 24.0 }],
+    ]) {
+      const p = projectionFor(framingFor(pts), 390, 420);
+      for (const c of pts) {
+        const { x, y } = project(p, c.lng, c.lat);
+        expect(x).toBeGreaterThan(0);
+        expect(x).toBeLessThan(390);
+        expect(y).toBeGreaterThan(0);
+        expect(y).toBeLessThan(420);
+      }
+    }
+  });
+
+  it('never zooms in past the close-up, so a short trip still shows its region', () => {
+    const f = framingFor([MUSCAT, SUR]);
+    expect(f).not.toBe('domestic');
+    const [[w, s], [e, n]] = typeof f === 'string' ? BBOX[f] : f;
+    expect(e - w).toBeGreaterThanOrEqual(BBOX.domestic[1][0] - BBOX.domestic[0][0] - 1e-9);
+    expect(n - s).toBeGreaterThanOrEqual(BBOX.domestic[1][1] - BBOX.domestic[0][1] - 1e-9);
+  });
+
+  it('frames a short trip that leaves the close-up far tighter than the whole region', () => {
+    // Muscat → Sur pulled back to all of Arabia drew as a 20px stub.
+    const f = framingFor([MUSCAT, SUR]);
+    const [[w], [e]] = typeof f === 'string' ? BBOX[f] : f;
+    expect(e - w).toBeLessThan((BBOX.regional[1][0] - BBOX.regional[0][0]) / 2);
+  });
+
+  it('never pulls back past the whole region', () => {
+    const f = framingFor([SALALAH, KHASAB]);
+    const [[w, s], [e, n]] = typeof f === 'string' ? BBOX[f] : f;
+    expect(w).toBeGreaterThanOrEqual(BBOX.regional[0][0] - 1e-9);
+    expect(s).toBeGreaterThanOrEqual(BBOX.regional[0][1] - 1e-9);
+    expect(e).toBeLessThanOrEqual(BBOX.regional[1][0] + 1e-9);
+    expect(n).toBeLessThanOrEqual(BBOX.regional[1][1] + 1e-9);
+  });
+
+  it('ignores points it does not have yet', () => {
+    expect(framingFor([MUSCAT, null, undefined])).toBe('domestic');
+    expect(framingFor([])).toBe('domestic');
+  });
+});
+
+describe('projectionFor with a fit box — the part of the map nobody covers', () => {
+  it('draws every framed city inside the visible band, not under the sheet', () => {
+    // A 420px map with a sheet from y=300 up and a back button above y=90.
+    const fit = { top: 90, bottom: 300 };
+    for (const [framing, cities] of [
+      ['domestic', [MUSCAT, BARKA, NIZWA]],
+      ['regional', [MUSCAT, SALALAH, DUBAI, SUR]],
+    ] as const) {
+      const p = projectionFor(framing, 390, 420, fit);
+      for (const c of cities) {
+        const { x, y } = project(p, c.lng, c.lat);
+        expect(x).toBeGreaterThan(0);
+        expect(x).toBeLessThan(390);
+        expect(y).toBeGreaterThan(fit.top);
+        expect(y).toBeLessThan(fit.bottom);
+      }
+    }
+  });
+
+  it('without a fit box is exactly the old full-frame projection', () => {
+    const a = project(projectionFor('domestic', 390, 470), MUSCAT.lng, MUSCAT.lat);
+    const b = project(projectionFor('domestic', 390, 470, undefined), MUSCAT.lng, MUSCAT.lat);
+    expect(a).toEqual(b);
+  });
+});
+
+describe('no screen hardcodes a framing', () => {
+  /**
+   * Every map screen used to pass framing="domestic", and every route that left
+   * northern Oman was drawn off-screen. The picture must come from framingFor.
+   * Grep, because the failure is a literal someone types, not a behaviour.
+   */
+  it('passes no literal framing prop anywhere under src/app or src/components', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execSync } = require('node:child_process');
+    const hits: string = execSync(
+      `grep -rnE "framing=\\"(domestic|regional)\\"" src/app src/components || true`,
+      { cwd: `${__dirname}/../..`, encoding: 'utf8' },
+    );
+    expect(hits.trim()).toBe('');
   });
 });

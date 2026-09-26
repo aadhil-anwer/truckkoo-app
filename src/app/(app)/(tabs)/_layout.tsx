@@ -27,6 +27,7 @@ import { Tabs } from 'expo-router/tabs';
 import { TabBar } from '@/components/tab-bar';
 import { t } from '@/i18n';
 import { useMyOffers } from '@/lib/queries';
+import { DECLARED_TRIPS } from '@/lib/features';
 import { useSession } from '@/lib/session';
 import { color } from '@/theme/tokens';
 
@@ -83,11 +84,20 @@ export default function TabsLayout() {
           tabBarItemStyle: isDriver ? undefined : HIDDEN,
         }}
       />
+      {/* Declared trips are hidden while unreleased (src/lib/features.ts), and
+          Past trips takes their slot. Exactly one of the two is ever shown. */}
       <Tabs.Screen
         name="routes"
         options={{
           tabBarLabel: t('tab.routes'),
-          tabBarItemStyle: isDriver ? undefined : HIDDEN,
+          tabBarItemStyle: isDriver && DECLARED_TRIPS ? undefined : HIDDEN,
+        }}
+      />
+      <Tabs.Screen
+        name="past"
+        options={{
+          tabBarLabel: t('tab.past'),
+          tabBarItemStyle: isDriver && !DECLARED_TRIPS ? undefined : HIDDEN,
         }}
       />
 

@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
    and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **177 of its strings are
+   The Arabic dictionary is complete as of P7, but **191 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -83,7 +83,8 @@ cities, and truck types.
 - **Fetch scoped to the actor**, never fetch-then-check. Return "not found", not
   "forbidden" — 403 confirms existence.
 - **Drivers read composed answers, not tables.** `driver_offers()`,
-  `driver_offer()`, `driver_trip()` and `driver_earnings()` (0030, 0031) each
+  `driver_offer()`, `driver_trip()`, `driver_trips()` and `driver_earnings()`
+  (0030, 0031, 0033) each
   scope to `auth.uid()` *inside* the definer and return payout, collect, owed,
   detour and remaining capacity already computed. The payout comes from
   `private.payout_for()`, which applies `commission_pct` — **never compute a
@@ -274,7 +275,7 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 515 tests
+npm run verify    # typecheck + lint + 541 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
 ```

@@ -35,8 +35,10 @@ function isLanguage(v: string | null): v is Language {
 }
 
 /** Whether the native layout direction disagrees with the chosen language. */
-export function needsReload(lang: Language, isRTL: boolean): boolean {
-  return (lang === 'ar') !== isRTL;
+export function needsReload(lang: Language, isRTL: boolean | undefined): boolean {
+  // `!!` because react-native-web does not report a boolean here, and
+  // `false !== undefined` read every English launch in a browser as a mismatch.
+  return (lang === 'ar') !== !!isRTL;
 }
 
 /**
@@ -61,8 +63,29 @@ export async function loadLanguage(): Promise<Language> {
   // Self-healing, and conditional on purpose. Applying forceRTL unconditionally
   // would rewrite the native flag on every single launch; applying it only on a
   // mismatch means the next launch is quiet.
-  if (needsReload(lang, I18nManager.isRTL)) I18nManager.forceRTL(lang === 'ar');
+  bootMismatch = needsReload(lang, I18nManager.isRTL);
+  if (bootMismatch) I18nManager.forceRTL(lang === 'ar');
   return lang;
+}
+
+let bootMismatch = false;
+
+/**
+ * Whether THIS launch is running in the wrong direction.
+ *
+ * True when `loadLanguage()` found the chosen language and the native layout
+ * disagreeing — the flag it just wrote lands on the next launch, so this one is
+ * already wrong and silently so. The root layout says so instead.
+ *
+ * On Android, launch 1 on an Arabic phone no longer gets here: the direction is
+ * seeded natively (plugins/with-first-launch-direction.js). What is left is iOS
+ * launch 1, and a phone whose language changed after the app was installed.
+ *
+ * Deliberately NOT set by `setLanguage()`: an in-app change has X2's own notice,
+ * and saying it twice on one screen is noise.
+ */
+export function restartPending(): boolean {
+  return bootMismatch;
 }
 
 /**

@@ -13,7 +13,13 @@
 import { I18nManager } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-import { LANGUAGE_KEY, loadLanguage, needsReload, setLanguage } from '@/lib/language';
+import {
+  LANGUAGE_KEY,
+  loadLanguage,
+  needsReload,
+  restartPending,
+  setLanguage,
+} from '@/lib/language';
 import { getLanguage, initLanguage } from '@/i18n';
 import { supabase } from '@/lib/supabase';
 
@@ -28,6 +34,11 @@ describe('needsReload', () => {
 
   it('is true when English is chosen in a right-to-left layout', () => {
     expect(needsReload('en', true)).toBe(true);
+  });
+
+  it('treats a missing direction as left-to-right, as react-native-web reports it', () => {
+    expect(needsReload('en', undefined)).toBe(false);
+    expect(needsReload('ar', undefined)).toBe(true);
   });
 
   it('is false when the layout already matches — this is what stops a reload loop', () => {
@@ -84,6 +95,45 @@ describe('loadLanguage', () => {
     // A locked keystore is not a reason to fail to boot.
     jest.spyOn(SecureStore, 'getItemAsync').mockRejectedValueOnce(new Error('locked'));
     await expect(loadLanguage()).resolves.toBe('en');
+  });
+});
+
+describe('restartPending — a launch that is already in the wrong direction', () => {
+  beforeEach(async () => {
+    await SecureStore.deleteItemAsync(LANGUAGE_KEY);
+    setRTL(false);
+    initLanguage('en');
+    jest.spyOn(I18nManager, 'forceRTL').mockImplementation(() => {});
+  });
+
+  it('is true when Arabic boots into a left-to-right layout', async () => {
+    // The first-launch bug: forceRTL lands on the NEXT launch, so this one is
+    // wrong and must say so rather than sit there silently mirrored.
+    await SecureStore.setItemAsync(LANGUAGE_KEY, 'ar');
+    await loadLanguage();
+    expect(restartPending()).toBe(true);
+  });
+
+  it('is true when English boots into a right-to-left layout', async () => {
+    setRTL(true);
+    await SecureStore.setItemAsync(LANGUAGE_KEY, 'en');
+    await loadLanguage();
+    expect(restartPending()).toBe(true);
+  });
+
+  it('is false once the layout matches, so the notice never outlives the relaunch', async () => {
+    await SecureStore.setItemAsync(LANGUAGE_KEY, 'ar');
+    await loadLanguage();
+    setRTL(true);
+    await loadLanguage();
+    expect(restartPending()).toBe(false);
+  });
+
+  it('is not raised by an in-app change, which has its own notice on X2', async () => {
+    await SecureStore.setItemAsync(LANGUAGE_KEY, 'en');
+    await loadLanguage();
+    await setLanguage('ar');
+    expect(restartPending()).toBe(false);
   });
 });
 

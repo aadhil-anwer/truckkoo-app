@@ -1560,6 +1560,44 @@ select assert_equals(
   0, 'a shipper reads no payout here — it is the driver''s wage, not their price');
 select act_as_reset();
 
+-- ─── 9d-ter. past trips, and the month (0033) ───────────────────────────────
+-- `driver_trips()` takes no argument, so the scope is auth.uid() inside the
+-- definer and nothing else. Driver A delivered `The full walk` in §7.
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_true(
+  (select count(*) >= 1 from public.driver_trips() d where d.goods = 'The full walk'),
+  'a driver sees the trip they delivered in their past trips');
+select assert_true(
+  (select bool_and(d.delivered_at is not null and d.payout_baisa is not null)
+     from public.driver_trips() d),
+  'and every past trip says when it was delivered and what it paid');
+select assert_equals(
+  (select month_trips from public.driver_earnings()),
+  (select count(*) from public.driver_trips() d
+    where (d.delivered_at at time zone 'Asia/Muscat')::date
+          >= date_trunc('month', now() at time zone 'Asia/Muscat')::date),
+  'the month count is the same trips the list shows for this month — one source');
+select assert_equals(
+  (select month_baisa from public.driver_earnings()),
+  (select coalesce(sum(d.payout_baisa), 0)::bigint from public.driver_trips() d
+    where (d.delivered_at at time zone 'Asia/Muscat')::date
+          >= date_trunc('month', now() at time zone 'Asia/Muscat')::date),
+  'and the month total is the sum of those rows, not a second calculation');
+select act_as_reset();
+
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select assert_equals((select count(*) from public.driver_trips()), 0,
+  'another driver''s deliveries are not in my past trips');
+select assert_equals((select month_baisa from public.driver_earnings()), 0,
+  'and a driver with no deliveries has earned 0 this month, not an error');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A, who owns the load
+select assert_equals((select count(*) from public.driver_trips()), 0,
+  'a shipper reads no payouts through the driver''s history');
+select act_as_reset();
+
 -- ─── 9e. the rate card is not a driver's to enumerate ───────────────────────
 -- Crown jewel #1 (SECURITY.md §1). Both functions are granted to `authenticated`
 -- and every argument they take is on a driver's own offer card, so without the

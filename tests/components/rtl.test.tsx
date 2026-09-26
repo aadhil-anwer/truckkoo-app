@@ -52,8 +52,10 @@ describe('Arabic copy', () => {
     const untranslated = Object.entries(dictionaries.en)
       .filter(([k, en]) => {
         const ar = dictionaries.ar[k as keyof typeof dictionaries.en];
-        // Identical values are legitimate for addresses and proper nouns.
-        return ar === en && /[a-z]{4}/i.test(en) && !en.includes('@');
+        // Identical values are legitimate for addresses and proper nouns — and
+        // for a string that is only placeholders and punctuation, whose `{date}`
+        // is a variable name, never rendered.
+        return ar === en && /[a-z]{4}/i.test(withoutPlaceholders(en)) && !en.includes('@');
       })
       .map(([k]) => k);
     expect(untranslated).toEqual([]);

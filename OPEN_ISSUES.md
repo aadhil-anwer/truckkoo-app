@@ -9,6 +9,49 @@ an entry only when it is actually closed.
 
 ---
 
+## Driver surface after the first demo (2026-09-26)
+
+### Declared trips are hidden, not removed
+
+`src/lib/features.ts` → `DECLARED_TRIPS = false`. The driver's third tab is Past
+trips; the Routes tab, the leg flow (`src/app/(app)/leg/*`) and home's "Add a trip
+you are making" are unreachable from the UI, and the home and Offers empty states
+no longer ask for legs. Everything behind the flag is still built and tested —
+the flag-on copy is exercised with `jest.replaceProperty`.
+
+**Hidden is not disabled:** `post_leg` still accepts a leg from a direct API call,
+and `private.candidates_for` still matches on legs. Harmless — a leg only feeds
+matching — but it is not a lock. The replacement (location + availability toggle)
+has no spec yet; it needs one, and a security review, because an idle driver's
+position is a new class of data the rules currently forbid storing.
+
+**Done when:** the location-matching spec decides whether legs return, stay
+hidden, or are deleted with their migration history left intact.
+
+### Migration 0033 is not in production yet
+
+`driver_trips()` and the month columns on `driver_earnings()`. An APK with Past
+trips against a database without 0033 shows the history's retry state, not a
+crash. Push with `npx supabase db push` before handing out a build.
+
+### The city list never retries after one failure
+
+`useCities` is `staleTime: Infinity`. If its one fetch fails — bad signal, or a
+database that was missing `lat`/`lng` as production was on 2026-09-26 — every
+route in the app renders "—" until the process is killed. Seen on a device:
+offers with dashes for both cities, fixed by a force-stop.
+
+**Done when:** an errored city list refetches on focus/foreground and on
+pull-to-refresh, and a screen shows a skeleton rather than "—" while it has none.
+
+### One unreproduced jest failure
+
+One `npm run verify` on 2026-09-26 reported 2 failed tests; it was not captured,
+and four full runs straight after passed 541/541. Recorded rather than dismissed:
+this suite has had a time-of-day flake before (the midnight bug below).
+
+---
+
 ## Found on a device (2026-08-02)
 
 The first run of this app on an Android device, ever. Three findings, and the
@@ -91,7 +134,30 @@ body, section, list and route text on ink.
 **Done when:** the legacy styles use `color.lightText` / `alpha.onInk.*`, and the
 contrast test covers `legacy.tsx` rather than tokens alone.
 
-### A phone already set to Arabic reads Arabic in a left-to-right layout, once
+### A phone already set to Arabic reads Arabic in a left-to-right layout, once — FIXED ON ANDROID IN SOURCE 2026-09-26, device check pending
+
+**Root cause, deeper than first written:** React Native's Android RTL detection
+(`I18nUtil.isDevicePreferredLanguageRTL`) reads `Locale.getAvailableLocales()[0]`,
+the first locale the phone *supports*, not the one chosen, so it is effectively
+always LTR. The persisted `forceRTL` flag is the only route to RTL, and JS can
+only write it after React has read it.
+
+**Android:** `plugins/with-first-launch-direction.js` seeds `forceRTL(true)` in
+`MainApplication.onCreate`, before React loads, once per install, when the
+phone's language is `ar` (matching `initLanguage`'s fallback, not "any RTL
+language"). **Everywhere else:** `restartPending()` records a boot-time mismatch
+and the root layout shows `app.direction.reopen` in a strip above every screen.
+That covers iOS launch 1 and a phone whose language changed after install.
+
+**iOS is not fixed natively.** Adding `ar` to CFBundleLocalizations would make
+launch 1 correct, but then choosing English on an Arabic iPhone cannot un-flip
+without `allowRTL(false)` paired into `setLanguage`. That needs an iPhone to
+verify.
+
+**Done when:** a fresh install on an Arabic Android phone opens right-to-left
+on launch 1 with no notice, and an iPhone has been looked at.
+
+Original entry:
 
 `forceRTL` applies on the *next* launch. Launch 1 on an Arabic device is Arabic
 text in an LTR layout with nothing explaining it; launch 2 is correct. Both
@@ -113,7 +179,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 177 Arabic strings have never been read by someone who reads Arabic
+### 191 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -123,7 +189,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 177 of them.** Not from either source. They sit in one delimited
+- **Drafted — 191 of them.** Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -1178,7 +1244,7 @@ auth, reset, date and picker keys this entry named are among them.
 
 **The other half of the original "done when" stands**, and it is the harder
 half: proofed by a native speaker, and walked end to end on an Arabic device.
-177 of the strings are unproofed drafts. See the P7 entries at the top of this
+191 of the strings are unproofed drafts. See the P7 entries at the top of this
 file — that is where this is tracked now.
 
 ### 8. Client test suite — RESOLVED 2026-07-26
@@ -1334,7 +1400,7 @@ cannot reach:
   key per language now, so the Arabic places both the number and the unit
   itself. The strings that "exist in both languages" actually did not — 214 of
   387 keys had no Arabic at all, including every tab label and every status
-  pill; P7 completed the dictionary, and 177 of those strings are still
+  pill; P7 completed the dictionary, and 191 of those strings are still
   unproofed drafts (see the P7 section at the top of this file).
   `tests/components/rtl.test.tsx` now asserts the mechanical rules and
   `tests/unit/no-literals.test.ts` guards the lexical ones.

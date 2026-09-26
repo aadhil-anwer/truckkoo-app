@@ -24,6 +24,7 @@ import { PressableSurface } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, SectionLabel, Skeleton } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
+import { DECLARED_TRIPS } from '@/lib/features';
 import { cityIndex, useCities, useDriverOffers, useRespondToOffer } from '@/lib/queries';
 import {
   GUTTER_INK,
@@ -115,9 +116,11 @@ export default function OffersTab() {
             {/* The same argument D3 makes, because it is the same problem: an
                 empty book is an empty truck, and only a declared route fills it. */}
             <QuestionHeading ground="ink" size="question">
-              {t('drv.none.title')}
+              {DECLARED_TRIPS ? t('drv.none.title') : t('drv.waiting.title')}
             </QuestionHeading>
-            <Text style={styles.body}>{t('drv.none.body')}</Text>
+            <Text style={styles.body}>
+              {DECLARED_TRIPS ? t('drv.none.body') : t('drv.waiting.body')}
+            </Text>
           </View>
         )}
 

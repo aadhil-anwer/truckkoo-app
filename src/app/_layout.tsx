@@ -6,18 +6,24 @@
  * users do not want to watch it arrive.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, I18nManager, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  SafeAreaInsetsContext,
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
-import { loadLanguage } from '@/lib/language';
+import { Notice } from '@/components/ui';
+import { t } from '@/i18n';
+import { loadLanguage, restartPending } from '@/lib/language';
 import { SessionProvider, useSession } from '@/lib/session';
-import { color } from '@/theme/tokens';
+import { color, space } from '@/theme/tokens';
 import { FONT_ASSETS } from '@/theme/faces';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -69,10 +75,41 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           <StatusBar style="dark" />
-          <Gate />
+          <WrongDirection>
+            <Gate />
+          </WrongDirection>
         </SessionProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * Says so when this launch is running in the wrong direction.
+ *
+ * `forceRTL` lands on the NEXT launch, and without `expo-updates` nothing can
+ * relaunch for us — so a launch that booted mismatched stays mismatched. Before
+ * this it did so silently: Arabic text in a left-to-right layout with no word of
+ * why. Android launch 1 is fixed natively now (plugins/with-first-launch-
+ * direction.js); this covers iOS launch 1 and a phone whose language changed
+ * after install. See `restartPending` in src/lib/language.ts.
+ *
+ * A strip above every screen rather than a screen of its own: the app still
+ * works mirrored, and a shipper must never meet a dead end (CLAUDE.md). The
+ * screens below are handed insets with no top, because the strip has taken it.
+ */
+function WrongDirection({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  if (!restartPending()) return <>{children}</>;
+  return (
+    <View style={styles.column}>
+      <View style={[styles.strip, { paddingTop: insets.top + space.sm }]} accessibilityRole="alert">
+        <Notice icon="info">{t('app.direction.reopen')}</Notice>
+      </View>
+      <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
+        <View style={styles.column}>{children}</View>
+      </SafeAreaInsetsContext.Provider>
+    </View>
   );
 }
 
@@ -144,6 +181,12 @@ function Gate() {
 }
 
 const styles = StyleSheet.create({
+  column: { flex: 1 },
+  strip: {
+    backgroundColor: color.ink,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
+  },
   boot: {
     flex: 1,
     alignItems: 'center',
