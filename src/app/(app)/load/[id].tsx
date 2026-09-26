@@ -260,7 +260,11 @@ export default function TrackLoad() {
           <BackButton onPress={() => router.back()} />
           {/* T5's receipt states the reference with a label, so repeating it up
               here would be the app saying the same thing twice in one frame. */}
-          {!delivered && <Text style={styles.reference}>{reference(load.id)}</Text>}
+          {!delivered && (
+            <Text style={styles.reference}>
+              {t('label.referenceNamed', { ref: reference(load.id) })}
+            </Text>
+          )}
         </View>
 
         <View

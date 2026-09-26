@@ -207,7 +207,7 @@ describe('TrackLoad', () => {
     expect(screen.getByText('Muscat')).toBeTruthy();
     expect(screen.getByText('Salalah')).toBeTruthy();
     expect(screen.getByText('Building materials')).toBeTruthy();
-    expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
+    expect(screen.getByText('Reference AAAAAAAA')).toBeTruthy();
   });
 
   it('says the load is not ours rather than 403-ing it', async () => {
@@ -263,7 +263,7 @@ describe('TrackLoad', () => {
 
       const url = openURL.mock.calls[0][0];
       expect(url.startsWith('https://wa.me/96875172824?text=')).toBe(true);
-      expect(decodeURIComponent(url)).toContain('NO. AAAAAAAA');
+      expect(decodeURIComponent(url)).toContain('Reference AAAAAAAA');
     });
 
     it('shows no price and no accept button before one exists', async () => {
@@ -541,7 +541,9 @@ describe('TrackLoad', () => {
       expect(screen.getByText('Delivered.')).toBeTruthy();
       expect(screen.getByText('Paid to driver')).toBeTruthy();
       expect(screen.getByText('150.000 OMR')).toBeTruthy();
-      expect(screen.getByText('NO. AAAAAAAA')).toBeTruthy();
+      // T5's receipt states the reference beside its own translated label, so
+      // this row shows the bare code — no "NO." baked in by reference().
+      expect(screen.getByText('AAAAAAAA')).toBeTruthy();
     });
 
     it('asks for a rating, and says why it matters', async () => {
