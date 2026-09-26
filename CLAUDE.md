@@ -40,8 +40,13 @@ cities, and truck types.
    both `rate_card_audit` and `ops_audit`.
 4. **RTL is structural, not a phase-2 task.** Logical properties only
    (`marginStart`, `paddingEnd`, `start`/`end`). Never `left`/`right`. All
-   user-facing strings go through `t()` in `src/i18n`. React Native does **not**
-   flip `textAlign: 'left'` under RTL — use `align.start` from `src/i18n`.
+   user-facing strings go through `t()` in `src/i18n`. For text alignment use
+   `align.start` / `align.end` from `src/i18n`, which name a **physical** edge
+   and are constants. **React Native mirrors `textAlign` itself under RTL** — on
+   Android in `TextAttributeProps.kt`, on iOS in `RCTTextAttributes.mm` — so a
+   direction-aware value double-flips and lands on the wrong edge. This file said
+   the opposite until 2026-08-02 and every Arabic label was misaligned because of
+   it; the correction is in `OPEN_ISSUES.md` with the measurements.
    **Never compose a sentence from fragments at a call site.** `t()` takes typed
    placeholders — `t('drv.offer.detour', { km })` — so each language owns its own
    word order, and units live *inside* the string: `${n} km` renders a Latin "km"
@@ -269,7 +274,7 @@ load — which is a deliberate exception to "fail closed and loud", logged in
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 508 tests
+npm run verify    # typecheck + lint + 515 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
 ```

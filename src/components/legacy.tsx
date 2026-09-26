@@ -47,6 +47,7 @@ import { face } from '@/theme/faces';
 import {
   GUTTER_INK,
   MIN_TARGET,
+  alpha,
   color,
   elevation,
   font,
@@ -165,7 +166,7 @@ export function TopBar({
     <View style={s.topBar}>
       {onBack ? (
         <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" style={s.topBack}>
-          <Icon name="back" size={20} tint={color.inkText} />
+          <Icon name="back" size={20} tint={color.lightText} />
         </Pressable>
       ) : (
         <View style={s.topBack} />
@@ -243,7 +244,7 @@ export function ListRow({
     <View style={[s.listRow, !last && s.listRowDivided]}>
       {!!icon && (
         <View style={[s.listChip, tone === 'orange' && { backgroundColor: color.accentTint }]}>
-          <Icon name={icon} size={20} tint={tone === 'orange' ? color.accent : color.inkText} />
+          <Icon name={icon} size={20} tint={tone === 'orange' ? color.accentLight : color.iconGrey} />
         </View>
       )}
       <View style={s.listText}>
@@ -450,7 +451,7 @@ export function IconButton({
       accessibilityLabel={label}
       style={s.iconButton}
     >
-      <Icon name={name} size={20} tint={color.inkText} />
+      <Icon name={name} size={20} tint={color.lightText} />
     </Pressable>
   );
 }
@@ -535,13 +536,13 @@ export function Choice({
 }
 
 const s = StyleSheet.create({
-  title: { ...font.statement, color: color.inkText, textAlign: align.start },
-  body: { ...font.body, color: color.inkText, textAlign: align.start },
+  title: { ...font.statement, color: color.lightText, textAlign: align.start },
+  body: { ...font.body, color: alpha.onInk.body, textAlign: align.start },
   bodyMuted: { color: color.mutedText },
   eyebrow: { ...font.groupLabel, color: color.mutedText, textAlign: align.start },
 
   pageTitleWrap: { gap: space.xs, marginBottom: space.lg },
-  pageTitle: { ...font.statement, color: color.inkText, textAlign: align.start },
+  pageTitle: { ...font.statement, color: color.lightText, textAlign: align.start },
   pageDetail: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
 
   rule: { height: 1, backgroundColor: hairline.onCream },
@@ -570,7 +571,7 @@ const s = StyleSheet.create({
 
   section: { gap: space.md, marginBottom: space.xxl },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { ...font.title, color: color.inkText, textAlign: align.start },
+  sectionTitle: { ...font.title, color: color.lightText, textAlign: align.start },
   sectionAction: { ...font.caption, color: color.accent },
 
   topBar: {
@@ -580,7 +581,7 @@ const s = StyleSheet.create({
     minHeight: MIN_TARGET + space.sm,
   },
   topBack: { width: MIN_TARGET, height: MIN_TARGET, alignItems: 'center', justifyContent: 'center' },
-  topTitle: { ...font.rowTitle, color: color.inkText, flex: 1, textAlign: align.start },
+  topTitle: { ...font.rowTitle, color: color.lightText, flex: 1, textAlign: align.start },
   topAction: { minWidth: MIN_TARGET, alignItems: 'flex-end' },
 
   actionBar: {
@@ -601,7 +602,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { ...font.title, color: color.inkText, textAlign: 'center' },
+  emptyTitle: { ...font.title, color: color.lightText, textAlign: 'center' },
   emptyExplain: {
     ...font.bodySmall,
     color: color.mutedText,
@@ -626,7 +627,7 @@ const s = StyleSheet.create({
   },
   listRowDivided: { borderBottomWidth: 1, borderBottomColor: hairline.onCream },
   listText: { flex: 1, gap: 2 },
-  listTitle: { ...font.rowTitle, color: color.inkText, textAlign: align.start },
+  listTitle: { ...font.rowTitle, color: color.lightText, textAlign: align.start },
   listSubtitle: { ...font.bodySmall, color: color.mutedText, textAlign: align.start },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -639,7 +640,7 @@ const s = StyleSheet.create({
     borderRadius: radius.round,
     backgroundColor: color.cream,
   },
-  factValue: { ...font.caption, color: color.inkText },
+  factValue: { ...font.caption, color: color.lightText },
 
   routeLine: { flexDirection: 'row', gap: space.md },
   routeSpine: { alignItems: 'center', paddingTop: 5 },
@@ -648,13 +649,13 @@ const s = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2.5,
-    borderColor: color.inkText,
+    borderColor: color.lightText,
   },
   routeStem: { width: 1.5, backgroundColor: hairline.onCream },
   routeDest: { width: 9, height: 9, borderRadius: radius.marker, backgroundColor: color.accent },
   routeLabels: { justifyContent: 'space-between' },
   routeKicker: { ...font.groupLabel, color: color.mutedText, textAlign: align.start },
-  routeCity: { ...font.rowTitle, color: color.inkText, textAlign: align.start },
+  routeCity: { ...font.rowTitle, color: color.lightText, textAlign: align.start },
 
   avatar: { backgroundColor: color.accentTint, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontFamily: face.archivo700, color: color.accent },
@@ -691,7 +692,7 @@ const s = StyleSheet.create({
 
   field: { gap: space.xs },
   fieldLabel: { ...font.groupLabel, color: color.mutedText, textAlign: align.start },
-  fieldValue: { ...font.value, color: color.inkText, textAlign: align.start },
+  fieldValue: { ...font.value, color: color.lightText, textAlign: align.start },
 
   input: {
     minHeight: 56,

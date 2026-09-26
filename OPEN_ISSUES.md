@@ -14,7 +14,11 @@ an entry only when it is actually closed.
 The first run of this app on an Android device, ever. Three findings, and the
 third invalidates a rule the whole codebase is built on.
 
-### `align.start` is backwards — React Native already flips `textAlign` under RTL
+### `align.start` is backwards — React Native already flips `textAlign` under RTL — FIXED IN SOURCE 2026-09-26, device re-check pending
+
+`align` is now the constant `{ start: 'left', end: 'right' }`, the tests assert
+that, and `CLAUDE.md` is corrected. The one remaining "done when" clause is the
+device run: an Arabic label measured on the right-hand edge.
 
 `CLAUDE.md` says "React Native does **not** flip `textAlign: 'left'` under RTL —
 use `align.start`". **That is false on both platforms**, and `align.start` is
@@ -69,7 +73,11 @@ inside render; 26 screen and component files do not. Fixing the entry above make
 the values constant, which makes the freeze harmless — but the pattern is a trap
 for the next direction-dependent value someone adds.
 
-### Every heading on the five legacy screens is invisible
+### Every heading on the five legacy screens is invisible — RESOLVED 2026-09-26
+
+`legacy.tsx` now uses `color.lightText` / `alpha.onInk.body` on ink, and
+`contrast.test.ts` reads its source and fails on `color.inkText` in any style
+block that does not name a light fill.
 
 `legacy.tsx` sets `title` and `pageTitle` to `color.inkText` (`#16171A`) — the
 near-black for the **cream** ground — and those screens render on ink

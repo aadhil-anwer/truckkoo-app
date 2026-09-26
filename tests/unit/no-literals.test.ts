@@ -46,8 +46,11 @@ describe('direction literals', () => {
   });
 
   it("no textAlign: 'left' or 'right'", () => {
-    // React Native does not flip these the way it flips flexDirection, so a
-    // literal here is a bug in Arabic rather than a default.
+    // NOT because a literal is wrong — React Native mirrors textAlign under RTL,
+    // so `textAlign: 'left'` is in fact what `align.start` now resolves to. The
+    // ban is about intent: a call site should say which edge of the READING
+    // order it means and let one place decide what that is, so the next person
+    // who has to change it changes it once.
     const hits = sources().filter((f) => /textAlign:\s*'(left|right)'/.test(code(f)));
     expect(hits).toEqual([]);
   });

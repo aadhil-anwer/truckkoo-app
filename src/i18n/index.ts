@@ -1138,18 +1138,35 @@ export function localized<T extends { name_en: string; name_ar: string }>(row: T
 /**
  * Text alignment that follows the writing direction.
  *
- * React Native does NOT flip `textAlign: 'left'` under RTL the way flexbox
- * flips `flexDirection: 'row'`. So 'left' is a bug in Arabic, not a default.
- * Use these instead of literals, always.
+ * THESE ARE CONSTANTS, AND THAT IS THE FIX. Until 2026-08-02 they read
+ * `I18nManager.isRTL` and returned the opposite value, on the belief — written
+ * into CLAUDE.md — that React Native does not flip `textAlign` under RTL.
+ *
+ * It does, on both platforms:
+ *
+ *   Android, TextAttributeProps.kt
+ *     "left"  -> if (isRTL) Gravity.RIGHT else Gravity.LEFT
+ *     "right" -> if (isRTL) Gravity.LEFT  else Gravity.RIGHT
+ *
+ *   iOS, RCTTextAttributes.mm
+ *     if (layoutDirection == RightToLeft) { Right -> Left; Left -> Right; }
+ *
+ * So the old `align.start` returned 'right' in Arabic, React Native flipped that
+ * to LEFT, and every label using it sat on the wrong edge. It was measured on a
+ * device: the flex-positioned brand moved from x62 to x973 between LTR and RTL
+ * while a label using `align.start` did not move at all.
+ *
+ * Reading `isRTL` here is therefore not just unnecessary, it is the bug. Naming
+ * the physical edge and letting React Native mirror it is the whole job — which
+ * also means these can never go stale inside a module-scope `StyleSheet.create`,
+ * the way a getter silently did.
  */
 export const align = {
-  get start(): 'left' | 'right' {
-    return I18nManager.isRTL ? 'right' : 'left';
-  },
-  get end(): 'left' | 'right' {
-    return I18nManager.isRTL ? 'left' : 'right';
-  },
-} as const;
+  /** The edge a line of text begins at. RN mirrors it under RTL. */
+  start: 'left',
+  /** The edge it ends at. */
+  end: 'right',
+} as const satisfies { start: 'left'; end: 'right' };
 
 /**
  * Directional glyphs must mirror too. An arrow pointing at the destination

@@ -1,16 +1,17 @@
 /**
  * Strings and direction.
  *
- * RTL is structural here, not a phase-2 task, so these tests guard the two
- * things that silently break it: a `textAlign: 'left'` that React Native will
- * not flip, and a hardcoded arrow that points at the wrong city in Arabic.
+ * RTL is structural here, not a phase-2 task, so these tests guard what silently
+ * breaks it. One of them used to be stated backwards: React Native DOES mirror
+ * `textAlign` under RTL, so `align` names a physical edge and stays constant —
+ * see the `align` block below for the evidence and what it cost.
  *
  * The dictionary-integrity tests exist because a typo'd key falls back to
  * English and looks fine, forever. Since P7 they also assert completeness: every
  * English key has an Arabic value, and every placeholder survives translation.
  */
 
-import { I18nManager } from 'react-native';
+import { I18nManager, StyleSheet } from 'react-native';
 
 import {
   align,
@@ -130,7 +131,14 @@ describe('dictionary integrity', () => {
   });
 });
 
-describe('align — the RTL trap', () => {
+describe('align — and why it is not a getter', () => {
+  /**
+   * These used to assert the opposite, and the app shipped with every label on
+   * the wrong edge in Arabic because of it. React Native mirrors `textAlign`
+   * itself, on both platforms — Android in TextAttributeProps.kt, iOS in
+   * RCTTextAttributes.mm — so naming the physical edge is the correct and
+   * complete instruction. Reading `isRTL` here double-flips it.
+   */
   const original = I18nManager.isRTL;
   afterEach(() => {
     Object.defineProperty(I18nManager, 'isRTL', { value: original, configurable: true });
@@ -140,33 +148,33 @@ describe('align — the RTL trap', () => {
     Object.defineProperty(I18nManager, 'isRTL', { value, configurable: true });
   }
 
-  it('resolves to left/right in LTR', () => {
+  it('names the physical edge and lets React Native mirror it', () => {
+    expect(align.start).toBe('left');
+    expect(align.end).toBe('right');
+  });
+
+  it('does not change with the layout direction', () => {
+    // The regression this file exists to prevent: making these direction-aware
+    // again would re-introduce the double flip.
+    setRTL(true);
+    expect(align.start).toBe('left');
+    expect(align.end).toBe('right');
     setRTL(false);
     expect(align.start).toBe('left');
     expect(align.end).toBe('right');
   });
 
-  it('flips in RTL', () => {
-    // React Native does NOT flip `textAlign: 'left'` the way it flips
-    // flexDirection. This getter is the entire reason Arabic text lands correctly.
+  it('survives being frozen into a StyleSheet at module scope', () => {
+    // 26 files do `StyleSheet.create({ x: { textAlign: align.start } })` at
+    // import time. A getter captured there goes stale; a constant cannot.
+    const frozen = StyleSheet.create({ label: { textAlign: align.start } });
     setRTL(true);
-    expect(align.start).toBe('right');
-    expect(align.end).toBe('left');
-  });
-
-  it('is read at access time, not frozen at import', () => {
-    setRTL(false);
-    expect(align.start).toBe('left');
-    setRTL(true);
-    expect(align.start).toBe('right');
+    expect(StyleSheet.flatten(frozen.label).textAlign).toBe(align.start);
   });
 
   it('never returns start or end, which React Native would ignore', () => {
-    for (const rtl of [true, false]) {
-      setRTL(rtl);
-      expect(['left', 'right']).toContain(align.start);
-      expect(['left', 'right']).toContain(align.end);
-    }
+    expect(['left', 'right']).toContain(align.start);
+    expect(['left', 'right']).toContain(align.end);
   });
 });
 
