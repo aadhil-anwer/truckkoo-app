@@ -127,6 +127,9 @@ export function useCities() {
     queryKey: ['cities'],
     enabled: !!session,
     staleTime: Infinity,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<City[]> => {
       const { data, error } = await supabase
         .from('cities')
@@ -146,6 +149,9 @@ export function useTruckTypes() {
     // truck picker on step 3 renders nothing.
     enabled: !!session,
     staleTime: Infinity,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<TruckType[]> => {
       const { data, error } = await supabase
         .from('truck_types')
