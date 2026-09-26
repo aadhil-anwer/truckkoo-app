@@ -1,11 +1,40 @@
 # Truckkoo redesign — P2 · Getting in
 
 **Date:** 2026-07-30
-**Status:** DEFERRED (2026-07-30) — see §0. Spec stands; build not started.
+**Status:** RESUMING (2026-09-26) — codes over **WhatsApp**, not SMS. Decisions
+below in §0a; the sections after it still say SMS and need rewriting to match
+before the build starts.
 **Depends on:** P0 (complete), P1 (complete)
 **Screens:** N1–N6, plus one the handoff did not draw
 
 ---
+
+## 0a. Decisions taken 2026-09-26 (owner)
+
+- **Delivery: WhatsApp via Meta's WhatsApp Cloud API**, directly — not Twilio,
+  not Omantel (Omantel's SMS API only reaches Omantel subscribers, and its OTP
+  API generates its own codes, which would mean bypassing Supabase sign-in).
+- **Mechanism: Supabase's Send SMS hook (HTTP)** → a Supabase Edge Function that
+  sends Supabase's code as an approved WhatsApp *Authentication* template (EN and
+  AR). Supabase still generates and verifies every code; sessions are unchanged.
+  The function verifies the hook's Standard Webhooks signature, and needs only
+  the Meta token and the hook secret as function secrets — **no service-role
+  key**. Never `EXPO_PUBLIC_`.
+- **The GCC allowlist is enforced inside that function**, before anything is
+  sent: +968, +971, +966, +974, +965, +973. This replaces the unverified
+  `before_user_created` question in §6.
+- **No fallback.** Someone without WhatsApp signs in with Google (N1 keeps it).
+- **The code is 6 digits, not 4.** The hook payload's `sms.otp` is always
+  `^[0-9]{6}$`. N3 draws 6 boxes.
+- **Template language** follows the user's app language, carried in
+  `user_metadata.language` (set at sign-in and kept in step by `setLanguage`).
+- **To verify on the local stack during the build** (the docs do not say):
+  whether `[auth.sms.test_otp]` numbers bypass the hook; whether
+  `[auth.rate_limit] sms_sent` still applies with a hook; the exact
+  `[auth.hook.send_sms]` config keys.
+- **Owner's setup, in progress:** verified Meta Business, a WhatsApp Business
+  number on the Cloud API, an approved Authentication template (EN + AR), a
+  permanent System User token.
 
 ## 0. Deferred
 
