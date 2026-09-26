@@ -165,6 +165,24 @@ describe('DriverHome', () => {
     expect(mockPush).toHaveBeenCalledWith('/trip/trip-1');
   });
 
+  /**
+   * REGRESSION. The active job card — the one that leads to "Mark
+   * delivered" — used to have no failure state of its own: if
+   * `useDriverTrip` errored, `job.data` stayed undefined forever and the
+   * card sat as a permanent skeleton with no retry, independent of whatever
+   * `offers`/`trips` were doing. A driver at a dock on one bar must not lose
+   * their one way back to a delivery in progress this way.
+   */
+  it('offers its own retry when the active job itself fails to load', async () => {
+    (queries.useMyTrips as jest.Mock).mockReturnValue(ok([trip]));
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(FAILED);
+    await render(<DriverHome />);
+    expect(screen.getByText('We could not load that')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Try again'));
+    expect(queries.useDriverTrip('trip-1').refetch).toHaveBeenCalled();
+  });
+
   it('lets a taken load take over home, and leaves the offers on their tab', async () => {
     // Asked for after the first device run: with a job accepted, home showed the
     // job as a small row and every other offer underneath it at full size.

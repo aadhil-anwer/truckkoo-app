@@ -166,7 +166,10 @@ export default function DriverHome() {
           <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
         )}
 
-        {/* The job just taken, in full. */}
+        {/* The job just taken, in full. Its own retry, independent of the
+            offers/trips gate below: this is the card that leads to "Mark
+            delivered", and a driver at a dock on one bar must not be stuck
+            behind a permanent skeleton because only THIS query failed. */}
         {!!lead &&
           (job.data ? (
             <JobCard
@@ -175,6 +178,15 @@ export default function DriverHome() {
               destination={cityName(job.data.dest_city)}
               onOpen={() => router.push(`/trip/${lead.id}`)}
             />
+          ) : job.isError ? (
+            <PressableSurface
+              onPress={() => job.refetch()}
+              accessibilityLabel={t('common.error.aria')}
+              style={styles.retry}
+            >
+              <Text style={styles.retryText}>{t('common.error.title')}</Text>
+              <Text style={styles.retryAction}>{t('common.retry')}</Text>
+            </PressableSurface>
           ) : (
             <Skeleton height={300} round={radius.offer} />
           ))}
