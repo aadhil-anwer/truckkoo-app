@@ -9,6 +9,36 @@ an entry only when it is actually closed.
 
 ---
 
+## Sentry (2026-09-26)
+
+`src/lib/monitoring.ts`, initialised first in `_layout.tsx`; render crashes
+reach it through `AppErrorBoundary`, which expo-router would otherwise swallow.
+Off in development (`enabled: !__DEV__`), so it is **only proven by a preview
+or production build** — nothing has been sent to it yet.
+
+Deliberately narrower than Sentry's quick-start, for SECURITY.md's "PII never
+enters logs": `sendDefaultPii: false`, no session replay, no feedback widget
+(English-only UI outside `t()`), console breadcrumbs dropped, phone-number-shaped
+digit runs scrubbed from exception text. Names and cargo text in an error
+message are **not** detectable by pattern and would still get through.
+
+Open:
+
+- **Source maps do not upload yet.** The Expo plugin needs `SENTRY_ORG`,
+  `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` as EAS secrets; without them release
+  stack traces stay minified.
+- **Turn on "Prevent Storing of IP Addresses"** in the Sentry project settings.
+  `sendDefaultPii: false` stops the SDK sending it; Sentry still infers it at
+  ingestion unless told not to.
+- **0035's `report_client_error` now overlaps.** It was built with client
+  wiring left undone; Sentry covers the same job plus native crashes and
+  symbolicated traces. Decide whether 0035 stays (data stays in our own
+  database) or its client half is dropped — do not wire both.
+- **Oman's PDPL (Royal Decree 6/2022)** likely treats device-identifying error
+  reports as personal data leaving the country. Not legal advice — have the
+  privacy policy name Sentry as a processor before launch, and check with
+  someone who knows the law.
+
 ## Detection and scheduled jobs (2026-09-26)
 
 What landed: `.github/workflows/ci.yml` runs `verify`, the three SQL suites on a

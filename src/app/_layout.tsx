@@ -23,9 +23,13 @@ import { AppErrorBoundary } from '@/components/app-error-boundary';
 import { Notice } from '@/components/ui';
 import { t } from '@/i18n';
 import { loadLanguage, restartPending } from '@/lib/language';
+import { initMonitoring, wrapRoot } from '@/lib/monitoring';
 import { SessionProvider, useSession } from '@/lib/session';
 import { color, space } from '@/theme/tokens';
 import { FONT_ASSETS } from '@/theme/faces';
+
+// First, so a crash anywhere below — fonts, language, the gate — is reported.
+initMonitoring();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -66,7 +70,9 @@ if (Platform.OS !== 'web') {
 
 export { AppErrorBoundary as ErrorBoundary };
 
-export default function RootLayout() {
+export default wrapRoot(RootLayout);
+
+function RootLayout() {
   const [fontsLoaded] = useFonts(FONT_ASSETS);
   const [languageReady, setLanguageReady] = useState(false);
 

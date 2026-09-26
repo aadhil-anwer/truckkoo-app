@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import { AppErrorBoundary } from '@/components/app-error-boundary';
@@ -14,6 +15,12 @@ describe('AppErrorBoundary', () => {
     expect(screen.getByText('We could not load that')).toBeTruthy();
     expect(screen.queryByText(/boom/)).toBeNull();
     expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('reports the crash — expo-router catches it before Sentry would', async () => {
+    const error = new Error('boom');
+    await render(<AppErrorBoundary error={error} retry={jest.fn()} />);
+    expect(Sentry.captureException).toHaveBeenCalledWith(error);
   });
 
   it('calls retry rather than requiring a real relaunch', async () => {

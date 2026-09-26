@@ -9,6 +9,7 @@
  * requiring a real relaunch.
  */
 
+import { useEffect } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import type { ErrorBoundaryProps } from 'expo-router';
 
@@ -16,10 +17,16 @@ import { PrimaryButton } from './primitives';
 import { arabicIfNeeded } from './text-direction';
 import { QuestionHeading } from './ui';
 import { align, t } from '@/i18n';
+import { reportError } from '@/lib/monitoring';
 import { color, font, space } from '@/theme/tokens';
 
 export function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
-  if (__DEV__) console.error(error);
+  // expo-router catches this before Sentry's global handler can, so a render
+  // crash would otherwise never be reported at all.
+  useEffect(() => {
+    reportError(error);
+    if (__DEV__) console.error(error);
+  }, [error]);
 
   return (
     <View style={styles.screen}>
