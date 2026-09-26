@@ -163,16 +163,28 @@ function Gate() {
     // routes on its own; the Gate must not move them mid-exchange. A reset would
     // otherwise bounce to the user's loads with the password still unchanged,
     // and a confirmation would bounce to sign-in before the code was spent.
-    if (segments.includes('reset') || segments.includes('confirm')) return;
-
-    if (!session) {
-      if (!inAuth) router.replace('/sign-in');
+    //
+    // `done` (N6) is the same kind of exemption: the profile exists by the time
+    // it shows, and without this the Gate would snatch the user home before they
+    // read "You are on" or tap the one next action it offers.
+    if (segments.includes('reset') || segments.includes('confirm') || segments.includes('done')) {
       return;
     }
 
-    // Signed in but no profile row yet: signup owns finishing it.
+    if (!session) {
+      if (!inAuth) router.replace('/welcome');
+      return;
+    }
+
+    // Signed in but no profile row yet: the setup questions own finishing it.
+    // That covers arriving from outside the auth group, and arriving at an
+    // entry screen — a Google round trip lands back on the welcome, and an email
+    // sign-up or sign-in lands on the password step, with a session either way.
+    // Once on the setup questions themselves, the screens walk forward alone.
     if (!profile) {
-      if (!inAuth) router.replace('/sign-up');
+      const atEntry =
+        segments.includes('welcome') || segments.includes('email') || segments.includes('password');
+      if (!inAuth || atEntry) router.replace('/role');
       return;
     }
 

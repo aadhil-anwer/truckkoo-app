@@ -69,7 +69,7 @@ export default function CollectionDate() {
       </View>
 
       {!expanded && !chosenHidden && (
-        <TertiaryButton label={t('book.date.more')} onPress={() => setExpanded(true)} />
+        <TertiaryButton label={t('book.date.more')} onPress={() => setExpanded(true)} ground="cream" />
       )}
     </QuestionShell>
   );

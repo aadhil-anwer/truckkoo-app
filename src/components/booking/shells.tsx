@@ -50,6 +50,7 @@ export function QuestionShell({
   cta,
   onCta,
   ctaDisabled,
+  ctaLoading,
   tertiary,
   onTertiary,
   children,
@@ -64,6 +65,8 @@ export function QuestionShell({
   cta: string;
   onCta: () => void;
   ctaDisabled?: boolean;
+  /** The action is posting. The button holds its place and says so. */
+  ctaLoading?: boolean;
   tertiary?: string;
   onTertiary?: () => void;
   children: ReactNode;
@@ -99,9 +102,15 @@ export function QuestionShell({
         </ScrollView>
 
         <View style={[styles.creamFooter, { paddingBottom: insets.bottom + space.lg }]}>
-          <PrimaryButton label={cta} onPress={onCta} disabled={ctaDisabled} ground="cream" />
+          <PrimaryButton
+            label={cta}
+            onPress={onCta}
+            disabled={ctaDisabled}
+            loading={ctaLoading}
+            ground="cream"
+          />
           {!!tertiary && !!onTertiary && (
-            <TertiaryButton label={tertiary} onPress={onTertiary} />
+            <TertiaryButton label={tertiary} onPress={onTertiary} ground="cream" />
           )}
         </View>
       </KeyboardAvoidingView>

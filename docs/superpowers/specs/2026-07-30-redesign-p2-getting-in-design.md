@@ -36,6 +36,25 @@ before the build starts.
   number on the Cloud API, an approved Authentication template (EN + AR), a
   permanent System User token.
 
+## 0b. Interim build, 2026-09-26 (owner)
+
+The owner saw the auth screens on a device — still the pre-redesign email forms
+— and asked for the design now rather than after Meta. Decision: **design now,
+phone later.**
+
+- Built as drawn: N1, N4, N4b (name), N5, N6.
+- N2/N3 stand in as **email** then **password**, same cream shape. Emailed codes
+  were ruled out: the project has no custom SMTP, so Supabase allows 2 emails an
+  hour project-wide.
+- N1 carries two paths until codes land; see `OPEN_ISSUES.md` for every
+  departure and why.
+- The phone question runs after the name, skippable, and becomes N2 later.
+- `src/lib/auth-draft.ts` holds the answers (module memory, never the password).
+  The Gate routes any new session: `/role` without a profile, home with one.
+
+When codes land: email → N2 (phone), password → N3 (code), N1 back to one primary,
+the phone step removed from the tail. Nothing from N4 onward changes.
+
 ## 0. Deferred
 
 **P2 is parked at the owner's direction: SMS is being moved to a later date.**

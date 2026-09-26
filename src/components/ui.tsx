@@ -8,6 +8,7 @@
 import { Children, Fragment, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { Icon, type IconName } from './icon';
 import { PressableSurface } from './primitives';
@@ -159,19 +160,64 @@ export function QuestionHeading({
   ground = 'cream',
 }: {
   children: string;
-  size?: 'display' | 'question';
+  /** `hero` is the 44px screen headline — N1 and N6, where there is no question. */
+  size?: 'hero' | 'display' | 'question';
   ground?: Ground;
 }) {
+  const token =
+    size === 'hero' ? font.displayLg : size === 'display' ? font.display : font.question;
   return (
     <Text
       accessibilityRole="header"
       style={StyleSheet.flatten([
-        arabicIfNeeded(size === 'display' ? font.display : font.question),
+        arabicIfNeeded(token),
         { color: ground === 'ink' ? color.lightText : color.inkText, textAlign: align.start },
       ])}
     >
       {children}
     </Text>
+  );
+}
+
+/**
+ * The soft glow an ink screen sits on when there is no map to give it ground —
+ * N6, T5, D1. A radial gradient that has faded to nothing by 62% of its radius,
+ * per the handoff. A flat tinted ellipse is not a stand-in: its hard edge reads
+ * as an object on the screen rather than light behind it.
+ */
+export function Bloom({
+  rgb,
+  strength,
+  size,
+  top,
+  start,
+}: {
+  /** The colour as an `r,g,b` triple, so the stops can fade it without a parse. */
+  rgb: string;
+  /** Opacity at the centre — the handoff's .16–.28. */
+  strength: number;
+  size: number;
+  top: number;
+  start: number;
+}) {
+  const id = `bloom-${rgb.replace(/,/g, '-')}`;
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ position: 'absolute', top, insetInlineStart: start, width: size, height: size }}
+    >
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={`rgb(${rgb})`} stopOpacity={strength} />
+            <Stop offset="0.62" stopColor={`rgb(${rgb})`} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width={size} height={size} fill={`url(#${id})`} />
+      </Svg>
+    </View>
   );
 }
 

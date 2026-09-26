@@ -17,8 +17,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type StyleProp,
+  type TextInputProps,
   type ViewStyle,
 } from 'react-native';
 
@@ -37,8 +39,9 @@ import {
   radius,
   space,
 } from '@/theme/tokens';
-import { t } from '@/i18n';
+import { align, t } from '@/i18n';
 import { localizeDigits } from '@/lib/format';
+import { arabicIfNeeded } from './text-direction';
 
 type Ground = 'ink' | 'cream';
 
@@ -176,8 +179,22 @@ export function SecondaryButton({
   );
 }
 
-/** Text only. The escape hatch — "Skip", "No thanks", "Back to home". */
-export function TertiaryButton({ label, onPress }: { label: string; onPress: () => void }) {
+/**
+ * Text only. The escape hatch — "Skip", "No thanks", "Back to home".
+ *
+ * Ground-aware because it is used on both. The ink tint on cream is .5 white on
+ * #F4F0E9 — effectively invisible — and that is how S8's "Skip — I do not know
+ * the weight" shipped: a real path nobody could see.
+ */
+export function TertiaryButton({
+  label,
+  onPress,
+  ground = 'ink',
+}: {
+  label: string;
+  onPress: () => void;
+  ground?: Ground;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -186,7 +203,10 @@ export function TertiaryButton({ label, onPress }: { label: string; onPress: () 
       style={styles.tertiary}
     >
       <Text
-        style={StyleSheet.flatten([font.buttonSecondary, { color: alpha.onInk.tertiary }])}
+        style={StyleSheet.flatten([
+          font.buttonSecondary,
+          { color: ground === 'ink' ? alpha.onInk.tertiary : color.mutedText },
+        ])}
       >
         {label}
       </Text>
@@ -234,6 +254,49 @@ export function PressableSurface({
     >
       {children}
     </Pressable>
+  );
+}
+
+/**
+ * A cream answer field — N2's 72px white card, used by every typed answer.
+ *
+ * An error is said twice, as the shape and as words: a red edge alone is a
+ * colour-only signal, which fails for a colour-blind reader and in direct sun.
+ * `leading` holds N2's dial code and its divider.
+ */
+export function TextField({
+  error,
+  leading,
+  trailing,
+  ...input
+}: TextInputProps & {
+  error?: string | null;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+}) {
+  return (
+    <View style={styles.fieldWrap}>
+      <View style={StyleSheet.flatten([styles.field, !!error && styles.fieldError])}>
+        {leading}
+        <TextInput
+          placeholderTextColor={color.mutedText}
+          {...input}
+          style={StyleSheet.flatten([styles.fieldInput, input.style])}
+        />
+        {trailing}
+      </View>
+      {!!error && (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.bodySmall),
+            { color: color.danger, textAlign: align.start },
+          ])}
+        >
+          {error}
+        </Text>
+      )}
+    </View>
   );
 }
 
@@ -491,6 +554,30 @@ const styles = StyleSheet.create({
     backgroundColor: color.raised,
     borderWidth: 1,
     borderColor: hairline.sheet,
+  },
+  fieldWrap: { gap: space.sm },
+  field: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    borderRadius: radius.input,
+    backgroundColor: color.creamCard,
+    paddingHorizontal: space.xl,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    ...elevation.inputCream,
+  },
+  fieldError: { borderColor: color.danger },
+  fieldInput: {
+    flex: 1,
+    // Without this a web input keeps its intrinsic width beside N2's dial code,
+    // overflows the card, and drags the whole screen sideways with it.
+    minWidth: 0,
+    minHeight: MIN_TARGET,
+    ...font.title,
+    color: color.inkText,
+    textAlign: align.start,
   },
   tertiary: {
     minHeight: MIN_TARGET,

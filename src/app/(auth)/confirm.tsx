@@ -1,15 +1,10 @@
 /**
  * Landing point for the signup confirmation email.
  *
- * Email confirmation is on, so `signUp` returns no session and a new user cannot
- * reach the role and truck steps in the same sitting. This screen closes that
- * gap: the emailed link opens the app, the one-time code is exchanged here, and
- * signup carries on where it stopped.
- *
- * It deliberately decides nothing about where the user goes. After the exchange
- * they hold a session with no profile row, and the Gate in `_layout.tsx` already
- * routes exactly that state to `/sign-up`, which derives its own step. Adding a
- * second opinion here is how the two disagree later.
+ * If email confirmation is on, `signUp` returns no session and a new user cannot
+ * reach the setup questions in the same sitting. This screen closes that gap:
+ * the emailed link opens the app, the one-time code is exchanged here, and setup
+ * carries on at the role question.
  *
  * There is no success state on purpose. Confirming an email is not an
  * accomplishment worth a screen — it is a door, and a door that lingers reads as
@@ -17,14 +12,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Screen } from '@/components/ui';
+import { LinkProblem } from '@/components/auth/link-problem';
+import { Skeleton } from '@/components/ui';
 import { t } from '@/i18n';
 import { completeEmailConfirmation } from '@/lib/auth';
-import { color, font, space } from '@/theme/tokens';
-import { ActionBar, Button, EmptyState } from '@/components/legacy';
+import { GUTTER_INK, color, radius, space } from '@/theme/tokens';
 
 export default function ConfirmEmail() {
   const router = useRouter();
@@ -42,39 +37,31 @@ export default function ConfirmEmail() {
 
     completeEmailConfirmation(code).then((result) => {
       if (result.ok) {
-        // Leaving this route re-arms the Gate, which sends them to finish signup.
-        router.replace('/sign-up');
+        router.replace('/role');
       } else {
         setError(result.message);
       }
     });
   }, [code, router]);
 
-  if (error) {
-    return (
-      <Screen>
-        <View style={styles.flex}>
-          <EmptyState icon="alert" title={t('auth.confirm.title')} explain={error} />
-        </View>
-        <ActionBar>
-          <Button label={t('auth.submit.signIn')} onPress={() => router.replace('/sign-in')} />
-        </ActionBar>
-      </Screen>
-    );
-  }
+  if (error) return <LinkProblem title={t('auth.confirm.title')} explain={error} />;
 
+  // Usually a fraction of a second. Skeletons, never spinners.
   return (
-    <Screen>
-      <View style={styles.busy} accessibilityLiveRegion="polite">
-        <ActivityIndicator color={color.accent} />
-        <Text style={styles.working}>{t('auth.confirm.working')}</Text>
-      </View>
-    </Screen>
+    <View style={styles.screen} accessibilityLabel={t('auth.confirm.working')} accessibilityLiveRegion="polite">
+      <Skeleton height={44} width="70%" round={radius.tile} />
+      <Skeleton height={18} />
+      <Skeleton height={18} width="60%" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, justifyContent: 'center' },
-  busy: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
-  working: { ...font.body, color: color.mutedText },
+  screen: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: space.md,
+    paddingHorizontal: GUTTER_INK,
+    backgroundColor: color.ink,
+  },
 });
