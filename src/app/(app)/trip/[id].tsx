@@ -46,6 +46,7 @@ import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBan
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { prepareProofPhoto } from '@/lib/photo';
 import { usePositionReporter } from '@/lib/position';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
@@ -109,13 +110,16 @@ export default function TripScreen() {
     }
 
     const shot = await ImagePicker.launchCameraAsync({
+      // Still compressed at capture, although prepareProofPhoto compresses
+      // again: if resizing fails, the original it falls back to must stay
+      // well under the pod bucket's 8MB cap.
       quality: 0.6,
-      // Drivers are on bad signal; a 4000px original helps nobody.
       allowsEditing: false,
       mediaTypes: ['images'],
     });
 
-    if (!shot.canceled && shot.assets[0]) setPhotoUri(shot.assets[0].uri);
+    const asset = !shot.canceled ? shot.assets[0] : undefined;
+    if (asset) setPhotoUri(await prepareProofPhoto(asset.uri, asset.width, asset.height));
   }
 
   async function confirmCollected() {
