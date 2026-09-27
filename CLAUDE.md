@@ -330,6 +330,14 @@ Lessons already paid for:
 - `npx expo start` for dev; native Google/Apple sign-in needs a **development
   build**, not Expo Go.
 - Never eject from the managed workflow.
+- **EAS Update is on, with `runtimeVersion: { policy: "appVersion" }`.** An
+  update reaches every build whose `version` (app.json) matches. **Any native
+  change — a new native library, an SDK bump, a config plugin — means bumping
+  `version` before the next build**, or `eas update` can ship JS that calls
+  native code an installed build does not have, and crash it on launch. JS,
+  styles and assets only: `eas update --channel <preview|production>
+  --environment <env> --message "..."`. Never publish to `production` without
+  the founder's say-so.
 - Env changes need `npx expo start -c` — Expo inlines `EXPO_PUBLIC_*` at build
   time.
 - Migrations are append-only files in `supabase/migrations/`. Never edit an
