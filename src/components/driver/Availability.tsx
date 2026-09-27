@@ -43,7 +43,9 @@ export function AvailabilityCard({
     >
       <View style={styles.head}>
         <StatusPill label={t(available ? 'drv.avail.on' : 'drv.avail.off')} />
-        <Text style={styles.town} numberOfLines={1}>
+        {/* Wraps rather than truncating: "Your town is not known yet" was cut
+            to "Your town is not k…" beside the pill on a 1080-wide phone. */}
+        <Text style={styles.town}>
           {town ? t('drv.avail.near', { city: town }) : t('drv.avail.unknown')}
         </Text>
       </View>
@@ -65,7 +67,7 @@ const styles = StyleSheet.create({
     padding: space.lg,
     gap: space.md,
   },
-  head: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  head: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.md },
   town: {
     ...arabicIfNeeded(font.body),
     color: color.lightText,

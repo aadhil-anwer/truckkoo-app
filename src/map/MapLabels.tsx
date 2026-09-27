@@ -1,8 +1,10 @@
 /**
  * Names on the map: seas, countries, and the towns people actually say.
  *
- * Drawn by `MapCanvas` under everything a screen adds, so a pin, corridor or
- * truck always sits on top of the name it is near. Every map gets them — the
+ * Native `Text` laid over the SVG by `MapCanvas`, not SVG text: react-native-svg
+ * draws text glyph by glyph on Android and does not shape Arabic, so every
+ * Arabic name came out as disjoined letters (found on a release build,
+ * 2026-09-27). Names sit above their points, so pins stay visible. Every map gets them — the
  * point is orientation for someone who has never read a map on a phone, and
  * "which blob is Oman" is the first question on every screen.
  *
@@ -21,17 +23,22 @@
  * face and no letter-spacing, which breaks the joins.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { Circle, G, Text as SvgText } from 'react-native-svg';
-import type { GeoProjection } from 'd3-geo';
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import type { GeoProjection } from "d3-geo";
 
-import { useProjection } from './MapCanvas';
-import { getLanguage, t } from '@/i18n';
-import { face } from '@/theme/faces';
-import { map } from '@/theme/tokens';
+import { useProjection } from "./MapCanvas";
+import { getLanguage, t } from "@/i18n";
+import { face } from "@/theme/faces";
+import { map } from "@/theme/tokens";
 
 /** The slice of a `cities` row the map needs. */
-export type MapPlace = { name_en: string; name_ar: string; lat: number; lng: number };
+export type MapPlace = {
+  name_en: string;
+  name_ar: string;
+  lat: number;
+  lng: number;
+};
 
 const PlacesContext = createContext<readonly MapPlace[]>([]);
 
@@ -43,53 +50,65 @@ export function MapPlacesProvider({
   places: readonly MapPlace[] | undefined;
   children: ReactNode;
 }) {
-  return <PlacesContext.Provider value={places ?? []}>{children}</PlacesContext.Provider>;
+  return (
+    <PlacesContext.Provider value={places ?? []}>
+      {children}
+    </PlacesContext.Provider>
+  );
 }
 
 /** Named at every zoom. The places a shipper in Oman or the Emirates would say first. */
-const MAJOR = new Set(['Muscat', 'Sohar', 'Nizwa', 'Sur', 'Duqm', 'Salalah', 'Dubai', 'Abu Dhabi']);
+const MAJOR = new Set([
+  "Muscat",
+  "Sohar",
+  "Nizwa",
+  "Sur",
+  "Duqm",
+  "Salalah",
+  "Dubai",
+  "Abu Dhabi",
+]);
 /** Named only in a close-up, where there is room for them. */
 const MINOR = new Set([
-  'Barka',
-  'Suwaiq',
-  'Rustaq',
-  'Samail',
-  'Ibri',
-  'Ibra',
-  'Buraimi',
-  'Khasab',
-  'Sharjah',
-  'Al Ain',
+  "Barka",
+  "Suwaiq",
+  "Rustaq",
+  "Samail",
+  "Ibri",
+  "Ibra",
+  "Buraimi",
+  "Khasab",
+  "Sharjah",
+  "Al Ain",
 ]);
 
-type Fixed = { key: Parameters<typeof t>[0]; lng: number; lat: number; kind: 'sea' | 'country' };
+type Fixed = {
+  key: Parameters<typeof t>[0];
+  lng: number;
+  lat: number;
+  kind: "sea" | "country";
+};
 
 /**
  * Seas and countries, placed by hand on open water or open desert — where the
  * name belongs, not on the country's centroid, which for Oman is a coastline.
  */
 const FIXED: Fixed[] = [
-  { key: 'map.sea.gulfOfOman', lng: 58.9, lat: 24.35, kind: 'sea' },
-  { key: 'map.sea.arabianSea', lng: 59.2, lat: 18.4, kind: 'sea' },
-  { key: 'map.sea.arabianGulf', lng: 52.9, lat: 25.75, kind: 'sea' },
-  { key: 'map.sea.hormuz', lng: 56.75, lat: 26.55, kind: 'sea' },
-  { key: 'country.OM', lng: 56.4, lat: 20.9, kind: 'country' },
-  { key: 'country.AE', lng: 54.2, lat: 23.55, kind: 'country' },
-  { key: 'country.SA', lng: 53.0, lat: 20.3, kind: 'country' },
-  { key: 'map.country.YE', lng: 52.3, lat: 17.2, kind: 'country' },
-  { key: 'map.country.IR', lng: 57.6, lat: 27.1, kind: 'country' },
+  { key: "map.sea.gulfOfOman", lng: 58.9, lat: 24.35, kind: "sea" },
+  { key: "map.sea.arabianSea", lng: 59.2, lat: 18.4, kind: "sea" },
+  { key: "map.sea.arabianGulf", lng: 52.9, lat: 25.75, kind: "sea" },
+  { key: "map.sea.hormuz", lng: 56.75, lat: 26.55, kind: "sea" },
+  { key: "country.OM", lng: 56.4, lat: 20.9, kind: "country" },
+  { key: "country.AE", lng: 54.2, lat: 23.55, kind: "country" },
+  { key: "country.SA", lng: 53.0, lat: 20.3, kind: "country" },
+  { key: "map.country.YE", lng: 52.3, lat: 17.2, kind: "country" },
+  { key: "map.country.IR", lng: 57.6, lat: 27.1, kind: "country" },
 ];
 
 const FIXED_STYLE = {
   sea: { size: 10.5, spacing: 1.6, fill: map.waterLabel },
   country: { size: 11, spacing: 2.4, fill: map.countryLabel },
 } as const;
-
-/**
- * Drawn under each name in the sea's colour, so a coastline, border or the
- * corridor running through a name never cuts a letter in half.
- */
-const HALO = { fill: map.sea, stroke: map.sea, strokeWidth: 3, strokeLinejoin: 'round' as const };
 
 /**
  * Screen pixels per degree of longitude. The regional framing is ~45, the
@@ -128,7 +147,7 @@ export function MapLabels({
 }) {
   const projection = useProjection();
   const places = useContext(PlacesContext);
-  const arabic = getLanguage() === 'ar';
+  const arabic = getLanguage() === "ar";
 
   const labels = useMemo(() => {
     const closeUp = pxPerDegree(projection) >= CLOSE_UP;
@@ -137,7 +156,8 @@ export function MapLabels({
     // inward rather than disappearing — it still sits on its water.
     const clampX = (x: number, w: number) =>
       Math.min(Math.max(x, MARGIN + w / 2), width - MARGIN - w / 2);
-    const fits = (x: number, w: number) => x - w / 2 >= MARGIN && x + w / 2 <= width - MARGIN;
+    const fits = (x: number, w: number) =>
+      x - w / 2 >= MARGIN && x + w / 2 <= width - MARGIN;
     const at = (lng: number, lat: number) => {
       const out = projection([lng, lat]);
       return out && Number.isFinite(out[0]) && Number.isFinite(out[1])
@@ -147,13 +167,20 @@ export function MapLabels({
 
     // Countries only when pulled back: in a close-up the country is the whole
     // picture, and "OMAN" across Nizwa says nothing.
-    const fixed = FIXED.filter((f) => f.kind === 'sea' || !closeUp)
+    const fixed = FIXED.filter((f) => f.kind === "sea" || !closeUp)
       .map((f) => {
         const text = t(f.key);
         const style = FIXED_STYLE[f.kind];
         const w = textWidth(text, style.size, arabic ? 0 : style.spacing);
         const pt = at(f.lng, f.lat);
-        return { ...f, text, pt: pt && w <= width - 2 * MARGIN ? { x: clampX(pt.x, w), y: pt.y } : null };
+        return {
+          ...f,
+          text,
+          pt:
+            pt && w <= width - 2 * MARGIN
+              ? { x: clampX(pt.x, w), y: pt.y }
+              : null,
+        };
       })
       .filter((f) => f.pt && inBand(f.pt.y));
 
@@ -178,50 +205,105 @@ export function MapLabels({
 
   const latin = !arabic;
   return (
-    <G testID="map-labels" pointerEvents="none">
+    <View testID="map-labels" pointerEvents="none" style={styles.layer}>
       {labels.fixed.map((f) => {
         const style = FIXED_STYLE[f.kind];
-        const text = latin ? f.text.toUpperCase() : f.text;
-        const common = {
-          x: f.pt!.x,
-          y: f.pt!.y,
-          textAnchor: 'middle' as const,
-          fontFamily: arabic ? face.arabic500 : face.archivo600,
-          fontSize: style.size,
-          letterSpacing: latin ? style.spacing : 0,
-        };
         return (
-          <G key={f.key} testID={`map-label-${f.kind}`}>
-            <SvgText {...common} {...HALO}>
-              {text}
-            </SvgText>
-            <SvgText {...common} fill={style.fill}>
-              {text}
-            </SvgText>
-          </G>
+          <View
+            key={f.key}
+            testID={`map-label-${f.kind}`}
+            style={[
+              styles.box,
+              { left: f.pt!.x - BOX / 2, top: f.pt!.y - style.size * LINE },
+            ]}
+          >
+            <Text
+              allowFontScaling={false}
+              numberOfLines={1}
+              style={[
+                styles.text,
+                {
+                  color: style.fill,
+                  fontFamily: arabic ? face.arabic500 : face.archivo600,
+                  fontSize: style.size,
+                  lineHeight: style.size * LINE,
+                  // Latin tracking breaks Arabic joins (CLAUDE.md).
+                  letterSpacing: latin ? style.spacing : 0,
+                },
+              ]}
+            >
+              {latin ? f.text.toUpperCase() : f.text}
+            </Text>
+          </View>
         );
       })}
       {labels.towns.map((c) => {
-        const fill = c.major ? map.cityLabelMajor : map.cityLabelMinor;
-        const common = {
-          x: c.pt!.x,
-          y: c.pt!.y - LIFT,
-          textAnchor: 'middle' as const,
-          fontFamily: arabic ? face.arabic500 : c.major ? face.archivo600 : face.archivo500,
-          fontSize: c.major ? 11.5 : 10,
-        };
+        const color = c.major ? map.cityLabelMajor : map.cityLabelMinor;
+        const size = c.major ? 11.5 : 10;
+        const r = c.major ? 2.2 : 1.6;
         return (
-          <G key={c.text} testID="map-label-town">
-            <Circle cx={c.pt!.x} cy={c.pt!.y} r={c.major ? 2.2 : 1.6} fill={fill} />
-            <SvgText {...common} {...HALO}>
-              {c.text}
-            </SvgText>
-            <SvgText {...common} fill={fill}>
-              {c.text}
-            </SvgText>
-          </G>
+          <View key={c.text} testID="map-label-town">
+            <View
+              style={[
+                styles.dot,
+                {
+                  left: c.pt!.x - r,
+                  top: c.pt!.y - r,
+                  width: r * 2,
+                  height: r * 2,
+                  borderRadius: r,
+                  backgroundColor: color,
+                },
+              ]}
+            />
+            <View
+              style={[
+                styles.box,
+                { left: c.pt!.x - BOX / 2, top: c.pt!.y - LIFT - size * LINE },
+              ]}
+            >
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                style={[
+                  styles.text,
+                  {
+                    color,
+                    fontFamily: arabic
+                      ? face.arabic500
+                      : c.major
+                        ? face.archivo600
+                        : face.archivo500,
+                    fontSize: size,
+                    lineHeight: size * LINE,
+                  },
+                ]}
+              >
+                {c.text}
+              </Text>
+            </View>
+          </View>
         );
       })}
-    </G>
+    </View>
   );
 }
+
+/** Label box width: wider than any name, so centring never clips a word. */
+const BOX = 200;
+/** Line height as a multiple of the font size; Arabic needs the room. */
+const LINE = 1.35;
+
+const styles = StyleSheet.create({
+  layer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 },
+  box: { position: "absolute", width: BOX, alignItems: "center" },
+  dot: { position: "absolute" },
+  text: {
+    textAlign: "center",
+    // The halo: a shadow in the sea's colour, so a coastline, border or corridor
+    // running under a name never cuts a letter in half.
+    textShadowColor: map.sea,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 3,
+  },
+});

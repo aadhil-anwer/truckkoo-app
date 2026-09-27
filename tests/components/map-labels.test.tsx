@@ -9,6 +9,7 @@
  * - Arabic reads Arabic, with no Latin letter-spacing to break the joins;
  * - a name the chrome covers is not drawn at all.
  */
+import { StyleSheet } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 
 import { initLanguage } from '@/i18n';
@@ -20,29 +21,42 @@ const PLACES: MapPlace[] = [
   { name_en: 'Barka', name_ar: 'بركاء', lat: 23.706, lng: 57.89 },
 ];
 
-type Node = { type: string; props: Record<string, unknown>; children: Node[] | null };
+type Node = { type: string; props: Record<string, unknown>; children: (Node | string)[] | null };
 
-/** Every string drawn by the label layer, once each (the halo repeats it). */
-function labelTexts(): string[] {
-  const out = new Set<string>();
-  const walk = (n: Node | null) => {
+function walk(visit: (n: Node) => void) {
+  const go = (n: Node | string | null) => {
     if (!n || typeof n !== 'object') return;
-    if (n.type === 'RNSVGTSpan' && typeof n.props.content === 'string') out.add(n.props.content);
-    (n.children ?? []).forEach(walk);
+    visit(n);
+    (n.children ?? []).forEach(go);
   };
-  const layer = screen.queryByTestId('map-labels') as unknown as Node | null;
-  walk(layer);
-  return [...out];
+  go(screen.queryByTestId('map-labels') as unknown as Node | null);
 }
 
-function textProps(): Record<string, unknown>[] {
+/** Every string drawn by the label layer. */
+function labelTexts(): string[] {
+  const out: string[] = [];
+  walk((n) => {
+    if (n.type === 'Text') out.push((n.children ?? []).filter((c) => typeof c === 'string').join(''));
+  });
+  return out;
+}
+
+/** Each label's text style, flattened. */
+function textStyles(): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  const walk = (n: Node | null) => {
-    if (!n || typeof n !== 'object') return;
-    if (n.type === 'RNSVGText') out.push(n.props);
-    (n.children ?? []).forEach(walk);
-  };
-  walk(screen.queryByTestId('map-labels') as unknown as Node | null);
+  walk((n) => {
+    if (n.type === 'Text') out.push(StyleSheet.flatten(n.props.style as never) as Record<string, unknown>);
+  });
+  return out;
+}
+
+/** The top edge of each label's box, in map pixels. */
+function labelTops(): number[] {
+  const out: number[] = [];
+  walk((n) => {
+    const st = StyleSheet.flatten(n.props.style as never) as Record<string, unknown> | undefined;
+    if (n.type === 'View' && st?.width === 200 && typeof st.top === 'number') out.push(st.top);
+  });
   return out;
 }
 
@@ -90,21 +104,37 @@ describe('map labels', () => {
     await draw('regional', PLACES);
     const texts = labelTexts();
     expect(texts).toEqual(expect.arrayContaining(['مسقط', 'خليج عُمان']));
-    for (const p of textProps()) {
-      const font = p.font as { letterSpacing?: number; fontFamily?: string };
-      expect(font.letterSpacing ?? 0).toBe(0);
-      expect(font.fontFamily).toMatch(/IBMPlexSansArabic/);
+    for (const st of textStyles()) {
+      expect(st.letterSpacing ?? 0).toBe(0);
+      expect(st.fontFamily).toMatch(/IBMPlexSansArabic/);
     }
   });
 
   it('draws nothing under the chrome that covers the top of the map', async () => {
     // Uncovered, some names sit in the top 200px…
     await draw('regional', PLACES);
-    const ys = () => textProps().map((p) => (p.y as number[])[0]);
+    // A label's box top sits above its point, so "in the band" means the top.
+    const ys = labelTops;
     expect(ys().some((y) => y < 200)).toBe(true);
     // …and with the top 200px covered, those go and the rest stay.
     await draw('regional', PLACES, 200);
     expect(ys().length).toBeGreaterThan(0);
     for (const y of ys()) expect(y).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe('map labels are native text', () => {
+  it('draws no SVG text at all — react-native-svg cannot shape Arabic on Android', async () => {
+    initLanguage('ar');
+    await draw('regional', PLACES);
+    let svgText = 0;
+    const go = (n: Node | string | null) => {
+      if (!n || typeof n !== 'object') return;
+      if (n.type === 'RNSVGText' || n.type === 'RNSVGTSpan') svgText += 1;
+      (n.children ?? []).forEach(go);
+    };
+    go(screen.toJSON() as unknown as Node);
+    expect(svgText).toBe(0);
+    expect(labelTexts()).toContain('مسقط');
   });
 });
