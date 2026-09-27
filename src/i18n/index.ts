@@ -178,6 +178,14 @@ const en = {
   'country.OM': 'Oman',
   'country.AE': 'U.A.E.',
   'country.SA': 'Saudi Arabia',
+  // Map orientation only — never a destination, so not `country.*`, which the
+  // destination picker enumerates.
+  'map.country.YE': 'Yemen',
+  'map.country.IR': 'Iran',
+  'map.sea.gulfOfOman': 'Gulf of Oman',
+  'map.sea.arabianSea': 'Arabian Sea',
+  'map.sea.arabianGulf': 'Arabian Gulf',
+  'map.sea.hormuz': 'Strait of Hormuz',
   'book.cargo.q': 'What are we moving?',
   'book.cargo.help': 'A rough answer is fine. We confirm it with you.',
   'book.cargo.placeholder': 'Say what it is',
@@ -1138,6 +1146,12 @@ const ar: Partial<Record<StringKey, string>> = {
   'trip.deliver.needPhoto': 'الصورة مطلوبة قبل تحديد الشحنة كمُسلّمة.',
   'trip.photo.denied': 'نحتاج إذن الكاميرا لالتقاط إثبات التسليم. يمكنك تفعيله من الإعدادات.',
   'trip.uploading': 'جارٍ الإرسال…',
+  'map.country.YE': 'اليمن',
+  'map.country.IR': 'إيران',
+  'map.sea.gulfOfOman': 'خليج عُمان',
+  'map.sea.arabianSea': 'بحر العرب',
+  'map.sea.arabianGulf': 'الخليج العربي',
+  'map.sea.hormuz': 'مضيق هرمز',
 };
 
 /**

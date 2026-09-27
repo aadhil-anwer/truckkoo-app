@@ -396,7 +396,16 @@ export const map = {
   neighbourBorder: 'rgba(247,245,242,.17)',
   countryLabel: 'rgba(247,245,242,.4)',
   cityLabelMajor: 'rgba(247,245,242,.85)',
-  cityLabelMinor: 'rgba(247,245,242,.32)',
+  // .32 in the handoff; raised because under the scrim's fade a town at .32
+  // disappeared on a phone in daylight (Ibra, 2026-09-27).
+  cityLabelMinor: 'rgba(247,245,242,.5)',
+  /**
+   * Seas and straits. Cool and quiet, so water reads as water without competing
+   * with a city name or the corridor. The handoff suppressed water labels; the
+   * founder asked for them back (2026-09-27) so a first-time user can place
+   * themselves — "the Gulf of Oman" is orientation a coastline alone is not.
+   */
+  waterLabel: 'rgba(150,178,200,.5)',
 } as const;
 
 export const motion = {

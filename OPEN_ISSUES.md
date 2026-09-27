@@ -262,7 +262,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 191 Arabic strings have never been read by someone who reads Arabic
+### 197 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -272,7 +272,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 191 of them.** Not from either source. They sit in one delimited
+- **Drafted — 197 of them** (191 at P7, plus 6 map labels 2026-09-27). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -1356,7 +1356,7 @@ auth, reset, date and picker keys this entry named are among them.
 
 **The other half of the original "done when" stands**, and it is the harder
 half: proofed by a native speaker, and walked end to end on an Arabic device.
-191 of the strings are unproofed drafts. See the P7 entries at the top of this
+197 of the strings are unproofed drafts. See the P7 entries at the top of this
 file — that is where this is tracked now.
 
 ### 8. Client test suite — RESOLVED 2026-07-26
@@ -1547,7 +1547,7 @@ cannot reach:
   key per language now, so the Arabic places both the number and the unit
   itself. The strings that "exist in both languages" actually did not — 214 of
   387 keys had no Arabic at all, including every tab label and every status
-  pill; P7 completed the dictionary, and 191 of those strings are still
+  pill; P7 completed the dictionary, and 197 of those strings are still
   unproofed drafts (see the P7 section at the top of this file).
   `tests/components/rtl.test.tsx` now asserts the mechanical rules and
   `tests/unit/no-literals.test.ts` guards the lexical ones.

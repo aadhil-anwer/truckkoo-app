@@ -16,6 +16,7 @@ import { geoPath, type GeoProjection } from 'd3-geo';
 
 import geometry from './geometry.json';
 import { projectionFor, type FitBox, type Framing } from './framing';
+import { MapLabels } from './MapLabels';
 import { map } from '@/theme/tokens';
 
 const ProjectionContext = createContext<GeoProjection | null>(null);
@@ -98,6 +99,10 @@ export function MapCanvas({
           stroke={map.omanCoast}
           strokeWidth={1}
         />
+
+        {/* Names under everything a screen adds, so a pin sits on its town's
+            name rather than the name crossing out the pin. */}
+        <MapLabels width={width} height={height} top={fitTop} bottom={fitBottom} />
 
         {children}
       </Svg>
