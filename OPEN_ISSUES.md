@@ -9,6 +9,47 @@ an entry only when it is actually closed.
 
 ---
 
+## Automatic dispatch (0036, 2026-09-27)
+
+Uber/Porter-style dispatch replaced the dispatcher as the first step: instant
+price for "let us choose" + weight, book = accept (`book_load`), drivers'
+Available switch, and time-based waves (3 at a time, 5 min, 150 → 400 → 1,500 km)
+before a person is alerted. Proven by `supabase/tests/dispatch.sql` (56
+assertions), the other three suites (updated), concurrency runs against two
+live sessions, and `tests/integration/auto-dispatch-screens.test.tsx`.
+
+**Before launch — `require_verified_driver` is still OFF.** Left off on the
+founder's call (2026-09-27) so the app could be shared before drivers were
+vetted. While off, unverified drivers are offered loads — which contradicts the
+website's "100% verified drivers". Near launch: verify the real drivers in the
+ops console, then
+`update private.app_settings set value = 'true' where key = 'require_verified_driver';`
+(`nearby_drivers` and `accept_offer` both honour it; dispatch.sql tests both ways).
+
+**When 0036 reaches production:**
+- **Nobody is "available" on day one.** The switch is new, so until drivers flip
+  it, only drivers with a declared empty leg are matched; everything else
+  searches for 15 minutes and then alerts a dispatcher. Tell drivers.
+- **Rates for the resolved truck.** "Let us choose" + 8 t is priced as a 10 t;
+  a corridor with no 10 t row returns `no_rate` and goes to a person, as before.
+
+**Still open:**
+
+- **No push notifications (plan Phase E).** Drivers see a new offer only while
+  the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
+  Firebase project + FCM credentials in EAS and a new dev build. Until then,
+  waves reach only drivers looking at their phone.
+- **Ops console not updated (Phase F).** It shows new `dispatch_log` modes
+  (`nearby`, `mixed`) and the `exhausted` ending raw, and still has the stale
+  "In phase 2 you will be able to send one" copy.
+- **A double tap can book twice.** `book_load`, like `post_load` before it, has
+  no idempotency key; the button disables while pending, but a retry after a
+  timeout on bad signal posts a second load. Fix: a client request id, unique
+  per shipper.
+- **The shipper is not told when a price changed under them.** `book_load` posts
+  unaccepted and the load screen shows the new price to accept, but says nothing
+  about it having moved.
+
 ## Sentry (2026-09-26)
 
 `src/lib/monitoring.ts`, initialised first in `_layout.tsx`; render crashes
@@ -262,7 +303,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 197 Arabic strings have never been read by someone who reads Arabic
+### 211 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -272,7 +313,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 197 of them** (191 at P7, plus 6 map labels 2026-09-27). Not from either source. They sit in one delimited
+- **Drafted — 211 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -1356,7 +1397,7 @@ auth, reset, date and picker keys this entry named are among them.
 
 **The other half of the original "done when" stands**, and it is the harder
 half: proofed by a native speaker, and walked end to end on an Arabic device.
-197 of the strings are unproofed drafts. See the P7 entries at the top of this
+211 of the strings are unproofed drafts. See the P7 entries at the top of this
 file — that is where this is tracked now.
 
 ### 8. Client test suite — RESOLVED 2026-07-26
@@ -1547,7 +1588,7 @@ cannot reach:
   key per language now, so the Arabic places both the number and the unit
   itself. The strings that "exist in both languages" actually did not — 214 of
   387 keys had no Arabic at all, including every tab label and every status
-  pill; P7 completed the dictionary, and 197 of those strings are still
+  pill; P7 completed the dictionary, and 211 of those strings are still
   unproofed drafts (see the P7 section at the top of this file).
   `tests/components/rtl.test.tsx` now asserts the mechanical rules and
   `tests/unit/no-literals.test.ts` guards the lexical ones.

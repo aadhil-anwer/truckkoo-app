@@ -37,8 +37,10 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 
 import { Icon } from '@/components/icon';
+import { AvailabilityCard } from '@/components/driver/Availability';
 import { JobCard } from '@/components/driver/JobCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
@@ -47,6 +49,7 @@ import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
 import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
+import { offerErrorMessage } from '@/lib/offer-errors';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   cityIndex,
@@ -54,8 +57,10 @@ import {
   useDriverEarnings,
   useDriverOffers,
   useDriverTrip,
+  useMyAvailability,
   useMyTrips,
   useRespondToOffer,
+  useSetAvailable,
 } from '@/lib/queries';
 import {
   GUTTER_INK,
@@ -76,6 +81,8 @@ export default function DriverHome() {
   const earnings = useDriverEarnings();
   const trips = useMyTrips();
   const respond = useRespondToOffer();
+  const availability = useMyAvailability();
+  const setAvailable = useSetAvailable();
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
@@ -101,7 +108,47 @@ export default function DriverHome() {
   useAnnounceOnError(failed, t('common.error.title'));
   useAnnounceOnError(job.isError, t('common.error.title'));
 
+  /**
+   * Go available or offline.
+   *
+   * Going available reads the position ONCE, foreground only, and the server
+   * keeps just the nearest town. No permission, no fix, or a slow fix are all
+   * fine: the server falls back to where the last delivery ended, and the card
+   * says the town it settled on so a wrong one is visible.
+   */
+  async function toggleAvailable() {
+    setError(null);
+    const goingOn = !availability.data?.available;
+    let coords: { lat: number; lng: number } | undefined;
+    if (goingOn) {
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.granted) {
+          // A fix indoors can take a minute; a driver tapping a switch will not
+          // wait that long. Eight seconds, then without — and the timer is
+          // cleared either way rather than left running.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const fix = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), 8000);
+            }),
+          ]).finally(() => clearTimeout(timer));
+          if (fix) coords = { lat: fix.coords.latitude, lng: fix.coords.longitude };
+        }
+      } catch {
+        // Location off at the OS level, or no fix indoors. Not a reason to stay
+        // offline — the town comes from the last delivery instead.
+      }
+    }
+    setAvailable.mutate(
+      { available: goingOn, ...coords },
+      { onError: () => setError(t('error.generic')) },
+    );
+  }
+
   function refetchAll() {
+    availability.refetch();
     offers.refetch();
     earnings.refetch();
     trips.refetch();
@@ -123,14 +170,8 @@ export default function DriverHome() {
     respond.mutate(
       { offerId, accept },
       {
-        onError: (e: unknown) => {
-          // The race, made recognisable. 0013 raises a domain error rather than a
-          // constraint violation precisely so this line can exist.
-          const msg = e instanceof Error ? e.message : '';
-          setError(
-            msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
-          );
-        },
+        // A lost race is normal with waves; offerErrorMessage names it.
+        onError: (e: unknown) => setError(offerErrorMessage(e)),
       },
     );
   }
@@ -172,6 +213,17 @@ export default function DriverHome() {
             as "null this week" is worse than no line at all. */}
         {!!week && week.week_baisa > 0 && !!weekAmount && (
           <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
+        )}
+
+        {/* The switch. Not shown on a job: a driver carrying a load is not free,
+            whatever a switch would say, and the server treats them that way. */}
+        {!lead && !availability.isPending && (
+          <AvailabilityCard
+            available={availability.data?.available ?? false}
+            town={availability.data?.city_id != null ? cityName(availability.data.city_id) : null}
+            pending={setAvailable.isPending}
+            onToggle={toggleAvailable}
+          />
         )}
 
         {/* The job just taken, in full. Its own retry, independent of the

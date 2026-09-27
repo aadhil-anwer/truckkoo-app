@@ -40,7 +40,10 @@ export default function Weight() {
       step={stepNumber('weight')}
       total={TOTAL_STEPS}
       question={t('book.weight.q')}
-      helper={t('book.weight.help')}
+      // With "let us choose", the weight is what picks the truck — and so what
+      // makes an instant price possible (0036). Skipping stays allowed; it just
+      // means a person prices it, and the shipper is told that before choosing.
+      helper={t(draft.truckPreference === 'auto' ? 'book.weight.helpInstant' : 'book.weight.help')}
       above={
         <View style={styles.pill}>
           <StatusPill label={t('book.weight.optional')} tone="neutral" />

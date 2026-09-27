@@ -37,6 +37,7 @@ import {
   useMyLegs,
   useRespondToOffer,
 } from '@/lib/queries';
+import { offerErrorMessage } from '@/lib/offer-errors';
 import { safeText } from '@/lib/safe-text';
 import {
   GUTTER_SHEET,
@@ -93,12 +94,8 @@ export default function OfferDetail() {
         // to "That offer has gone" — telling the driver they lost the job they
         // just won. `replace`, so Back from the trip is not a spent offer.
         onSuccess: (tripId) => (tripId ? router.replace(`/trip/${tripId}`) : router.back()),
-        onError: (e: unknown) => {
-          const msg = e instanceof Error ? e.message : '';
-          setError(
-            msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
-          );
-        },
+        // A lost race is normal with waves; offerErrorMessage names it.
+        onError: (e: unknown) => setError(offerErrorMessage(e)),
       },
     );
   }

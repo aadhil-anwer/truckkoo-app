@@ -288,13 +288,35 @@ select assert_text(
   (select status::text from public.loads where id = 'dddddddd-0000-4000-8000-000000000004'),
   'finding_truck', 'an unpriceable load goes to finding_truck, never a dead end');
 
--- ─── "Not sure — advise me" is priced by a human, not guessed ───────────────
+-- ─── "Not sure — advise me" ─────────────────────────────────────────────────
+--
+-- Since 0036, "let us choose" WITH a weight is priced for the smallest truck
+-- that carries it (the founder's call — the default path must not be the slow
+-- one). Without a weight there is nothing to choose from, and a person decides.
+-- `truck_type_code` stays NULL either way (non-negotiable #1).
+
+select assert_text(private.resolve_truck_type(null, 800), 'pickup',
+  'let-us-choose resolves 800 kg to the smallest truck that carries it');
+select assert_text(private.resolve_truck_type(null, 1000), 'pickup',
+  'a load exactly at capacity still fits (>=, as the capacity check uses >)');
+select assert_text(private.resolve_truck_type(null, 1001), 'hiup',
+  'one kilo over moves up a size');
+select assert_null(private.resolve_truck_type(null, null)::bigint,
+  'no weight, no choice: let-us-choose without a weight stays unresolved');
+select assert_text(private.resolve_truck_type(null, 60000), null,
+  'heavier than any truck resolves to nothing, not to the biggest truck');
+select assert_text(private.resolve_truck_type('20t', 800), '20t',
+  'an explicit truck is never second-guessed, even when a smaller one would do');
 
 select act_as('11111111-1111-4111-8111-111111111111');
 select assert_text(
   (select outcome from public.quote_load('dddddddd-0000-4000-8000-000000000002')),
-  'advise_me', 'a NULL truck type yields advise_me, not an invented truck choice');
+  'no_rate', 'let-us-choose + 800 kg is looked up as a pickup — and meets the empty card');
 select act_as_reset();
+select assert_null(
+  (select 1::bigint from public.loads
+    where id = 'dddddddd-0000-4000-8000-000000000002' and truck_type_code is not null),
+  'the load still says "advise me": truck_type_code stays NULL');
 
 -- ─── over capacity is refused a price (§5) ──────────────────────────────────
 
@@ -540,7 +562,28 @@ select assert_text(
      (select id from public.cities where name_en = 'Muscat'),
      (select id from public.cities where name_en = 'Salalah'),
      null, 9600) r),
-  'advise_me', 'quote_route keeps "advise me" unpriceable rather than guessing');
+  'quoted', 'quote_route prices let-us-choose + 9.6 t as the 10 t it resolves to');
+
+select assert_equals(
+  (select r.price_baisa from public.quote_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, 9600) r),
+  150000, 'and at exactly the price an explicit 10 t gets — one formula, one answer');
+
+select assert_text(
+  (select r.truck_type_code from public.quote_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, 9600) r),
+  '10t', 'and says which truck the price is for, so the screen can name it');
+
+select assert_text(
+  (select r.outcome from public.quote_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, null) r),
+  'advise_me', 'let-us-choose with no weight is still a person''s call, not a guess');
 
 select assert_text(
   (select r.outcome from public.quote_route(
@@ -716,20 +759,28 @@ select assert_equals(
    where e.low_baisa <= 150000 and e.high_baisa >= 150000),
   1, 'the range brackets the price the load would actually be quoted');
 
--- "Not sure — advise me" is the default choice in the product. It must produce a
--- human path, not an error and not a guessed price.
+-- "Not sure — advise me" is the default choice in the product. With a weight
+-- it is estimated like the truck it resolves to (0036); without one it must
+-- produce a human path — not an error, not a guessed price.
 select assert_text(
   (select outcome from public.estimate_route(
      (select id from public.cities where name_en = 'Muscat'),
      (select id from public.cities where name_en = 'Salalah'),
      null, 9600)),
-  'advise_me', 'a NULL truck type asks a person rather than guessing');
+  'estimated', 'let-us-choose + a weight is estimated like the truck it resolves to');
+
+select assert_text(
+  (select outcome from public.estimate_route(
+     (select id from public.cities where name_en = 'Muscat'),
+     (select id from public.cities where name_en = 'Salalah'),
+     null, null)),
+  'advise_me', 'let-us-choose without a weight asks a person rather than guessing');
 
 select assert_equals(
   (select count(*)::bigint from public.estimate_route(
      (select id from public.cities where name_en = 'Muscat'),
      (select id from public.cities where name_en = 'Salalah'),
-     null, 9600) e
+     null, null) e
    where e.low_baisa is null and e.high_baisa is null),
   1, 'an unpriced outcome carries no numbers at all');
 

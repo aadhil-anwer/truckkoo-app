@@ -70,6 +70,7 @@ Client may write: `truck_type`, `plate`, `capacity_kg` (on own rows).
 | `status` | Business state machine (`SECURITY.md` §8). Self-setting `assigned` binds a truck without dispatch. | RPC transitions only |
 | `accepted_at` | **The fact `status` cannot carry** (0026). `matched` is reachable both before acceptance (a dispatcher offering by hand) and after it (auto-dispatch inside `accept_quote`), so a status check cannot tell a commitment from an intention. This is what makes an accepted price immutable to `ops_set_price`. | `accept_quote()` only |
 | `shipper_id` | Ownership | Fixed at insert to `auth.uid()` |
+| `priced_truck_type` | **The truck the price is for** (0036). "Let us choose" leaves `truck_type_code` NULL (non-negotiable #1) and this records which truck the server priced it as — smallest that carries the weight. A client that could write it would re-point the price at a cheaper truck. Readable by the shipper, so the screen can name it. | `private.issue_quote()` only |
 | `created_at` | Audit integrity | Nobody |
 
 Client may write on INSERT: `origin_city`, `dest_city`, `pickup_from`,
@@ -159,6 +160,21 @@ no policies, so a grant added by accident later still fails closed.
 
 Coordinates are bounded twice — in the RPC and again by `trip_positions_in_region`
 — like every other client-supplied number (`SECURITY.md` §6).
+
+## `public.driver_availability` — online, and which town (0036)
+
+| Field | Why it's locked | Who may change it |
+|---|---|---|
+| `available` | **Decides who is offered cargo.** A client write could keep a driver "online" forever, or switch a rival off. | `set_available()`, the trip trigger (a job takes a driver offline; delivering puts them back online at the destination), the 12 h expiry job |
+| `city_id` | **Ranks drivers by distance.** A driver who could write their own town could put themselves first in line for every load from anywhere. Snapped server-side from one GPS reading, or taken from the last delivery. | Same as above |
+| `source` | Records how the town was learned (`gps`/`delivery`/`manual`) | Same as above |
+| `driver_id`, `updated_at` | Ownership; the 12 h expiry reads `updated_at` | Server only |
+
+Client may write: **nothing.** Client may read: **its own row only** (RLS,
+column grant). No coordinate column exists — a position sent to
+`set_available()` is used to find the nearest town and dropped, so this table
+cannot leak where anyone lives. Asserted in `supabase/tests/dispatch.sql` and
+`tenant_isolation.sql`.
 
 ## `public.quotes`
 

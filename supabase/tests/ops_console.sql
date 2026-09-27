@@ -71,8 +71,11 @@ begin
   values (v_truck, v_driver, '10t', 'CON-1234', 10000)
   on conflict (id) do nothing;
 
-  insert into public.drivers (profile_id, notes)
-  values (v_driver, 'internal vetting note — never client readable')
+  -- Verified from the start, so the suite holds once `require_verified_driver`
+  -- is switched on near launch. §7b re-verifies through the RPC and asserts who
+  -- did it, which overwrites this.
+  insert into public.drivers (profile_id, notes, verified_at)
+  values (v_driver, 'internal vetting note — never client readable', now())
   on conflict (profile_id) do nothing;
 
   insert into public.legs (id, driver_id, truck_id, origin_city, dest_city, depart_from, depart_to)
@@ -493,6 +496,10 @@ begin
   values ('c0c0c0c0-0000-4000-8000-000000000002',
           '44444444-0000-4000-8000-00000000dddd', '10t', 'CON-5678', 10000)
   on conflict (id) do nothing;
+  -- Reassignment only hands a trip to a verified driver.
+  insert into public.drivers (profile_id, verified_at)
+  values ('44444444-0000-4000-8000-00000000dddd', now())
+  on conflict (profile_id) do nothing;
 end $$;
 
 select ops_tests_seed_writes();

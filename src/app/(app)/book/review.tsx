@@ -1,13 +1,19 @@
 /**
  * S9 · Check this before we start.
  *
- * The last screen before a load exists. Two things here are load-bearing:
+ * The last screen before a load exists. Three things here are load-bearing:
  *
- * THE ESTIMATE IS A RANGE, AND OFTEN THERE IS NONE. The rate card ships empty,
- * so `estimate_route` returns an outcome rather than numbers on most calls today.
- * That is the EXPECTED path, not an error state — the card then says a person
- * will price it, which is a real commitment the website already makes. A shipper
- * never hits a dead end (CLAUDE.md #6).
+ * THE PRICE IS THE PRICE (0036). Uber and Porter show the fare before "Book", so
+ * booking is agreeing to it. This screen shows the exact `quote_route` price and
+ * the button books AT that price: `book_load` accepts and dispatches in the same
+ * call only if the server's number is the one shown here. If the price moved in
+ * between, the load is still posted and the load screen asks the shipper to
+ * accept the real one. "Let us choose" with a weight is priced for the smallest
+ * truck that carries it, and the truck row says which, so nothing is hidden.
+ *
+ * OFTEN THERE IS NO PRICE, AND THAT IS FINE. No weight on "let us choose", or no
+ * rate for the corridor, means a person prices it — a commitment the website
+ * already makes. Never a dead end (CLAUDE.md #6).
  *
  * NOTHING IS CHARGED HERE. Showing a price is fine; taking one is not, ever
  * (#3). The reassurance strip says so out loud.
@@ -16,81 +22,86 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { PrimaryButton, TertiaryButton } from '@/components/primitives';
-import { Card, Notice, RouteRail, SectionLabel } from '@/components/ui';
+import { Card, Notice, RouteRail, SectionLabel, Skeleton } from '@/components/ui';
 import { roadKm } from '@/map';
-import { supabase } from '@/lib/supabase';
 import { clearDraft, truckTypeForPost, useBookingDraft } from '@/lib/booking';
-import { cityIndex, useCities } from '@/lib/queries';
-import { formatMoney } from '@/lib/money';
+import { cityIndex, useBookLoad, useCities, useRoutePrice, useTruckTypes } from '@/lib/queries';
+import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
-import { align, formatNumber, t } from '@/i18n';
+import { align, formatNumber, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { alpha, color, font, hairline, space } from '@/theme/tokens';
-
-type Estimate = {
-  low_baisa: number | null;
-  high_baisa: number | null;
-  currency: string;
-  outcome: string;
-};
 
 export default function Review() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { draft, ready } = useBookingDraft();
   const { data: cities } = useCities();
+  const { data: truckTypes } = useTruckTypes();
   const [error, setError] = useState<string | null>(null);
 
   const index = cityIndex(cities);
   const origin = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
   const dest = draft.destinationCityId != null ? index.get(draft.destinationCityId) : undefined;
+  const truckName = (code: string | null | undefined) => {
+    const row = code ? truckTypes?.find((tt) => tt.code === code) : undefined;
+    return row ? localized(row) : null;
+  };
 
-  const estimate = useQuery({
-    queryKey: ['estimate', draft.originCityId, draft.destinationCityId, draft.truckPreference, draft.weightKg],
-    enabled: ready && draft.originCityId != null && draft.destinationCityId != null,
-    queryFn: async (): Promise<Estimate | null> => {
-      const { data, error: rpcError } = await supabase.rpc('estimate_route', {
-        p_origin_city: draft.originCityId,
-        p_dest_city: draft.destinationCityId,
-        p_truck_type_code: truckTypeForPost(draft),
-        p_weight_kg: draft.weightKg,
-      });
-      // A failed estimate must not block posting — it is decoration on a
-      // decision, not the decision.
-      if (rpcError) return null;
-      return (data as Estimate[])?.[0] ?? null;
-    },
+  const requested = truckTypeForPost(draft);
+  const price = useRoutePrice({
+    originCity: ready ? draft.originCityId : null,
+    destCity: ready ? draft.destinationCityId : null,
+    truckTypeCode: requested,
+    weightKg: draft.weightKg,
   });
+  const quote = price.data;
+  const priced = quote?.outcome === 'quoted' && quote.price_baisa != null;
+  const amount = priced ? formatMoney(quote!.price_baisa!, quote!.currency as Currency) : null;
 
-  const post = useMutation({
-    mutationFn: async () => {
-      const { data, error: rpcError } = await supabase.rpc('post_load', {
-        p_origin_city: draft.originCityId,
-        p_dest_city: draft.destinationCityId,
-        p_pickup_from: draft.collectionDate,
-        p_pickup_to: draft.collectionDate,
-        p_goods: draft.cargoDescription.trim(),
-        p_weight_kg: draft.weightKg,
-        // NULL means "advise me". Never a guessed code.
-        p_truck_type_code: truckTypeForPost(draft),
-      });
-      if (rpcError) throw rpcError;
-      return data as string;
-    },
-    onSuccess: async (loadId) => {
-      await clearDraft();
-      router.replace(`/load/${loadId}`);
-    },
-    onError: () => setError(t('book.failed')),
-  });
+  const book = useBookLoad();
 
   if (!ready || !origin || !dest) return null;
 
-  const est = estimate.data;
-  const priced = est?.outcome === 'estimated' && est.low_baisa != null && est.high_baisa != null;
+  // What the truck row says. An explicit choice by its name, never its code
+  // ("10t" is a database key, not something a shipper reads). "Let us choose"
+  // with a price names the truck the price is for.
+  const truckValue =
+    requested != null
+      ? (truckName(requested) ?? requested)
+      : priced && quote!.truck_type_code && draft.weightKg != null
+        ? t('book.review.chosenFor', {
+            truck: truckName(quote!.truck_type_code) ?? quote!.truck_type_code,
+            weight: formatNumber(draft.weightKg),
+          })
+        : t('book.review.weWillChoose');
+
+  function submit() {
+    setError(null);
+    book.mutate(
+      {
+        originCity: draft.originCityId!,
+        destCity: draft.destinationCityId!,
+        collectionDate: draft.collectionDate!,
+        goods: draft.cargoDescription.trim(),
+        weightKg: draft.weightKg,
+        // NULL means "advise me". Never a guessed code.
+        truckTypeCode: requested,
+        seenPriceBaisa: priced ? quote!.price_baisa : null,
+      },
+      {
+        onSuccess: async ({ loadId }) => {
+          await clearDraft();
+          // Matched or not, the load screen shows the truth: a truck being
+          // found, or — if the price moved — the real price to accept.
+          router.replace(`/load/${loadId}`);
+        },
+        onError: () => setError(t('book.failed')),
+      },
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -98,18 +109,11 @@ export default function Review() {
         <Text style={styles.title}>{t('book.review.title')}</Text>
 
         <Card>
-          <RouteRail origin={origin.name_en} destination={dest.name_en} />
+          <RouteRail origin={localized(origin)} destination={localized(dest)} />
           <View style={styles.facts}>
             <Fact label={t('book.review.collect')} value={formatLongDay(draft.collectionDate!)} />
             <Fact label={t('book.review.cargo')} value={draft.cargoDescription} />
-            <Fact
-              label={t('book.review.truck')}
-              value={
-                draft.truckPreference === 'auto'
-                  ? t('book.review.weWillChoose')
-                  : draft.truckPreference
-              }
-            />
+            <Fact label={t('book.review.truck')} value={truckValue} />
             <Fact
               label={t('book.review.weight')}
               value={
@@ -123,22 +127,20 @@ export default function Review() {
         </Card>
 
         <Card tone="raised" style={styles.estimate}>
-          <SectionLabel>{t('book.review.estimateLabel')}</SectionLabel>
-          {priced ? (
+          {price.isPending ? (
+            <Skeleton height={64} />
+          ) : priced ? (
             <>
-              <View style={styles.range}>
-                <Text style={styles.rangeValue}>
-                  {`${formatMoney(est!.low_baisa!, est!.currency as never)} – ${formatMoney(
-                    est!.high_baisa!,
-                    est!.currency as never,
-                  )}`}
-                </Text>
-              </View>
-              <Text style={styles.estimateWhy}>{t('book.review.estimateWhy')}</Text>
+              <SectionLabel>{t('book.review.priceLabel')}</SectionLabel>
+              <Text style={styles.rangeValue}>{amount}</Text>
+              <Text style={styles.estimateWhy}>{t('book.review.priceWhy')}</Text>
             </>
           ) : (
-            // The default path today. Not an error, and not empty.
-            <Text style={styles.estimateWhy}>{t('book.review.noEstimate')}</Text>
+            <>
+              <SectionLabel>{t('book.review.estimateLabel')}</SectionLabel>
+              {/* The human path. Not an error, and not empty. */}
+              <Text style={styles.estimateWhy}>{t('book.review.noEstimate')}</Text>
+            </>
           )}
 
           <View style={styles.reassure}>
@@ -158,12 +160,12 @@ export default function Review() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
         <TertiaryButton label={t('book.review.change')} onPress={() => router.back()} />
         <PrimaryButton
-          label={t('book.review.cta')}
-          onPress={() => {
-            setError(null);
-            post.mutate();
-          }}
-          loading={post.isPending}
+          label={amount ? t('book.review.bookFor', { price: amount }) : t('book.review.cta')}
+          onPress={submit}
+          // Never book while the price is still arriving: the button would
+          // commit to a number the shipper has not seen yet.
+          disabled={price.isPending}
+          loading={book.isPending}
         />
       </View>
     </View>
@@ -204,7 +206,6 @@ const styles = StyleSheet.create({
     textAlign: align.end,
   },
   estimate: { gap: space.sm },
-  range: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   rangeValue: { ...font.estimate, color: color.lightText },
   estimateWhy: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start },
   reassure: { marginTop: space.sm },

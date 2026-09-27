@@ -76,6 +76,9 @@ jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
  * which no screen test should be starting — what these tests assert is that D7
  * asks for it on a live trip and not otherwise, and that is `mockReporterArgs`.
  */
+export const mockSetAvailableMutate = jest.fn();
+export const mockBookMutate = jest.fn();
+
 export const mockReporter = { lastSentAt: null as string | null, denied: false };
 export const mockReporterArgs: unknown[] = [];
 jest.mock('@/lib/position', () => ({
@@ -134,8 +137,27 @@ jest.mock('@/lib/queries', () => {
     useDriverTrip: jest.fn(),
     useTripPosition: jest.fn(),
     useReportPosition: jest.fn(),
+    // 0036. The driver's switch, and the shipper's upfront price and booking.
+    useMyAvailability: jest.fn(),
+    useSetAvailable: jest.fn(),
+    useRoutePrice: jest.fn(),
+    useBookLoad: jest.fn(),
   };
 });
+
+/**
+ * Going available reads the position once. Mocked so no test asks a real
+ * permission: granted, with a fix in Nizwa, unless a test says otherwise.
+ */
+export const mockLocation = {
+  granted: true,
+  fix: { coords: { latitude: 22.9333, longitude: 57.5333 } } as unknown,
+};
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: mockLocation.granted })),
+  getCurrentPositionAsync: jest.fn(async () => mockLocation.fix),
+}));
 
 /* ─── fixtures ───────────────────────────────────────────────────────────── */
 
@@ -286,6 +308,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   mockPostLegMutate.mockReset();
   mockPostLegMutate.mockResolvedValue('leg-new');
   mockAdvanceMutate.mockReset();
+  mockSetAvailableMutate.mockReset();
+  mockBookMutate.mockReset();
   mockAdvanceMutate.mockResolvedValue(undefined);
   mockParams.current = {};
 
@@ -317,6 +341,17 @@ export function resetQueries(queries: Record<string, unknown>) {
     isPending: false,
     variables: undefined,
   });
+
+  // Default: never set, which is every driver on the day this ships.
+  m('useMyAvailability').mockReturnValue(ok(null));
+  m('useSetAvailable').mockReturnValue({ mutate: mockSetAvailableMutate, isPending: false });
+  mockLocation.granted = true;
+  mockLocation.fix = { coords: { latitude: 22.9333, longitude: 57.5333 } };
+  // Default: a price, as for a weighed let-us-choose load on a priced corridor.
+  m('useRoutePrice').mockReturnValue(
+    ok({ price_baisa: 405698, currency: 'OMR', outcome: 'quoted', truck_type_code: '10t' }),
+  );
+  m('useBookLoad').mockReturnValue({ mutate: mockBookMutate, isPending: false });
 
   // Default: no trip yet, so a posted load shows none of the carrier detail.
   m('useTripCounterpart').mockReturnValue(ok(null));

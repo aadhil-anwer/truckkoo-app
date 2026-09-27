@@ -235,7 +235,7 @@ export function usePostLoad() {
 export type QuoteOutcome =
   /** Priced from the rate card. */
   | 'quoted'
-  /** "Not sure — advise me": no truck type, so nothing to price against. */
+  /** "Let us choose" with no weight: nothing to choose a truck by (0036). */
   | 'advise_me'
   /** No rate loaded for this corridor band yet. The normal state at launch. */
   | 'no_rate'
@@ -291,6 +291,96 @@ export function useQuoteRoute() {
       });
       if (error) throw error;
       return ((data ?? []) as Quote[])[0] ?? null;
+    },
+  });
+}
+
+/** The exact price for a route before booking, and the truck it is for. */
+export type RoutePrice = {
+  /** NULL when a person has to price it (no weight on "let us choose", no rate). */
+  price_baisa: number | null;
+  currency: string;
+  outcome: QuoteOutcome;
+  /** The truck the price is for — the resolved one when the shipper said "let us choose". */
+  truck_type_code: string | null;
+};
+
+/**
+ * The review screen's price. The same `quote_route` the server books against,
+ * so the number shown is the number booked: `useBookLoad` sends it back and the
+ * server refuses to auto-accept anything else. `bigint` arrives from PostgREST
+ * as a string, and a string price concatenates — it is made a number here.
+ */
+export function useRoutePrice(input: {
+  originCity: number | null;
+  destCity: number | null;
+  truckTypeCode: string | null;
+  weightKg: number | null;
+}) {
+  return useQuery({
+    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg],
+    enabled: input.originCity != null && input.destCity != null,
+    // Rate-limited server-side (30 an hour); a review screen re-rendering must
+    // not spend them.
+    staleTime: 60_000,
+    queryFn: async (): Promise<RoutePrice | null> => {
+      const { data, error } = await supabase.rpc('quote_route', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_truck_type_code: input.truckTypeCode,
+        p_weight_kg: input.weightKg,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!row) return null;
+      return {
+        price_baisa: row.price_baisa == null ? null : Number(row.price_baisa),
+        currency: String(row.currency ?? 'OMR'),
+        outcome: row.outcome as QuoteOutcome,
+        truck_type_code: (row.truck_type_code as string | null) ?? null,
+      };
+    },
+  });
+}
+
+export type BookInput = {
+  originCity: number;
+  destCity: number;
+  collectionDate: string;
+  goods: string;
+  weightKg: number | null;
+  truckTypeCode: string | null;
+  /** The price on screen when "Book" was tapped; NULL when none was shown. */
+  seenPriceBaisa: number | null;
+};
+
+/**
+ * Book = accept, the Uber/Porter way. The server posts, prices, and — only if
+ * its price is the one the shipper saw — accepts and starts dispatch in the same
+ * call. If the price moved, the load is still posted and waits at "quoted" for
+ * the shipper to accept the real number on the load screen.
+ */
+export function useBookLoad() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: BookInput) => {
+      const { data, error } = await supabase.rpc('book_load', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_pickup_from: input.collectionDate,
+        p_pickup_to: input.collectionDate,
+        p_goods: input.goods,
+        p_weight_kg: input.weightKg,
+        p_truck_type_code: input.truckTypeCode,
+        p_seen_price_baisa: input.seenPriceBaisa,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!row?.load_id) throw new Error('book_load returned no load');
+      return { loadId: String(row.load_id), priceMatched: row.price_matched === true };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
     },
   });
 }
@@ -410,10 +500,58 @@ export type DriverOffer = {
 export function useDriverOffers() {
   return useQuery({
     queryKey: ['driver', 'offers'],
+    // Waves last five minutes. Until push notifications land, an offer has to
+    // appear while the driver is looking at this screen, not when they next
+    // pull to refresh — by then the wave has moved on.
+    refetchInterval: 15_000,
     queryFn: async (): Promise<DriverOffer[]> => {
       const { data, error } = await supabase.rpc('driver_offers');
       if (error) throw error;
       return (data ?? []) as DriverOffer[];
+    },
+  });
+}
+
+export type Availability = {
+  available: boolean;
+  city_id: number | null;
+  source: 'gps' | 'delivery' | 'manual';
+  updated_at: string;
+};
+
+/** The driver's own switch and town. NULL until they have ever set it. */
+export function useMyAvailability() {
+  return useQuery({
+    queryKey: ['driver', 'availability'],
+    queryFn: async (): Promise<Availability | null> => {
+      const { data, error } = await supabase
+        .from('driver_availability')
+        .select('available, city_id, source, updated_at')
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Availability | null) ?? null;
+    },
+  });
+}
+
+/**
+ * Go available or offline. A position, when there is one, is sent once and
+ * snapped server-side to the nearest town — only the town is kept.
+ */
+export function useSetAvailable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { available: boolean; lat?: number; lng?: number }) => {
+      const { error } = await supabase.rpc('set_available', {
+        p_available: input.available,
+        p_lat: input.lat ?? null,
+        p_lng: input.lng ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['driver', 'availability'] });
+      qc.invalidateQueries({ queryKey: ['driver', 'offers'] });
     },
   });
 }

@@ -486,6 +486,12 @@ select act_as_reset();
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- Establish a trip: driver A accepts the offer sent during section 9.
+-- Driver A is verified first, so this holds whichever way
+-- `require_verified_driver` is set (off until launch, then on — the website
+-- promises "100% verified drivers"). The refusal is tested in dispatch.sql.
+insert into public.drivers (profile_id, verified_at)
+values ('33333333-3333-4333-8333-333333333333', now())
+on conflict (profile_id) do update set verified_at = now();
 select act_as('33333333-3333-4333-8333-333333333333');
 do $$
 declare v_offer uuid; v_trip uuid;
@@ -890,6 +896,12 @@ select assert_equals(
 -- Driver C gets a fresh empty leg here: driver A's was consumed by the accept
 -- above, which set it to 'matched'. That is correct behaviour — a leg that is
 -- carrying something is not an empty leg — and it is why this needs its own.
+
+-- Driver C is verified so this holds once `require_verified_driver` is on
+-- (near launch); the unverified case is tested in dispatch.sql.
+insert into public.drivers (profile_id, verified_at)
+values ('55555555-5555-4555-8555-555555555555', now())
+on conflict (profile_id) do update set verified_at = now();
 
 insert into public.legs (id, driver_id, origin_city, dest_city, depart_from, depart_to, is_empty)
 values ('bbbbbbbb-0000-4000-8000-000000000013', '55555555-5555-4555-8555-555555555555',
@@ -1786,6 +1798,39 @@ select assert_true(
        (select t.id from public.trips t join public.loads l on l.id = t.load_id
          where l.goods_description = 'A cargo — confidential'))),
   'a trip with no fix returns a corridor estimate and no position');
+select act_as_reset();
+
+-- ─── driver_availability (0036) ──────────────────────────────────────────────
+-- Where a truck is decides who is offered cargo. Each driver reads only their
+-- own row; a shipper reads none; nobody writes one except through set_available.
+
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select public.set_available(true);
+select act_as('44444444-4444-4444-8444-444444444444');  -- Driver B
+select public.set_available(true);
+
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_equals(
+  (select count(*) from public.driver_availability), 1,
+  'driver A reads exactly one availability row');
+select assert_equals(
+  (select count(*) from public.driver_availability
+    where driver_id = '44444444-4444-4444-8444-444444444444'), 0,
+  'and not driver B''s — where another truck is, is not theirs to know');
+select assert_raises(
+  $$update public.driver_availability set available = false
+     where driver_id = '44444444-4444-4444-8444-444444444444'$$,
+  'driver A cannot switch driver B off');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_equals((select count(*) from public.driver_availability), 0,
+  'a shipper reads no driver''s availability');
+select act_as_reset();
+
+select set_config('role', 'anon', true), set_config('request.jwt.claims', '', true);
+select assert_raises($$select count(*) from public.driver_availability$$,
+  'anon cannot read availability at all');
 select act_as_reset();
 
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;

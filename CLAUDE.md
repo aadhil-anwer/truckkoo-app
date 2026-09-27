@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
    and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **197 of its strings are
+   The Arabic dictionary is complete as of P7, but **211 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -271,18 +271,25 @@ empty leg, part-loaded leg, corridor history — and **does not check ownership*
 It is private and ungranted precisely for that reason: it is the load board with
 the guard removed. Its callers do the checking. Never grant it.
 
-`post_load` auto-dispatches tier-1 matches with no human in the loop, bounded by
-settings in `private.app_settings` (`auto_dispatch_enabled` and two caps). It
-fails *open into the human path* — a broken matcher must never lose a shipper's
-load — which is a deliberate exception to "fail closed and loud", logged in
-`private.dispatch_log`.
+**Dispatch is automatic (0036), Uber/Porter-style.** `book_load` posts, prices
+and — if the server's price is the one the shipper saw — accepts and starts the
+search in one call. `private.next_wave` offers the load to the nearest online,
+verified, fitting drivers (`driver_availability`, declared legs first), three at
+a time for five minutes, the radius widening with time (`dispatch_*` settings);
+the every-minute `dispatch-waves` job advances it; after 15 minutes a person is
+alerted once. `private.loads_machine_guard` stops older paths handing a load the
+machine still owns to a person between waves; a dispatcher's own move is never
+redirected. It still fails *open into the human path* — logged in
+`private.dispatch_log`. `dispatch_log`'s check constraints list every mode: add
+one there when you add one in code, or `accept_quote` will swallow the violation
+and dispatch nobody (it happened, 2026-09-27).
 
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 541 tests
+npm run verify    # typecheck + lint + 598 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
-npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
+npm run test:db   # four SQL suites (isolation + pricing + ops + dispatch) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
 ```
 
