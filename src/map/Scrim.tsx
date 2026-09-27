@@ -12,6 +12,19 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { scrim } from '@/theme/tokens';
 
+/**
+ * react-native-svg drops the alpha of an `rgba()` `stopColor` — every stop
+ * reached native code opaque, and the scrim painted over the whole map. The
+ * tokens stay in `rgba()` like the rest of the palette; the alpha is moved into
+ * `stopOpacity` here, the one place a gradient is built.
+ */
+function splitAlpha(c: string): { hex: string; opacity: number } {
+  const m = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(c);
+  if (!m) return { hex: c, opacity: 1 };
+  const hex = [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+  return { hex: `#${hex.toUpperCase()}`, opacity: Number(m[4]) };
+}
+
 export function Scrim({
   variant,
   width,
@@ -36,9 +49,10 @@ export function Scrim({
     >
       <Defs>
         <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          {colors.map((c, i) => (
-            <Stop key={i} offset={locations[i]} stopColor={c} />
-          ))}
+          {colors.map((c, i) => {
+            const { hex, opacity } = splitAlpha(c);
+            return <Stop key={i} offset={locations[i]} stopColor={hex} stopOpacity={opacity} />;
+          })}
         </LinearGradient>
       </Defs>
       <Rect x={0} y={0} width={width} height={height} fill={`url(#${id})`} />

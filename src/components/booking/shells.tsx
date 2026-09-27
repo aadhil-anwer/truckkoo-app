@@ -10,7 +10,6 @@
 import { useState, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -81,10 +80,11 @@ export function QuestionShell({
   const { width } = useWindowDimensions();
   return (
     <View style={[styles.cream, { paddingTop: insets.top + space.sm }]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* `padding` on Android too. The app draws edge-to-edge, and under
+          edge-to-edge Android no longer resizes the window for the keyboard —
+          `undefined` left the pinned action behind it on every typed step of
+          sign-up, reachable only through the keyboard's own return key. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={styles.creamGutter}>
           <StepHeader step={step} total={total} onBack={onBack} ground="cream" />
         </View>
@@ -187,7 +187,9 @@ export function MapStepShell({
         </View>
       </View>
 
-      <Sheet style={{ paddingBottom: insets.bottom + space.lg }}>{children}</Sheet>
+      <Sheet testID="map-step-sheet" style={[styles.stepSheet, { paddingBottom: insets.bottom + space.lg }]}>
+        {children}
+      </Sheet>
     </View>
   );
 }
@@ -208,5 +210,11 @@ const styles = StyleSheet.create({
 
   ink: { flex: 1, backgroundColor: color.ink },
   mapArea: { flex: 1 },
+  // Bounded, so a long list scrolls *inside* the sheet. Unbounded, the 46-city
+  // list grew the sheet to its full height: the map was squeezed to nothing and
+  // the pinned action was pushed off the bottom of the screen — on origin,
+  // destination and a driver's route alike, you could not continue without
+  // searching first. 60% leaves the upper ~40% for the map, per the handoff.
+  stepSheet: { maxHeight: '60%' },
   inkHeader: { position: 'absolute', top: 0, insetInlineStart: 0, insetInlineEnd: 0, paddingHorizontal: GUTTER_INK },
 });

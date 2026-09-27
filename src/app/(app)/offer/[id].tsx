@@ -88,6 +88,11 @@ export default function OfferDetail() {
     respond.mutate(
       { offerId: id, accept: true },
       {
+        // Leave now. The cache refresh re-reads this offer, which stops being
+        // pending the moment it is accepted, and the screen would fall through
+        // to "That offer has gone" — telling the driver they lost the job they
+        // just won. `replace`, so Back from the trip is not a spent offer.
+        onSuccess: (tripId) => (tripId ? router.replace(`/trip/${tripId}`) : router.back()),
         onError: (e: unknown) => {
           const msg = e instanceof Error ? e.message : '';
           setError(

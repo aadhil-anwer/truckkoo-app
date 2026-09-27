@@ -146,7 +146,8 @@ export default function AccountTab() {
       */}
       <Modal visible={picking} transparent animationType="fade" onRequestClose={() => setPicking(false)}>
         <View style={styles.scrim}>
-          <View style={styles.sheet}>
+          {/* Clear of the nav bar — the last language sat half under it. */}
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + space.xxxl }]}>
             <View style={styles.sheetHead}>
               <Text style={styles.sheetTitle}>{t('account.language')}</Text>
               <PressableSurface

@@ -14,6 +14,7 @@
  */
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
@@ -38,6 +39,7 @@ type Estimate = {
 
 export default function Review() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { draft, ready } = useBookingDraft();
   const { data: cities } = useCities();
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +153,9 @@ export default function Review() {
         {!!error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
 
-      <View style={styles.footer}>
+      {/* Clear of the system navigation bar: on a 3-button Android phone the
+          primary action otherwise sits under Back/Home/Recents. */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
         <TertiaryButton label={t('book.review.change')} onPress={() => router.back()} />
         <PrimaryButton
           label={t('book.review.cta')}

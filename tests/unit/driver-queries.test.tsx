@@ -13,10 +13,11 @@
  */
 
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
+  useAdvanceTrip,
   useDriverEarnings,
   useDriverOffer,
   useDriverOffers,
@@ -52,7 +53,14 @@ const offerRow = {
 
 beforeEach(() => {
   (supabase.rpc as jest.Mock).mockReset();
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      // A finished mutation otherwise schedules a 5-minute cache timer that
+      // outlives the test and holds the worker open.
+      mutations: { gcTime: Infinity },
+    },
+  });
 });
 
 afterEach(() => client.clear());
@@ -191,5 +199,21 @@ describe('useDriverPastTrips', () => {
     const { result } = await renderHook(() => useDriverPastTrips(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.[0].payout_baisa).toBeNull();
+  });
+});
+
+describe('useAdvanceTrip', () => {
+  // The trip screen and the home job card both read ['driver', 'trip', id].
+  // Refreshing only ['trips', 'mine'] left both showing "Truck assigned" and the
+  // "Yes, it is loaded" button after the trip had already started.
+  it('refreshes the trip the driver is looking at', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const { result } = await renderHook(() => useAdvanceTrip(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ tripId: 'trip-1', to: 'in_transit' });
+    });
+    const keys = spy.mock.calls.map(([f]) => (f as { queryKey: unknown[] }).queryKey);
+    expect(keys).toContainEqual(['driver']);
   });
 });

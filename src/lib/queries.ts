@@ -716,6 +716,10 @@ export function useAdvanceTrip() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
+      // The trip screen and the home job card read ['driver', 'trip', id];
+      // without this both kept offering "Yes, it is loaded" after the trip had
+      // started. Delivering also moves the week's earnings and past trips.
+      qc.invalidateQueries({ queryKey: ['driver'] });
     },
   });
 }

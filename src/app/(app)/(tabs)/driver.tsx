@@ -106,6 +106,9 @@ export default function DriverHome() {
     earnings.refetch();
     trips.refetch();
     cities.refetch();
+    // The job card has its own query. Leaving it out made pull-to-refresh
+    // update everything on this screen except the one card that leads it.
+    if (lead) job.refetch();
   }
 
   /**

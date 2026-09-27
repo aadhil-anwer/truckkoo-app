@@ -68,13 +68,16 @@ export function Sheet({
   children,
   tracking = false,
   style,
+  testID,
 }: {
   children: ReactNode;
   tracking?: boolean;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }) {
   return (
     <View
+      testID={testID}
       style={StyleSheet.flatten([
         styles.sheet,
         {
