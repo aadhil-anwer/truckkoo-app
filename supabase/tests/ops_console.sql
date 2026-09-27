@@ -1739,6 +1739,86 @@ select assert_true(
      from (select private.system_health() as h) x),
   'health is not ok while alerts have nowhere to go');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. Migration 0036 — tripwires
+-- ════════════════════════════════════════════════════════════════════════════
+
+select assert_true(
+  (select bool_and(not has_function_privilege('anon', f, 'execute')
+               and has_function_privilege('authenticated', f, 'execute'))
+     from unnest(array['public.admin_list_users()',
+                       'public.export_all_loads()',
+                       'public.set_user_role(uuid, text)']) f),
+  'the decoys are signed-in only — no anonymous endpoint without per-IP limits (0004)');
+
+select assert_true(
+  (select bool_and(not has_function_privilege(r, f, 'execute'))
+     from unnest(array['anon', 'authenticated']) r,
+          unnest(array['private.trip(text)', 'private.system_sweep_security_events()']) f)
+  and not has_table_privilege('authenticated', 'private.security_events', 'select')
+  and not has_table_privilege('anon', 'private.security_events', 'select'),
+  'nobody can call the trip directly, sweep it, or read who was caught');
+
+delete from private.security_events;
+delete from private.ops_alerts where kind = 'tripwire';
+create temp table tripwire_profile_before as
+  select to_jsonb(p) as row from public.profiles p
+   where p.id = '22222222-0000-4000-8000-00000000bbbb';
+
+-- A prober with a hostile user agent: it must be stored cut short and never
+-- forwarded to the webhook.
+select set_config('request.headers',
+  json_build_object('user-agent', repeat('x', 500) || ' <https://evil.example|click>',
+                    'x-forwarded-for', '203.0.113.9, 10.0.0.1')::text, true);
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+select assert_true((select public.admin_list_users() = '[]'::jsonb),
+  'a decoy answers like a real, empty endpoint');
+select public.export_all_loads();
+select public.set_user_role('22222222-0000-4000-8000-00000000bbbb', 'ops');
+select act_as_reset();
+select set_config('request.headers', '', true);
+
+select assert_true(
+  (select count(*) = 3 from private.security_events
+    where actor_id = '22222222-0000-4000-8000-00000000bbbb'),
+  'every decoy call is recorded against the account that made it');
+select assert_true(
+  (select ip = '203.0.113.9' and length(user_agent) = 200 from private.security_events
+    order by id limit 1),
+  'with the client IP, and the user agent truncated');
+select assert_true(
+  (select count(*) = 1 from private.ops_alerts where kind = 'tripwire'),
+  'one alert per account per hour, not one per call');
+select assert_true(
+  (select count(*) = 0 from private.ops_alerts
+    where kind = 'tripwire' and detail::text like '%evil.example%'),
+  'nothing the attacker controls reaches the alert');
+select assert_true(
+  (select to_jsonb(p) from public.profiles p
+    where p.id = '22222222-0000-4000-8000-00000000bbbb')
+  = (select row from tripwire_profile_before),
+  'and the decoy role change changed nothing');
+
+select act_as('22222222-0000-4000-8000-00000000bbbb');
+do $$
+begin
+  for i in 1..40 loop
+    perform public.admin_list_users();
+  end loop;
+end $$;
+select act_as_reset();
+select assert_true(
+  (select count(*) = 20 from private.security_events
+    where actor_id = '22222222-0000-4000-8000-00000000bbbb'),
+  'a flood from one account is capped, silently');
+
+update private.security_events set created_at = now() - interval '91 days';
+select assert_true((select private.system_sweep_security_events() = 20),
+  'events past retention are swept');
+select assert_true(
+  exists (select 1 from cron.job where jobname = 'sweep-security-events'),
+  'and the sweep is scheduled, not a button');
+
 do $$ begin raise notice 'ALL OPS CONSOLE ASSERTIONS HELD'; end $$;
 
 rollback;
