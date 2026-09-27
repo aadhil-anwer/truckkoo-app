@@ -23,6 +23,10 @@ Companions: `PRODUCT.md` (product truth), `STACK.md` (technical plan),
 
 ## 1. Threat model
 
+The full model — every component, network and operations included, with a
+prioritised risk register — is `docs/THREAT_MODEL.md`. This section is the
+summary.
+
 | Actor | Capability | What they want |
 |---|---|---|
 | Anonymous visitor | Public pages, any API they call | Scrape the rate card, scrape driver phone numbers, enumerate listings |
