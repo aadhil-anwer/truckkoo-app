@@ -26,7 +26,8 @@
       "channel": "preview",
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://sbwjfjphumqhdmmanimb.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://sbwjfjphumqhdmmanimb.supabase.co",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
 

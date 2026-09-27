@@ -33,8 +33,9 @@
  * keeps the compact row, so none is left without a way back to it.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -104,6 +105,12 @@ export default function DriverHome() {
   const job = useDriverTrip(lead?.id);
 
   const busy = offers.isPending || trips.isPending;
+  // Interactive once offers and trips have answered — the skeleton is not the
+  // screen. Only the first call per session is recorded.
+  const { markInteractive } = useObserve();
+  useEffect(() => {
+    if (!busy) markInteractive();
+  }, [busy, markInteractive]);
   const failed = offers.isError || trips.isError;
   useAnnounceOnError(failed, t('common.error.title'));
   useAnnounceOnError(job.isError, t('common.error.title'));

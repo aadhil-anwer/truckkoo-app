@@ -15,9 +15,10 @@
  * nobody signed out can read that table — inventing coordinates here to get
  * around it is exactly what `cities.lat/lng` exists to prevent.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useObserve } from 'expo-observe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
@@ -32,6 +33,12 @@ import { GUTTER_INK, alpha, color, font, space } from '@/theme/tokens';
 
 export default function Welcome() {
   const router = useRouter();
+  // The signed-out entry screen: interactive as soon as it is drawn — nothing
+  // on it waits for the network.
+  const { markInteractive } = useObserve();
+  useEffect(() => {
+    markInteractive();
+  }, [markInteractive]);
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState<null | 'google' | 'apple'>(null);
