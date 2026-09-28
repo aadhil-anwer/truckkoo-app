@@ -742,6 +742,50 @@ select assert_raises(
 select act_as_reset();
 
 -- ════════════════════════════════════════════════════════════════════════════
+-- 13. Ranked by where the truck is, not where its town says (0039)
+-- ════════════════════════════════════════════════════════════════════════════
+-- Seeb is ~30 km from Muscat; Sohar ~231. Wave 1 reaches 150.
+
+update public.offers set status = 'expired' where status = 'pending';
+update public.driver_availability set available = false, lat = null, lng = null,
+       accuracy_m = null, located_at = null;
+update public.driver_availability                         -- D: town Sohar, fresh point in Seeb
+   set available = true, city_id = city('Sohar'), lat = 23.67, lng = 58.19,
+       accuracy_m = 30, located_at = now() - interval '10 minutes'
+ where driver_id = 'd0000000-0000-4000-8000-000000000004';
+update public.driver_availability                         -- E: town Salalah, STALE point in Seeb
+   set available = true, city_id = city('Salalah'), lat = 23.67, lng = 58.19,
+       accuracy_m = 30, located_at = now() - interval '2 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000005';
+update public.driver_availability                         -- F: no town, COARSE point in Seeb
+   set available = true, city_id = null, lat = 23.67, lng = 58.19,
+       accuracy_m = 5000, located_at = now() - interval '5 minutes'
+ where driver_id = 'd0000000-0000-4000-8000-000000000006';
+
+select act_as('a0000000-0000-4000-8000-000000000001');
+create temp table located on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 6, current_date + 6,
+                               'Located cargo', 8000, null, :p8000);
+select act_as_reset();
+
+select assert_text(asked((select load_id from located)), 'D Sohar',
+  'a fresh, accurate point wins wave 1 though the town is 231 km away; stale and coarse points do not count');
+
+-- Fresh first: A Muscat's town is 0 km, D's fresh point ~40 km — with one offer per wave, D is asked.
+update public.offers set status = 'expired' where status = 'pending';
+update public.driver_availability set available = true, city_id = city('Muscat')
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';
+update private.app_settings set value = '1'::jsonb where key = 'auto_dispatch_max_offers';
+select act_as('a0000000-0000-4000-8000-000000000001');
+create temp table located_one on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 7, current_date + 7,
+                               'Fresh first', 8000, null, :p8000);
+select act_as_reset();
+select assert_text(asked((select load_id from located_one)), 'D Sohar',
+  'a driver we know is 40 km away outranks a town that says 0 km');
+update private.app_settings set value = '3'::jsonb where key = 'auto_dispatch_max_offers';
+
+-- ════════════════════════════════════════════════════════════════════════════
 -- 10. Static checks over everything 0036 added
 -- ════════════════════════════════════════════════════════════════════════════
 

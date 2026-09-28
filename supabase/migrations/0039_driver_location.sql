@@ -201,3 +201,77 @@ end;
 $$;
 
 revoke all on function private.trip_availability() from public, anon, authenticated;
+
+-- 0037's nearby_drivers, measured from the exact point when it is fresh and
+-- accurate, else from the town as before. Fresh first: a driver we KNOW is 40 km
+-- away outranks a town that says 0 km for a truck last seen yesterday.
+create or replace function private.nearby_drivers(
+  p_load_id uuid, p_radius_km numeric, p_include_unlocated boolean, p_limit integer
+)
+returns table(driver_id uuid, truck_id uuid, deadhead_km numeric, pending bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with l as (
+    select lo.id, lo.origin_city, lo.weight_kg, lo.truck_type_code
+    from public.loads lo where lo.id = p_load_id
+  )
+  select p.id, tk.id, km.v, coalesce(pc.n, 0)
+  from public.profiles p
+  cross join l
+  join public.driver_availability da on da.driver_id = p.id and da.available
+  join lateral (
+    select t.id, t.capacity_kg
+    from public.trucks t
+    where t.owner_id = p.id
+      and (l.truck_type_code is null or t.truck_type = l.truck_type_code)
+      and (l.weight_kg is null or coalesce(t.capacity_kg, 2147483647) >= l.weight_kg)
+    order by t.capacity_kg asc nulls last
+    limit 1
+  ) tk on true
+  cross join lateral (
+    select (da.lat is not null
+            and da.located_at > now() - make_interval(
+                  mins => private.setting_int('dispatch_location_fresh_minutes', 45))
+            and coalesce(da.accuracy_m, 0) <= 1000) as fresh
+  ) fr
+  left join lateral (
+    select case
+      when fr.fresh then private.point_km(da.lat::numeric, da.lng::numeric, l.origin_city)
+      when da.city_id is not null then private.route_km(da.city_id, l.origin_city)
+    end as v
+  ) km on true
+  left join lateral (
+    select count(*) as n from public.offers o
+    where o.driver_id = p.id and o.status = 'pending' and o.expires_at > now()
+  ) pc on true
+  where p.role = 'driver'
+    and p.suspended_at is null
+    and (not private.setting_bool('require_verified_driver', true)
+         or private.is_verified_driver(p.id))
+    and not exists (
+      select 1 from public.offers o
+      where o.load_id = p_load_id and o.driver_id = p.id
+        and not (
+          (o.status = 'expired' or (o.status = 'pending' and o.expires_at <= now()))
+          and da.updated_at > o.created_at
+        )
+    )
+    and not exists (
+      select 1 from public.trips t
+      where t.driver_id = p.id
+        and t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+    )
+    and (
+      (km.v is not null and km.v <= p_radius_km)
+      or (km.v is null and p_include_unlocated)
+    )
+  order by fr.fresh desc, km.v asc nulls last, coalesce(pc.n, 0) asc,
+           tk.capacity_kg asc nulls last, p.id
+  limit p_limit;
+$$;
+
+revoke all on function private.nearby_drivers(uuid, numeric, boolean, integer)
+  from public, anon, authenticated;
