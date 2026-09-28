@@ -523,6 +523,10 @@ export type Availability = {
 export function useMyAvailability() {
   return useQuery({
     queryKey: ['driver', 'availability'],
+    // The server turns the switch off after twelve idle hours, and a delivery
+    // turns it on. Read once, the card kept saying "online" to a driver the
+    // server had already taken out of every wave.
+    refetchInterval: 60_000,
     queryFn: async (): Promise<Availability | null> => {
       const { data, error } = await supabase
         .from('driver_availability')

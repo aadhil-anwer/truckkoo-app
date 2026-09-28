@@ -277,7 +277,13 @@ search in one call. `private.next_wave` offers the load to the nearest online,
 verified, fitting drivers (`driver_availability`, declared legs first), three at
 a time for five minutes, the radius widening with time (`dispatch_*` settings);
 the every-minute `dispatch-waves` job advances it; after 15 minutes a person is
-alerted once. `private.loads_machine_guard` stops older paths handing a load the
+alerted once. The machine keeps looking after that (0037, `dispatch-rescue`): an
+accepted load nobody has taken is offered to any driver who comes online, until
+its collection date — unless a dispatcher has taken it in hand. A lapsed offer
+is not a "no": a driver who switches on again is re-asked; a decline is final.
+**Any function that writes is `volatile`** — PostgREST runs `stable` ones
+read-only, so `quote_route` failed for every shipper in production while every
+psql test passed; dispatch.sql §10 now checks the whole class statically. `private.loads_machine_guard` stops older paths handing a load the
 machine still owns to a person between waves; a dispatcher's own move is never
 redirected. It still fails *open into the human path* — logged in
 `private.dispatch_log`. `dispatch_log`'s check constraints list every mode: add
