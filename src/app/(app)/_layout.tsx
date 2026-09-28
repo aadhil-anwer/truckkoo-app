@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 
 import { MapPlacesProvider } from '@/map';
+import { LocationTrackingProvider } from '@/lib/location-tracking';
 import { useCities } from '@/lib/queries';
 import { color } from '@/theme/tokens';
 
@@ -9,13 +10,15 @@ export default function AppLayout() {
   // cached `cities` rows, and the map module never fetches anything itself.
   const { data: cities } = useCities();
   return (
-    <MapPlacesProvider places={cities}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: color.creamCard },
-        }}
-      />
-    </MapPlacesProvider>
+    <LocationTrackingProvider>
+      <MapPlacesProvider places={cities}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: color.creamCard },
+          }}
+        />
+      </MapPlacesProvider>
+    </LocationTrackingProvider>
   );
 }

@@ -14,6 +14,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
 import { t } from '@/i18n';
+import { stopTracking } from './background-location';
 import { OMAN_DIAL } from './auth-draft';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
@@ -322,6 +323,9 @@ export async function finishSetup(input: {
 }
 
 export async function signOut(): Promise<void> {
+  // Before the session goes: a shared phone must never report a position under
+  // the account that just left. A failure to stop does not block signing out.
+  await stopTracking().catch(() => {});
   // Global scope revokes server-side, not just locally (SECURITY.md §2).
   await supabase.auth.signOut({ scope: 'global' });
 }
