@@ -10,8 +10,9 @@ import { ScrollView, Text, View, StyleSheet } from 'react-native';
 
 import { MapStepShell } from '@/components/booking/shells';
 import { CityList } from '@/components/booking/CityList';
+import { PlaceSearch } from '@/components/booking/PlaceSearch';
 import { PrimaryButton } from '@/components/primitives';
-import { QuestionHeading } from '@/components/ui';
+import { QuestionHeading, SectionLabel } from '@/components/ui';
 import { CityPin, framingFor } from '@/map';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useCities } from '@/lib/queries';
@@ -54,11 +55,23 @@ export default function Origin() {
         </QuestionHeading>
         <Text style={styles.help}>{t('book.origin.help')}</Text>
 
+        <View style={styles.search}>
+          <PlaceSearch
+            onPicked={(p) => {
+              update({ originPlace: { ...p, note: '', contactName: '', contactPhone: '' } });
+              router.push({ pathname: '/book/pin', params: { end: 'pickup' } });
+            }}
+          />
+        </View>
+
         <View style={styles.list}>
+          <SectionLabel>{t('places.search.or')}</SectionLabel>
           <CityList
             cities={cities ?? []}
             selectedId={draft.originCityId}
-            onSelect={(c) => update({ originCityId: c.id })}
+            // A city chosen by hand replaces any place: a pin in Barka must not
+            // travel with a load that now starts in Sohar.
+            onSelect={(c) => update({ originCityId: c.id, originPlace: null })}
             excludeId={draft.destinationCityId}
           />
         </View>
@@ -87,6 +100,7 @@ const styles = StyleSheet.create({
     textAlign: align.start,
     marginTop: space.xs,
   },
-  list: { marginTop: space.lg },
+  search: { marginTop: space.md },
+  list: { marginTop: space.lg, gap: space.sm },
   footer: { paddingTop: space.md, backgroundColor: color.surface },
 });
