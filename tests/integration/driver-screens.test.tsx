@@ -18,7 +18,6 @@ import {
   OFFER_ID,
   driverOffer,
   driverTrip,
-  mockReporterArgs,
   tripPosition,
   load,
   mockParams,
@@ -699,11 +698,15 @@ describe('OnTheJob', () => {
     expect(screen.queryByText('Sharing your position with the shipper')).toBeNull();
   });
 
-  it('reports only while the trip is live', async () => {
-    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+  it('says when the truck was last seen, from what the server holds', async () => {
+    // The background task (0039) reports; D7 only reads. The age comes from the
+    // server's latest fix, so it is true even when the app was closed.
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
     await render(<TripDetail />);
-    // usePositionReporter(tripId, active)
-    expect(mockReporterArgs[1]).toBe(false);
+    expect(screen.getByText('Last sent 4 min ago')).toBeTruthy();
   });
 
   it('draws its own last reported position, never a guess', async () => {

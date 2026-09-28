@@ -735,36 +735,6 @@ export function useTripPosition(tripId: string | undefined) {
   });
 }
 
-/**
- * Report one fix. Resolves `false` when the trip is no longer live, which is not
- * an error — the delivery transition and the last queued ping race by seconds,
- * and the driver must not see a failure at the gate.
- */
-export function useReportPosition() {
-  return useMutation({
-    mutationFn: async ({
-      tripId,
-      lat,
-      lng,
-      accuracyM,
-    }: {
-      tripId: string;
-      lat: number;
-      lng: number;
-      accuracyM?: number | null;
-    }): Promise<boolean> => {
-      const { data, error } = await supabase.rpc('report_position', {
-        p_trip_id: tripId,
-        p_lat: lat,
-        p_lng: lng,
-        p_accuracy_m: accuracyM ?? null,
-      });
-      if (error) throw error;
-      return data === true;
-    },
-  });
-}
-
 export function useMyTrips() {
   return useQuery({
     queryKey: ['trips', 'mine'],

@@ -46,7 +46,6 @@ import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBan
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
-import { usePositionReporter } from '@/lib/position';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
@@ -81,11 +80,10 @@ export default function TripScreen() {
   const trip = job.data;
 
   const live = trip?.status === 'in_transit';
-  // The reporter runs only on a live trip. `report_position` refuses anything
-  // else server-side (0032), so this is the client agreeing with the database
-  // rather than the client being the control.
-  const { lastSentAt } = usePositionReporter(id, live);
   const position = useTripPosition(live ? id : undefined);
+  // The background task (0039) reports, with the app open or not; D7 only reads
+  // what the server holds, so "last sent" is true even after the app was closed.
+  const lastSentAt = position.data?.seen_at ?? null;
 
   const origin = trip ? index.get(trip.origin_city) : undefined;
   const dest = trip ? index.get(trip.dest_city) : undefined;
