@@ -16,6 +16,7 @@ import { SecondaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { StatusPill } from '@/components/ui';
 import { align, t } from '@/i18n';
+import type { LocationAccess } from '@/lib/background-location';
 import { alpha, color, font, radius, space } from '@/theme/tokens';
 
 export function AvailabilityCard({
@@ -23,13 +24,32 @@ export function AvailabilityCard({
   town,
   pending,
   onToggle,
+  location,
+  lastSentAge,
+  onFixLocation,
 }: {
   available: boolean;
   /** Localised town name, or null when it is not known yet. */
   town: string | null;
   pending: boolean;
   onToggle: () => void;
+  /** What the phone lets us do (0039); null until known. */
+  location: LocationAccess | null;
+  /** formatAge(located_at) — null when nothing has been sent yet. */
+  lastSentAge: string | null;
+  onFixLocation: () => void;
 }) {
+  // Only while available: offline, nothing is tracked, so there is nothing to say.
+  const locationLine =
+    !available || location === null
+      ? null
+      : location === 'always'
+        ? lastSentAge
+          ? t('loc.card.always', { age: lastSentAge })
+          : t('loc.card.waiting')
+        : location === 'foreground'
+          ? t('loc.card.foreground')
+          : t('loc.card.none');
   return (
     <View
       testID="availability-card"
@@ -39,6 +59,7 @@ export function AvailabilityCard({
       accessibilityLabel={[
         t(available ? 'drv.avail.on' : 'drv.avail.off'),
         town ? t('drv.avail.near', { city: town }) : t('drv.avail.unknown'),
+        ...(locationLine ? [locationLine] : []),
       ].join(', ')}
     >
       <View style={styles.head}>
@@ -50,6 +71,10 @@ export function AvailabilityCard({
         </Text>
       </View>
       <Text style={styles.help}>{t(available ? 'drv.avail.help' : 'drv.avail.why')}</Text>
+      {!!locationLine && <Text style={styles.help}>{locationLine}</Text>}
+      {!!locationLine && location !== 'always' && (
+        <SecondaryButton label={t('loc.card.turnOn')} onPress={onFixLocation} icon="pickup" />
+      )}
       <SecondaryButton
         label={t(available ? 'drv.avail.goOff' : 'drv.avail.goOn')}
         onPress={onToggle}

@@ -517,6 +517,8 @@ export type Availability = {
   city_id: number | null;
   source: 'gps' | 'delivery' | 'manual';
   updated_at: string;
+  /** When the phone last sent a point (0039). The point itself is never readable. */
+  located_at: string | null;
 };
 
 /** The driver's own switch and town. NULL until they have ever set it. */
@@ -530,7 +532,7 @@ export function useMyAvailability() {
     queryFn: async (): Promise<Availability | null> => {
       const { data, error } = await supabase
         .from('driver_availability')
-        .select('available, city_id, source, updated_at')
+        .select('available, city_id, source, updated_at, located_at')
         .maybeSingle();
       if (error) throw error;
       return (data as Availability | null) ?? null;

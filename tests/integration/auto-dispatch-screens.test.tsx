@@ -18,7 +18,10 @@ import {
   SALALAH,
   TRUCK,
   mockBookMutate,
+  mockBack,
   mockLocation,
+  mockLocationAccess,
+  mockPush,
   mockSetAvailableMutate,
   ok,
   PENDING,
@@ -29,6 +32,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Review from '@/app/(app)/book/review';
 import DriverHome from '@/app/(app)/(tabs)/driver';
+import LocationPermission from '@/app/(app)/location-permission';
+import { __resetLocationPrompt } from '@/lib/location-prompt';
 import { expiryLabel } from '@/components/driver/OfferCard';
 import { initLanguage } from '@/i18n';
 import * as queries from '@/lib/queries';
@@ -177,5 +182,91 @@ describe('Offers — minutes, and a lost race', () => {
     expect(offerErrorMessage({ message: 'offer already resolved', code: '23514' })).toBe(
       offerErrorMessage(new Error('load already assigned')),
     );
+  });
+});
+
+describe('Driver location — background GPS (0039)', () => {
+  const online = (over: Record<string, unknown> = {}) =>
+    m('useMyAvailability').mockReturnValue(
+      ok({
+        available: true,
+        city_id: MUSCAT.id,
+        source: 'gps',
+        updated_at: new Date().toISOString(),
+        located_at: null,
+        ...over,
+      }),
+    );
+
+  beforeEach(() => {
+    __resetLocationPrompt();
+    mockPush.mockReset();
+    mockBack.mockReset();
+  });
+
+  it.each([
+    ['always', 'Location on · waiting for the first reading'],
+    ['foreground', 'Location only while the app is open'],
+    ['none', 'Location off · you get loads near your town'],
+  ] as const)('%s shows its line', async (access, line) => {
+    mockLocationAccess.access = access;
+    online();
+    await render(<DriverHome />);
+    expect(screen.getByText(line)).toBeTruthy();
+  });
+
+  it('offers "Turn on location" when it is not Always', async () => {
+    mockLocationAccess.access = 'foreground';
+    online();
+    await render(<DriverHome />);
+    expect(screen.getByText('Turn on location')).toBeTruthy();
+  });
+
+  it('does not offer it when it is already Always', async () => {
+    mockLocationAccess.access = 'always';
+    online();
+    await render(<DriverHome />);
+    expect(screen.queryByText('Turn on location')).toBeNull();
+  });
+
+  it('says when the last point was sent', async () => {
+    mockLocationAccess.access = 'always';
+    online({ located_at: new Date(Date.now() - 4 * 60_000).toISOString() });
+    await render(<DriverHome />);
+    expect(screen.getByText(/^Location on · last sent/)).toBeTruthy();
+  });
+
+  it('shows no location line while offline', async () => {
+    mockLocationAccess.access = 'none';
+    online({ available: false });
+    await render(<DriverHome />);
+    expect(screen.queryByText('Location off · you get loads near your town')).toBeNull();
+  });
+
+  it('opens the disclosure — never the OS prompt directly — once per launch', async () => {
+    mockLocationAccess.access = 'foreground';
+    online();
+    // Two home screens mounted in one launch — the second must not ask again.
+    await render(<DriverHome />);
+    await render(<DriverHome />);
+    expect(mockPush.mock.calls.filter((c) => c[0] === '/location-permission')).toHaveLength(1);
+    expect(mockLocationAccess.request).not.toHaveBeenCalled();
+  });
+
+  it('the disclosure asks one question, then requests on Continue', async () => {
+    await render(<LocationPermission />);
+    expect(screen.getByText('Let Truckkoo see where your truck is, even when the app is closed?')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Continue'));
+    });
+    expect(mockLocationAccess.request).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('"Not now" asks nothing', async () => {
+    await render(<LocationPermission />);
+    fireEvent.press(screen.getByLabelText('Not now'));
+    expect(mockLocationAccess.request).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
   });
 });

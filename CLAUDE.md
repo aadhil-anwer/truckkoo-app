@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
    and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **211 of its strings are
+   The Arabic dictionary is complete as of P7, but **222 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website

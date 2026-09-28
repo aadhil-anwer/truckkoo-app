@@ -38,7 +38,6 @@ import { useRouter } from 'expo-router';
 import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 
 import { Icon } from '@/components/icon';
 import { AvailabilityCard } from '@/components/driver/Availability';
@@ -48,6 +47,10 @@ import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
 import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
+import { currentFix } from '@/lib/background-location';
+import { formatAge } from '@/lib/format';
+import { useLocationAccess } from '@/lib/location-tracking';
+import { claimLocationPrompt } from '@/lib/location-prompt';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
 import { offerErrorMessage } from '@/lib/offer-errors';
@@ -84,6 +87,20 @@ export default function DriverHome() {
   const respond = useRespondToOffer();
   const availability = useMyAvailability();
   const setAvailable = useSetAvailable();
+  const location = useLocationAccess();
+
+  // Online without "Allow all the time": explain, once per launch, then let the
+  // disclosure screen ask. Never the OS prompt straight from here.
+  useEffect(() => {
+    if (
+      availability.data?.available &&
+      location.access !== null &&
+      location.access !== 'always' &&
+      claimLocationPrompt()
+    ) {
+      router.push('/location-permission');
+    }
+  }, [availability.data?.available, location.access, router]);
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
@@ -118,35 +135,19 @@ export default function DriverHome() {
   /**
    * Go available or offline.
    *
-   * Going available reads the position ONCE, foreground only, and the server
-   * keeps just the nearest town. No permission, no fix, or a slow fix are all
-   * fine: the server falls back to where the last delivery ended, and the card
-   * says the town it settled on so a wrong one is visible.
+   * Going available sends one position if the phone already lets us read it,
+   * and the background task (0039) takes over from there. It never raises the
+   * OS prompt itself: the disclosure screen asks first, in our words (spec
+   * §5.3). No permission, no fix, or a slow fix are all fine — the server falls
+   * back to where the last delivery ended, and the card says which town.
    */
   async function toggleAvailable() {
     setError(null);
     const goingOn = !availability.data?.available;
     let coords: { lat: number; lng: number } | undefined;
     if (goingOn) {
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.granted) {
-          // A fix indoors can take a minute; a driver tapping a switch will not
-          // wait that long. Eight seconds, then without — and the timer is
-          // cleared either way rather than left running.
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          const fix = await Promise.race([
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-            new Promise<null>((resolve) => {
-              timer = setTimeout(() => resolve(null), 8000);
-            }),
-          ]).finally(() => clearTimeout(timer));
-          if (fix) coords = { lat: fix.coords.latitude, lng: fix.coords.longitude };
-        }
-      } catch {
-        // Location off at the OS level, or no fix indoors. Not a reason to stay
-        // offline — the town comes from the last delivery instead.
-      }
+      const fix = await currentFix();
+      if (fix) coords = fix;
     }
     setAvailable.mutate(
       { available: goingOn, ...coords },
@@ -230,6 +231,9 @@ export default function DriverHome() {
             town={availability.data?.city_id != null ? cityName(availability.data.city_id) : null}
             pending={setAvailable.isPending}
             onToggle={toggleAvailable}
+            location={location.access}
+            lastSentAge={formatAge(availability.data?.located_at ?? null)}
+            onFixLocation={() => router.push('/location-permission')}
           />
         )}
 

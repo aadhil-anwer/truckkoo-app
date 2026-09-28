@@ -36,7 +36,7 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Shipper home (S1, S2)', prefixes: ['home.', 'cust.'] },
   { title: 'Booking (S3–S9)', prefixes: ['book.', 'post.', 'step.', 'load.', 'review.'] },
   { title: 'Price and tracking (T1–T5)', prefixes: ['price.', 'track.', 'pos.', 'trip.', 'event.', 'note.'] },
-  { title: 'Driver (D1–D7)', prefixes: ['drv.', 'driver.', 'leg.'] },
+  { title: 'Driver (D1–D7)', prefixes: ['drv.', 'driver.', 'leg.', 'loc.'] },
   { title: 'Loads list (X1)', prefixes: ['loads.', 'status.'] },
   { title: 'Account (X2)', prefixes: ['account.', 'whatsapp.'] },
   {

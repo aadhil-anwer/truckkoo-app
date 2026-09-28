@@ -155,8 +155,26 @@ export const mockLocation = {
 };
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
+  ActivityType: { AutomotiveNavigation: 2 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ granted: mockLocation.granted })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: mockLocation.granted })),
   getCurrentPositionAsync: jest.fn(async () => mockLocation.fix),
+}));
+
+/**
+ * The tracking policy is mocked whole: it owns the OS background task, which no
+ * screen test should start. Screens read `access` and call `request`; these are
+ * what the tests set and assert. Default 'always', so no screen is prompted
+ * unless a test asks for it.
+ */
+export const mockLocationAccess = {
+  access: 'always' as 'always' | 'foreground' | 'none' | null,
+  refresh: jest.fn(),
+  request: jest.fn(async () => 'always'),
+};
+jest.mock('@/lib/location-tracking', () => ({
+  LocationTrackingProvider: ({ children }: { children: unknown }) => children,
+  useLocationAccess: () => mockLocationAccess,
 }));
 
 /* ─── fixtures ───────────────────────────────────────────────────────────── */
@@ -309,6 +327,8 @@ export function resetQueries(queries: Record<string, unknown>) {
   mockPostLegMutate.mockResolvedValue('leg-new');
   mockAdvanceMutate.mockReset();
   mockSetAvailableMutate.mockReset();
+  mockLocationAccess.access = 'always';
+  mockLocationAccess.request.mockReset().mockResolvedValue('always');
   mockBookMutate.mockReset();
   mockAdvanceMutate.mockResolvedValue(undefined);
   mockParams.current = {};

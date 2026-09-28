@@ -105,9 +105,15 @@ export async function requestLocationAccess(): Promise<LocationAccess> {
   return bg.granted ? 'always' : 'foreground';
 }
 
+/**
+ * One fix within eight seconds — ONLY if the phone already allows it. This never
+ * raises the OS prompt: asking is the disclosure screen's job (spec §5.3).
+ */
 export async function currentFix(): Promise<{ lat: number; lng: number } | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    const fg = await Location.getForegroundPermissionsAsync();
+    if (!fg.granted) return null;
     const fix = await Promise.race([
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
       new Promise<null>((resolve) => {
