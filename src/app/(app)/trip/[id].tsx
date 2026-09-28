@@ -80,7 +80,7 @@ export default function TripScreen() {
   const trip = job.data;
 
   const live = trip?.status === 'in_transit';
-  const position = useTripPosition(live ? id : undefined);
+  const position = useTripPosition(live ? id : undefined, { live: true });
   // The background task (0039) reports, with the app open or not; D7 only reads
   // what the server holds, so "last sent" is true even after the app was closed.
   const lastSentAt = position.data?.seen_at ?? null;

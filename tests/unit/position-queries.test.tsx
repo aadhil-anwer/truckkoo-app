@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useTripPosition } from '@/lib/queries';
@@ -90,5 +90,40 @@ describe('useTripPosition', () => {
     await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
 
     expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  describe('polling', () => {
+    const row = {
+      lat: '23.588000', lng: '58.408000', seen_at: '2026-07-31T09:00:00Z', accuracy_m: '12',
+      remaining_km: '1030.4', eta_at: '2026-07-31T20:00:00Z', eta_source: 'fix',
+    };
+
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    // The phone reports every 30 s on a trip (CADENCE.trip); asking every 20 s
+    // means a new fix is on screen within 20 s of arriving.
+    it('asks again every 20 s while the load is moving', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValue({ data: [row], error: null });
+      const { result } = await renderHook(() => useTripPosition('trip-1', { live: true }), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(supabase.rpc).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(20_000);
+      });
+      await waitFor(() => expect(supabase.rpc).toHaveBeenCalledTimes(2));
+    });
+
+    it('does not keep asking when nothing is moving', async () => {
+      (supabase.rpc as jest.Mock).mockResolvedValue({ data: [row], error: null });
+      const { result } = await renderHook(() => useTripPosition('trip-1'), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      await act(async () => {
+        jest.advanceTimersByTime(120_000);
+      });
+      expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    });
   });
 });

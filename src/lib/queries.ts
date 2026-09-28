@@ -705,14 +705,15 @@ export type TripPosition = {
   eta_source: 'fix' | 'corridor';
 };
 
-export function useTripPosition(tripId: string | undefined) {
+export function useTripPosition(tripId: string | undefined, { live = false }: { live?: boolean } = {}) {
   return useQuery({
     queryKey: ['trip', 'position', tripId],
     enabled: !!tripId,
     // A position is the one thing on T4 that changes without the shipper doing
-    // anything. Sixty seconds matches the driver's own reporting interval —
-    // asking faster cannot produce a newer fix.
-    refetchInterval: 60_000,
+    // anything. The phone reports every 30 s on a trip (CADENCE.trip), so asking
+    // every 20 s puts a new fix on screen within 20 s of it arriving. Only while
+    // the load is moving: before pickup and after delivery nothing changes.
+    refetchInterval: live ? 20_000 : false,
     queryFn: async (): Promise<TripPosition | null> => {
       const { data, error } = await supabase.rpc('trip_position', { p_trip_id: tripId });
       if (error) throw error;

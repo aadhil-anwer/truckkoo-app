@@ -34,7 +34,7 @@ import {
 } from './harness';
 
 import { Linking } from 'react-native';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { act, render, screen, fireEvent } from '@testing-library/react-native';
 
 import CustomerHome from '@/app/(app)/(tabs)/customer';
 import LoadsTab from '@/app/(app)/(tabs)/loads';
@@ -514,6 +514,50 @@ describe('TrackLoad', () => {
       (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
       await render(<TrackLoad />);
       expect(screen.getByText(/Seen/)).toBeTruthy();
+    });
+
+    it('counts the age of the fix up while the shipper watches', async () => {
+      // A fix arrives every 30 s. Between two of them the label must keep
+      // telling the truth about how old the one on screen is.
+      jest.useFakeTimers();
+      try {
+        (queries.useTripPosition as jest.Mock).mockReturnValue(
+          ok(tripPosition({ seen_at: new Date(Date.now() - 20_000).toISOString() })),
+        );
+        await render(<TrackLoad />);
+        expect(screen.getByText('Seen 20 s ago')).toBeTruthy();
+
+        await act(async () => {
+          jest.advanceTimersByTime(15_000);
+        });
+        expect(screen.getByText('Seen 35 s ago')).toBeTruthy();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('hands the reported point to Google Maps for the close-up', async () => {
+      // Our map shows the corridor; streets are Google's. The Uber pattern: our
+      // own map in the app, and a button that opens the real one.
+      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ lat: 23.588, lng: 58.408 })),
+      );
+      await render(<TrackLoad />);
+      await fireEvent.press(screen.getByLabelText('Open in Google Maps'));
+      expect(openURL).toHaveBeenCalledWith(
+        'https://www.google.com/maps/search/?api=1&query=23.588000%2C58.408000',
+      );
+    });
+
+    it('offers no Google Maps button when nobody has reported a position', async () => {
+      // No fix, no marker, no button: a link to a guessed point is the same lie
+      // as a marker at one.
+      (queries.useTripPosition as jest.Mock).mockReturnValue(
+        ok(tripPosition({ lat: null, lng: null, seen_at: null, eta_source: 'corridor' })),
+      );
+      await render(<TrackLoad />);
+      expect(screen.queryByLabelText('Open in Google Maps')).toBeNull();
     });
 
     it('dims a marker the shipper should not read as current', async () => {

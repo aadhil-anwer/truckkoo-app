@@ -86,3 +86,21 @@ export function whatsappLink(message?: string): string {
   if (!message) return base;
   return `${base}?text=${encodeURIComponent(safeText(message))}`;
 }
+
+/**
+ * The truck's reported point, opened in Google Maps (T4's "Open in Google
+ * Maps"). Our map shows the whole corridor; this is the close-up with streets,
+ * handed to the app the shipper already has — the Uber pattern.
+ *
+ * The universal URL opens the Google Maps app when it is installed and the
+ * browser when it is not, on both platforms. Digits are `toFixed`, never
+ * `formatNumber`: in Arabic that renders ٢٣٫٥٨٨, which Google cannot read. A
+ * URL is not copy. Anything that is not a finite coordinate gives no link, so
+ * the caller shows no button rather than a link to nowhere.
+ */
+export function mapsLink(lat: number, lng: number): string | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const query = encodeURIComponent(`${lat.toFixed(6)},${lng.toFixed(6)}`);
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}

@@ -250,7 +250,7 @@ function MovingCard({
   const destination = cityName(load.dest_city);
 
   // Only a load actually on the road can have a fix behind it.
-  const position = useTripPosition(load.status === 'in_transit' ? tripId : undefined);
+  const position = useTripPosition(load.status === 'in_transit' ? tripId : undefined, { live: true });
   const eta = position.data?.eta_at ?? null;
   const price =
     load.price_baisa == null ? null : formatMoney(load.price_baisa, load.currency as Currency);

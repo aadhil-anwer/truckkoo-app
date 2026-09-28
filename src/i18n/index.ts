@@ -161,6 +161,8 @@ const en = {
   'drv.job.open': 'Open this job',
   // ── P6 · where the truck is ──────────────────────────────────────────────
   'pos.now': 'just now',
+  'pos.secondsAgo': '{seconds} s ago',
+  'pos.openInMaps': 'Open in Google Maps',
   'pos.min': 'min ago',
   'pos.hour': 'h ago',
   'pos.day': 'd ago',
@@ -1202,6 +1204,8 @@ const ar: Partial<Record<StringKey, string>> = {
   'loc.card.foreground': 'الموقع يعمل فقط والتطبيق مفتوح',
   'loc.card.none': 'الموقع متوقف · تصلك الشحنات القريبة من مدينتك',
   'loc.card.turnOn': 'تفعيل الموقع',
+  'pos.secondsAgo': 'منذ {seconds} ثانية',
+  'pos.openInMaps': 'افتح في خرائط Google',
 };
 
 /**

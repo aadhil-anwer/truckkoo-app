@@ -57,7 +57,7 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   Reverse with `drivers_online_by_default = false`. Revisit once push lands.
 - **Driver background GPS is built (0039, app 1.1.0) and has never run on a
   real phone** (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`).
-  Before drivers get it: `npx supabase db push` (0039); a 1.1.0 preview build
+  Before drivers get it: `npx supabase db push` (0039, 0040); a 1.1.0 preview build
   (a native change — `eas update` cannot deliver it, and a 1.0.0 build must not
   receive 1.1.0 JS); the Google Play background-location declaration with a video
   of the disclosure screen; the device check below. Known gaps: iOS permission
@@ -76,8 +76,9 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
      public.driver_availability where driver_id = '<id>'` — updated within
      ~15 min / 2 km.
   4. Go offline → notification gone; drive 3 km; `located_at` and `lat` are null.
-  5. Take a demo load, start the trip → the shipper's T4 moves every ~2 min with
-     the driver's app closed.
+  5. Take a demo load, start the trip → with the driver's app closed, the
+     shipper's T4 "Seen … s ago" resets at least every ~30 s (0040), and "Open in
+     Google Maps" drops a pin where the truck is.
   6. Reboot the phone, open the app once → notification returns.
   7. Sign out → notification gone.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
@@ -348,7 +349,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 222 Arabic strings have never been read by someone who reads Arabic
+### 224 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -358,7 +359,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 222 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, and 11 driver-location strings, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 224 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` + `pos.openInMaps` for live T4, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
