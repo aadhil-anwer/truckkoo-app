@@ -143,3 +143,13 @@ jest.mock('expo-location', () => ({
   getCurrentPositionAsync: jest.fn(async () => null),
   reverseGeocodeAsync: jest.fn(async () => []),
 }));
+
+/* ─── react-native-maps (native; one screen uses it) ─────────────────────── */
+
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MapView = (props: Record<string, unknown>) =>
+    React.createElement(View, { testID: props.testID, onRegionChangeComplete: props.onRegionChangeComplete });
+  return { __esModule: true, default: MapView, PROVIDER_GOOGLE: 'google' };
+});

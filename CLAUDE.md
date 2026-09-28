@@ -194,6 +194,13 @@ projected by one `d3-geo` Mercator fitted to one of two fixed framings, drawn wi
 every screen picks a framing. Children take the projection from **context**, so a
 pin and its coastline cannot disagree.
 
+**One exception (0041, 2026-09-28):** the booking pin screen
+(`src/components/booking/PinAdjustMap.tsx`) uses `react-native-maps` — Google on
+Android, Apple Maps on iOS — because putting a pin on a gate needs streets and
+panning. It is the only importer (`tests/unit/map-import-guard.test.ts`); the
+key comes from the EAS env var `GOOGLE_MAPS_ANDROID_KEY` via `app.config.ts`.
+Every other map stays `src/map`.
+
 Two map distinctions carry meaning: **dashed corridor = uncommitted, solid =
 committed**, and **origin is a ring, destination is a filled square** (matching
 `RouteRail`). `tests/components/map.test.tsx` guards both.
