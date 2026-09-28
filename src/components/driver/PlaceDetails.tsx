@@ -25,6 +25,9 @@ export function DriverPlaceDetails({ label, place }: { label: string; place: Loa
       <SectionLabel>{label}</SectionLabel>
       {!!place.name && <Text style={styles.name}>{oneLine(safeText(place.name))}</Text>}
       {!!place.note && <Text style={styles.note}>{safeText(place.note)}</Text>}
+      {!phone && !!place.contactName && (
+        <Text style={styles.note}>{t('places.askFor', { name: safeText(place.contactName) })}</Text>
+      )}
       {!!phone && (
         <View style={styles.contact}>
           <Text style={styles.contactName} numberOfLines={1}>

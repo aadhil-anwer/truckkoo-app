@@ -682,6 +682,15 @@ describe('OnTheJob', () => {
     expect(openURL).toHaveBeenCalledWith('tel:+96890000000');
   });
 
+  it('names the person at the gate even without a number', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse', pickup_contact_name: 'Rashid',
+    })));
+    await render(<TripDetail />);
+    expect(screen.getByText('Ask for Rashid')).toBeTruthy();
+    expect(screen.queryByLabelText('Call Rashid')).toBeNull();
+  });
+
   it('shows what the driver earns beside where it drops', async () => {
     await render(<TripDetail />);
     expect(screen.getByText('YOU EARN')).toBeTruthy();

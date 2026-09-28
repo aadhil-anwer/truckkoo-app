@@ -3,7 +3,7 @@
  * drop-off steps. The city list stays underneath, always: every failure here
  * (no signal, search down, permission refused) ends at a city, never at a wall.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
@@ -19,6 +19,24 @@ export function PlaceSearch({ onPicked }: { onPicked: (p: PickedPlace) => void }
   const { query, setQuery, suggestions, status, pick } = usePlaceSearch();
   const [gpsRefused, setGpsRefused] = useState(false);
   const [locating, setLocating] = useState(false);
+  // One pick at a time. On bad signal a second tap would spend a second Details
+  // call outside the session (billed) and stack a second pin screen. A ref, not
+  // state: the second tap can land before a re-render would disable the row.
+  const picking = useRef(false);
+  const [pickingId, setPickingId] = useState<string | null>(null);
+
+  async function choose(s: Parameters<typeof pick>[0]) {
+    if (picking.current) return;
+    picking.current = true;
+    setPickingId(s.placeId);
+    try {
+      const place = await pick(s);
+      if (place) onPicked(place);
+    } finally {
+      picking.current = false;
+      setPickingId(null);
+    }
+  }
 
   async function useCurrent() {
     setLocating(true);
@@ -71,10 +89,10 @@ export function PlaceSearch({ onPicked }: { onPicked: (p: PickedPlace) => void }
           {suggestions.map((s) => (
             <PressableSurface
               key={s.placeId}
-              onPress={async () => {
-                const place = await pick(s);
-                if (place) onPicked(place);
+              onPress={() => {
+                void choose(s);
               }}
+              disabled={pickingId != null}
               accessibilityLabel={s.secondary ? `${s.main}, ${s.secondary}` : s.main}
               style={styles.row}
             >

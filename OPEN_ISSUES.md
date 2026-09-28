@@ -87,7 +87,7 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   Places API (New) only, and Maps SDK for Android only restricted to the package
   + signing SHA-1; `npx supabase secrets set GOOGLE_PLACES_KEY=…` and
   `npx supabase functions deploy places`; EAS env var `GOOGLE_MAPS_ANDROID_KEY`
-  (preview + production); `npx supabase db push` (0039–0042). Known gaps: iOS
+  (preview + production); `npx supabase db push` (0039–0043). Known gaps: iOS
   shows Apple Maps; a city-only load still routes the driver to the city centre; a pin more than 100 km from every city on our list (Qatar, Kuwait, deep desert) has no city and must be booked by city (0042);
   a move inside one city cannot be booked (`loads_not_circular`), and the pin
   screen says so; the ops console does not show places yet (`ops_load_places`
@@ -372,7 +372,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 251 Arabic strings have never been read by someone who reads Arabic
+### 254 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -382,7 +382,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 251 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 27 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 254 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.

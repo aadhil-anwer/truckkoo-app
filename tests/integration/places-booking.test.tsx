@@ -4,7 +4,7 @@
  *
  * `./harness` first: its jest.mock calls must run before anything imports.
  */
-import { MUSCAT, SALALAH, mockParams, mockPush, resetQueries } from './harness';
+import { MUSCAT, SALALAH, mockParams, mockPush, mockReplace, resetQueries } from './harness';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -36,6 +36,7 @@ async function seed(patch: Partial<typeof EMPTY_DRAFT>) {
 beforeEach(async () => {
   resetQueries(queries as unknown as Record<string, unknown>);
   mockPush.mockReset();
+  mockReplace.mockReset();
   await AsyncStorage.clear();
   search.mockReturnValue(searchState());
   (places.nameAt as jest.Mock).mockResolvedValue('Lulu Barka');
@@ -234,4 +235,47 @@ it('can still confirm when the map re-reports the spot it already checked', asyn
   await waitFor(() =>
     expect(screen.getByLabelText('Confirm pickup').props.accessibilityState.disabled).toBe(false),
   );
+});
+
+it('opens one pin screen for a double tap on a slow connection', async () => {
+  // Two taps, two paid Details calls, two pin screens stacked — unless the
+  // second tap waits for the first.
+  let resolve: (p: places.PickedPlace) => void = () => {};
+  const pick = jest.fn(() => new Promise<places.PickedPlace>((r) => { resolve = r; }));
+  search.mockReturnValue(searchState({
+    status: 'ready', suggestions: [{ placeId: 'p1', main: 'Lulu Barka', secondary: 'Barka, Oman' }], pick,
+  }));
+  await render(<Origin />);
+  const row = await screen.findByText('Lulu Barka');
+  await fireEvent.press(row);
+  await fireEvent.press(row);
+  resolve({ lat: 23.69, lng: 57.88, placeName: 'Lulu Barka' });
+  await waitFor(() => expect(mockPush).toHaveBeenCalled());
+  expect(pick).toHaveBeenCalledTimes(1);
+  expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+it('shows no city for a moved pin until the new spot is checked', async () => {
+  mockParams.current = { end: 'pickup' };
+  (places.cityNear as jest.Mock).mockResolvedValueOnce(MUSCAT.id).mockResolvedValueOnce(SALALAH.id);
+  await seed({ originPlace: RUWI });
+  await render(<Pin />);
+  expect(await screen.findByText('Near Muscat')).toBeTruthy();
+  await fireEvent(screen.getByTestId('pin-map'), 'regionChangeComplete', {
+    latitude: 17.02, longitude: 54.09, latitudeDelta: 0.004, longitudeDelta: 0.004,
+  });
+  expect(screen.queryByText('Near Muscat')).toBeNull();
+  expect(await screen.findByText('Near Salalah')).toBeTruthy();
+});
+
+it('sends a pin screen with no place back to choosing one, not to a blank page', async () => {
+  mockParams.current = { end: 'drop' };
+  await render(<Pin />);
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/book/destination'));
+});
+
+it('sends a details screen with no place back to choosing one', async () => {
+  mockParams.current = { end: 'pickup' };
+  await render(<PlaceDetails />);
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/book/origin'));
 });

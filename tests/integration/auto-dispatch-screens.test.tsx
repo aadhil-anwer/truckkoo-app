@@ -129,6 +129,19 @@ describe('Review — the price is the price', () => {
     mockDraft.current = { ...mockDraft.current, originPlace: null, destinationPlace: null };
   });
 
+  it('shows who is at the gate, and the note on a pin with no name', async () => {
+    mockDraft.current = {
+      ...mockDraft.current,
+      originPlace: { lat: 23.6, lng: 58.4, placeName: 'Ruwi', note: '', contactName: 'Rashid', contactPhone: '+968 9000 0000' },
+      destinationPlace: { lat: 17.0, lng: 54.1, placeName: null, note: 'Blue gate', contactName: '', contactPhone: '' },
+    };
+    await render(<Review />);
+    expect(screen.getByText('Ask for Rashid: \u2066+968 9000 0000\u2069')).toBeTruthy();
+    expect(screen.getByText('Drop-off: This spot')).toBeTruthy();
+    expect(screen.getByText('Blue gate')).toBeTruthy();
+    mockDraft.current = { ...mockDraft.current, originPlace: null, destinationPlace: null };
+  });
+
   it('does not book while the price is still arriving', async () => {
     m('useRoutePrice').mockReturnValue(PENDING);
     await render(<Review />);

@@ -5,7 +5,7 @@
  * a screen that makes them feel they should is a screen that loses them.
  * Skip clears what was typed, so an abandoned half-number never travels.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -23,6 +23,13 @@ export default function PlaceDetails() {
   const { draft, update, ready } = useBookingDraft();
   const place = pickup ? draft.originPlace : draft.destinationPlace;
   const [touchedPhone, setTouchedPhone] = useState(false);
+
+  // Opened with nothing to pin (a deep link, a draft cleared by a booking in
+  // another tab): back to choosing a place, never a blank page with no Back.
+  const missing = ready && !place;
+  useEffect(() => {
+    if (missing) router.replace(pickup ? '/book/origin' : '/book/destination');
+  }, [missing, pickup, router]);
 
   if (!ready || !place) return null;
 

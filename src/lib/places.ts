@@ -113,12 +113,24 @@ export async function nameAt(lat: number, lng: number): Promise<string | null> {
   }
 }
 
+/** How long to wait for a fresh GPS fix before falling back. */
+const FIX_TIMEOUT_MS = 10_000;
+/** A last-known fix older than this is somewhere the shipper no longer is. */
+const LAST_FIX_MAX_AGE_MS = 5 * 60_000;
+
 /** "Ship from where I am." Null when refused or unavailable — the row just goes. */
 export async function currentPlace(): Promise<PickedPlace | null> {
   try {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return null;
-    const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    // Indoors, or with the GPS just switched on, a fresh fix can take minutes or
+    // never come. Wait a while, then take the phone's last fix if it is recent;
+    // otherwise give up so the row goes and the shipper searches instead.
+    const fresh = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), FIX_TIMEOUT_MS)),
+    ]);
+    const fix = fresh ?? (await Location.getLastKnownPositionAsync({ maxAge: LAST_FIX_MAX_AGE_MS }));
     if (!fix) return null;
     const { latitude: lat, longitude: lng } = fix.coords;
     return { lat, lng, placeName: await nameAt(lat, lng) };

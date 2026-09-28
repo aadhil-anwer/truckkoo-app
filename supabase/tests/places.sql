@@ -135,6 +135,17 @@ select act_as_reset();
 -- ═══ 5. the search quota ════════════════════════════════════════════════════
 select act_as('c0000000-0000-4000-8000-00000000000d');
 select assert_raises($$select public.use_places_quota('autocomplete')$$, 'a driver has no search quota');
+-- 0043: a signed-in user with no profile row has no role, and NULL <> 'shipper'
+-- is NULL, which an IF treats as false — so it passed. It must not.
+select act_as('c0000000-0000-4000-8000-0000000000ff');
+do $$
+begin
+  perform public.use_places_quota('autocomplete');
+  raise exception 'FAIL: a user with no profile has no search quota — it was granted';
+exception when insufficient_privilege then
+  raise notice 'pass: a user with no profile has no search quota (%)', sqlerrm;
+end $$;
+select act_as_reset();
 select act_as('c0000000-0000-4000-8000-00000000000a');
 select assert_raises($$select public.use_places_quota('geocode')$$, 'an unknown kind is refused');
 select assert_equals(
@@ -201,6 +212,20 @@ select assert_text(
   (select pickup_name from public.driver_offers() where offer_id = 'c2000000-0000-4000-8000-000000000001'),
   'Ruwi warehouse', 'and the list carries the place name');
 select act_as_reset();
+
+-- An offer that lapsed unanswered is not a live offer: the contact goes with it.
+update public.offers set expires_at = now() - interval '1 minute'
+  where id = 'c2000000-0000-4000-8000-000000000001';
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_equals(
+  (select count(*) from public.driver_offer('c2000000-0000-4000-8000-000000000001')), 0,
+  'an expired offer — and its contact — is gone');
+select assert_equals(
+  (select count(*) from public.driver_offers() where offer_id = 'c2000000-0000-4000-8000-000000000001'), 0,
+  'and it is gone from the list');
+select act_as_reset();
+update public.offers set expires_at = now() + interval '5 minutes'
+  where id = 'c2000000-0000-4000-8000-000000000001';
 
 update public.offers set status = 'declined' where id = 'c2000000-0000-4000-8000-000000000001';
 select act_as('c0000000-0000-4000-8000-00000000000d');

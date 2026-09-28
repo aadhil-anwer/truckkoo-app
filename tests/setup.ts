@@ -141,6 +141,7 @@ jest.mock('expo-location', () => ({
   startLocationUpdatesAsync: jest.fn(async () => undefined),
   stopLocationUpdatesAsync: jest.fn(async () => undefined),
   getCurrentPositionAsync: jest.fn(async () => null),
+  getLastKnownPositionAsync: jest.fn(async () => null),
   reverseGeocodeAsync: jest.fn(async () => []),
 }));
 

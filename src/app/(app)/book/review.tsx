@@ -26,13 +26,20 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, TertiaryButton } from '@/components/primitives';
 import { Card, Notice, RouteRail, SectionLabel, Skeleton } from '@/components/ui';
 import { roadKm } from '@/map';
-import { clearDraft, toPlacePayload, truckTypeForPost, useBookingDraft } from '@/lib/booking';
+import {
+  clearDraft,
+  normalizePhone,
+  toPlacePayload,
+  truckTypeForPost,
+  useBookingDraft,
+  type DraftPlace,
+} from '@/lib/booking';
 import { cityIndex, useBookLoad, useCities, useRoutePrice, useTruckTypes } from '@/lib/queries';
 import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
-import { safeText } from '@/lib/safe-text';
+import { ltrIsolate, safeText } from '@/lib/safe-text';
 import { alpha, color, font, hairline, space } from '@/theme/tokens';
 
 export default function Review() {
@@ -114,18 +121,8 @@ export default function Review() {
         <Card>
           <RouteRail origin={localized(origin)} destination={localized(dest)} />
           {/* The exact spots, when the shipper pinned them (0041). */}
-          {!!draft.originPlace?.placeName && (
-            <PlaceLine
-              text={t('places.review.pickup', { place: safeText(draft.originPlace.placeName) })}
-              note={draft.originPlace.note}
-            />
-          )}
-          {!!draft.destinationPlace?.placeName && (
-            <PlaceLine
-              text={t('places.review.drop', { place: safeText(draft.destinationPlace.placeName) })}
-              note={draft.destinationPlace.note}
-            />
-          )}
+          {draft.originPlace && <PlaceLine place={draft.originPlace} pickup />}
+          {draft.destinationPlace && <PlaceLine place={draft.destinationPlace} pickup={false} />}
           <View style={styles.facts}>
             <Fact label={t('book.review.collect')} value={formatLongDay(draft.collectionDate!)} />
             <Fact label={t('book.review.cargo')} value={draft.cargoDescription} />
@@ -188,13 +185,27 @@ export default function Review() {
   );
 }
 
-function PlaceLine({ text, note }: { text: string; note: string }) {
+/** One pinned end: its name (or "This spot"), the note, and who is there. */
+function PlaceLine({ place, pickup }: { place: DraftPlace; pickup: boolean }) {
+  const name = place.placeName?.trim() ? safeText(place.placeName) : t('places.pin.unnamed');
+  const who = place.contactName.trim() ? safeText(place.contactName.trim()) : null;
+  const typed = normalizePhone(place.contactPhone);
+  const phone = typed ? ltrIsolate(typed) : null;
+  const contact =
+    who && phone
+      ? t('places.review.contact', { name: who, phone })
+      : who
+        ? t('places.askFor', { name: who })
+        : phone
+          ? t('places.review.contactPhone', { phone })
+          : null;
   return (
     <View style={styles.place}>
       <Text style={styles.placeName} numberOfLines={2}>
-        {text}
+        {pickup ? t('places.review.pickup', { place: name }) : t('places.review.drop', { place: name })}
       </Text>
-      {!!note.trim() && <Text style={styles.placeNote}>{safeText(note)}</Text>}
+      {!!place.note.trim() && <Text style={styles.placeNote}>{safeText(place.note)}</Text>}
+      {!!contact && <Text style={styles.placeNote}>{contact}</Text>}
     </View>
   );
 }

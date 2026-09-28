@@ -103,3 +103,26 @@ it('gives the phone position, named, when permitted', async () => {
   L.reverseGeocodeAsync.mockResolvedValueOnce([{ name: 'Ruwi' } as never]);
   await expect(currentPlace()).resolves.toEqual({ lat: 23.6, lng: 58.4, placeName: 'Ruwi' });
 });
+
+describe('currentPlace with no fix', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('gives up on a GPS that never answers, instead of "Finding where you are…" forever', async () => {
+    L.requestForegroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
+    L.getCurrentPositionAsync.mockReturnValueOnce(new Promise(() => {}) as never);
+    const result = currentPlace();
+    await jest.advanceTimersByTimeAsync(15_000);
+    await expect(result).resolves.toBeNull();
+  });
+
+  it('uses a recent last-known fix when a fresh one does not come', async () => {
+    L.requestForegroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
+    L.getCurrentPositionAsync.mockReturnValueOnce(new Promise(() => {}) as never);
+    L.getLastKnownPositionAsync.mockResolvedValueOnce({ coords: { latitude: 23.6, longitude: 58.4 } } as never);
+    L.reverseGeocodeAsync.mockResolvedValueOnce([{ name: 'Ruwi' } as never]);
+    const result = currentPlace();
+    await jest.advanceTimersByTimeAsync(15_000);
+    await expect(result).resolves.toEqual({ lat: 23.6, lng: 58.4, placeName: 'Ruwi' });
+  });
+});

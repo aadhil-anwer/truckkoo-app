@@ -77,6 +77,13 @@ export default function Pin() {
     };
   }, [lat, lng]);
 
+  // Opened with nothing to pin (a deep link, a draft cleared by a booking in
+  // another tab): back to choosing a place, never a blank page with no Back.
+  const missing = ready && !place;
+  useEffect(() => {
+    if (missing) router.replace(pickup ? '/book/origin' : '/book/destination');
+  }, [missing, pickup, router]);
+
   if (!ready || !place) return null;
 
   const city = cityId != null ? index.get(cityId) : undefined;

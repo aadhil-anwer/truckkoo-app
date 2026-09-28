@@ -65,6 +65,19 @@ export function hasUnsafeText(input: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Keep a left-to-right value — a phone number — in reading order inside copy
+ * that may be Arabic. An RTL paragraph lays the digit groups of
+ * "+968 9000 0000" out right to left; a first-strong isolate stops that.
+ *
+ * This is the one place the app ADDS a bidi control, and it adds it to text it
+ * has just cleaned: any control already inside is stripped first, so a value
+ * cannot close the isolate early and spoof what follows.
+ */
+export function ltrIsolate(input: string): string {
+  return `\u2066${input.replace(BIDI_CONTROLS, '')}\u2069`;
+}
+
 /** Collapse newlines and clamp length for single-line display. */
 export function oneLine(input: string | null | undefined, max = 160): string {
   const cleaned = safeText(input).replace(/\s+/g, ' ');
