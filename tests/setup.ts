@@ -80,6 +80,7 @@ jest.mock('@/lib/supabase', () => ({
     },
     from: jest.fn(),
     rpc: jest.fn(),
+    functions: { invoke: jest.fn() },
     storage: { from: jest.fn() },
   },
   signOutEverywhere: jest.fn(),
@@ -140,4 +141,5 @@ jest.mock('expo-location', () => ({
   startLocationUpdatesAsync: jest.fn(async () => undefined),
   stopLocationUpdatesAsync: jest.fn(async () => undefined),
   getCurrentPositionAsync: jest.fn(async () => null),
+  reverseGeocodeAsync: jest.fn(async () => []),
 }));
