@@ -1838,6 +1838,21 @@ select assert_raises($$select count(*) from public.driver_availability$$,
   'anon cannot read availability at all');
 select act_as_reset();
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. places (0041)
+-- ════════════════════════════════════════════════════════════════════════════
+insert into public.load_places (load_id, kind, lat, lng, place_name, contact_phone)
+values ('aaaaaaaa-0000-4000-8000-000000000001', 'pickup', 23.59, 58.41, 'A warehouse', '+968 9111 1111');
+
+select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
+select assert_equals((select count(*) from public.load_places), 1, 'shipper A reads the place on their load');
+select act_as('22222222-2222-4222-8222-222222222222');  -- Shipper B
+select assert_equals((select count(*) from public.load_places), 0, 'shipper B reads no other shipper''s place');
+select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
+select assert_equals((select count(*) from public.load_places), 0,
+  'a driver reads no place from the table — only through the driver functions');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;

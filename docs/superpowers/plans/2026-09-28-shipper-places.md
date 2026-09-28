@@ -211,7 +211,7 @@ select assert_raises($$select public.use_places_quota('autocomplete')$$, 'a driv
 select act_as('c0000000-0000-4000-8000-00000000000a');
 select assert_raises($$select public.use_places_quota('geocode')$$, 'an unknown kind is refused');
 select assert_equals(
-  (select count(*) from generate_series(1, 60) g, lateral (select public.use_places_quota('details')) q), 60,
+  (select count(*) from generate_series(1, 60) g, lateral public.use_places_quota('details' || left('', g)) q), 60,
   'sixty place lookups an hour are allowed');
 select assert_raises($$select public.use_places_quota('details')$$, 'the sixty-first is refused');
 select act_as_reset();

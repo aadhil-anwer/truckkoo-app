@@ -318,3 +318,11 @@ in an ops screen cannot widen what any other client sees.
   is admin-write-only from its first migration.
 
 *(`rate_cards.*` and `quotes.*` landed in `0010_pricing.sql` — see above.)*
+
+### `load_places` (0041)
+
+| Column | Client write | Why |
+|---|---|---|
+| every column | **none** | Written only by `book_load`, which derives the city from the point. |
+| `contact_name`, `contact_phone` | none | A third party's personal data (the person at the gate). Readable by the owning shipper; by a driver only through `driver_offers()` while pending and `driver_trip()` until delivery; by ops through `ops_load_places`. |
+| `lat`, `lng` | none | The shipper's premises. Same readers as above. |
