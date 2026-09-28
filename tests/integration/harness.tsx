@@ -126,6 +126,8 @@ jest.mock('@/lib/queries', () => {
     useSetAvailable: jest.fn(),
     useRoutePrice: jest.fn(),
     useBookLoad: jest.fn(),
+    // 0041. The shipper's own places, on T3/T4.
+    useLoadPlaces: jest.fn(),
   };
 });
 
@@ -342,6 +344,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   mockParams.current = {};
 
   m('useCities').mockReturnValue(ok([MUSCAT, SALALAH]));
+  m('useLoadPlaces').mockReturnValue(ok({ pickup: null, drop: null }));
   m('useTruckTypes').mockReturnValue(ok([TRUCK]));
   m('useMyLoads').mockReturnValue(ok([]));
   m('useMyLegs').mockReturnValue(ok([]));

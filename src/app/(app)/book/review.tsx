@@ -32,6 +32,7 @@ import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
+import { safeText } from '@/lib/safe-text';
 import { alpha, color, font, hairline, space } from '@/theme/tokens';
 
 export default function Review() {
@@ -112,6 +113,19 @@ export default function Review() {
 
         <Card>
           <RouteRail origin={localized(origin)} destination={localized(dest)} />
+          {/* The exact spots, when the shipper pinned them (0041). */}
+          {!!draft.originPlace?.placeName && (
+            <PlaceLine
+              text={t('places.review.pickup', { place: safeText(draft.originPlace.placeName) })}
+              note={draft.originPlace.note}
+            />
+          )}
+          {!!draft.destinationPlace?.placeName && (
+            <PlaceLine
+              text={t('places.review.drop', { place: safeText(draft.destinationPlace.placeName) })}
+              note={draft.destinationPlace.note}
+            />
+          )}
           <View style={styles.facts}>
             <Fact label={t('book.review.collect')} value={formatLongDay(draft.collectionDate!)} />
             <Fact label={t('book.review.cargo')} value={draft.cargoDescription} />
@@ -174,6 +188,17 @@ export default function Review() {
   );
 }
 
+function PlaceLine({ text, note }: { text: string; note: string }) {
+  return (
+    <View style={styles.place}>
+      <Text style={styles.placeName} numberOfLines={2}>
+        {text}
+      </Text>
+      {!!note.trim() && <Text style={styles.placeNote}>{safeText(note)}</Text>}
+    </View>
+  );
+}
+
 function Fact({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
     <View style={[styles.fact, !last && styles.factDivided]}>
@@ -189,6 +214,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.ink },
   scroll: { padding: space.xl, paddingTop: space.huge, gap: space.lg },
   title: { ...arabicIfNeeded(font.title), color: color.lightText, textAlign: align.start },
+  place: { marginTop: space.md, gap: 2 },
+  placeName: { ...arabicIfNeeded(font.body), color: color.lightText, textAlign: align.start },
+  placeNote: { ...arabicIfNeeded(font.caption), color: alpha.onInk.tertiary, textAlign: align.start },
   facts: { marginTop: space.lg },
   fact: {
     flexDirection: 'row',

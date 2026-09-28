@@ -112,6 +112,23 @@ describe('Review — the price is the price', () => {
     expect(mockBookMutate.mock.calls[0][0]).toMatchObject({ seenPriceBaisa: null });
   });
 
+  it('shows the chosen places, and books with them (0041)', async () => {
+    mockDraft.current = {
+      ...mockDraft.current,
+      originPlace: { lat: 23.6, lng: 58.4, placeName: 'Ruwi', note: 'Gate 3', contactName: '', contactPhone: '' },
+      destinationPlace: null,
+    };
+    await render(<Review />);
+    expect(screen.getByText('Pickup: Ruwi')).toBeTruthy();
+    expect(screen.getByText('Gate 3')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText(/^Book for/));
+    expect(mockBookMutate.mock.calls[0][0]).toMatchObject({
+      originPlace: { lat: 23.6, lng: 58.4, place_name: 'Ruwi', note: 'Gate 3', contact_name: null, contact_phone: null },
+      destPlace: null,
+    });
+    mockDraft.current = { ...mockDraft.current, originPlace: null, destinationPlace: null };
+  });
+
   it('does not book while the price is still arriving', async () => {
     m('useRoutePrice').mockReturnValue(PENDING);
     await render(<Review />);

@@ -302,6 +302,8 @@ const en = {
   'places.details.phone': 'Phone number',
   'places.details.badPhone': 'Check the number: digits only, with + for the country code.',
   'places.details.skip': 'Skip',
+  'places.review.pickup': 'Pickup: {place}',
+  'places.review.drop': 'Drop-off: {place}',
   'book.weight.value': '{weight} kg',
   'track.price.acceptNamed': 'Accept {amount}',
   'track.assigned.takingNamed': '{name} is taking your load.',
@@ -1253,6 +1255,8 @@ const ar: Partial<Record<StringKey, string>> = {
   'places.details.phone': 'رقم الهاتف',
   'places.details.badPhone': 'تحقق من الرقم: أرقام فقط، مع + لرمز الدولة.',
   'places.details.skip': 'تخطَّ',
+  'places.review.pickup': 'الاستلام: {place}',
+  'places.review.drop': 'التسليم: {place}',
   'drv.trip.directionsTo': 'الاتجاهات إلى {city}',
 };
 

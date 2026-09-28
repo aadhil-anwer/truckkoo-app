@@ -475,6 +475,15 @@ describe('TrackLoad', () => {
       (queries.useMyTrips as jest.Mock).mockReturnValue(ok([tripOn()]));
     });
 
+    it('names the shipper\u2019s own pickup and drop-off places', async () => {
+      (queries.useLoadPlaces as jest.Mock).mockReturnValue(ok({
+        pickup: { lat: 23.6, lng: 58.4, name: 'Ruwi warehouse', note: null, contactName: null, contactPhone: null },
+        drop: null,
+      }));
+      await render(<TrackLoad />);
+      expect(screen.getByText('Pickup: Ruwi warehouse')).toBeTruthy();
+    });
+
     it('shows what will be owed at the gate', async () => {
       // Settlement is offline and the driver is about to ask for it. A shipper
       // hunting for the number at the gate is a shipper arguing with a driver.
