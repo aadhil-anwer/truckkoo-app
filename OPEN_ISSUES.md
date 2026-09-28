@@ -55,6 +55,12 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   works. Cost: offers reach drivers not looking at the app and lapse, and since
   nobody toggles, a missed offer is not re-asked (0037's re-ask needs a toggle).
   Reverse with `drivers_online_by_default = false`. Revisit once push lands.
+- **Driver GPS is being designed with `expo-location` background updates**
+  (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`). Better
+  options exist and were set aside for now — Transistorsoft
+  background-geolocation (battery, OEM killers), on-demand location via silent
+  push, Google road-distance APIs, a battery-optimisation exemption prompt. The
+  spec's §9 says when each is worth revisiting.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
   the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
   Firebase project + FCM credentials in EAS and a new dev build. Until then,
