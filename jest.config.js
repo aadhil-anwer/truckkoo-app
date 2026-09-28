@@ -15,9 +15,12 @@ module.exports = {
   // Ship dependencies as ESM; they must be transformed rather than skipped.
   // `d3-geo` (and its `d3-array`/`internmap` deps) ship ESM only, so they must
   // be transformed rather than ignored — otherwise the map's projection cannot
-  // be imported in a test at all.
+  // be imported in a test at all. `uuid` is here because the override in
+  // package.json lifts `xcode`'s copy to 11.x for a security fix, and jest-expo's
+  // react-native export conditions resolve that to its ESM browser build — which
+  // the config-plugin tests reach through `expo/config-plugins`.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@supabase/.*|@tanstack/.*|d3-geo|d3-array|internmap)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|@supabase/.*|@tanstack/.*|d3-geo|d3-array|internmap|uuid)',
   ],
 
   moduleNameMapper: {
