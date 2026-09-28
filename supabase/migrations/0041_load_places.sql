@@ -136,3 +136,106 @@ $$;
 
 revoke all on function public.ops_load_places(uuid) from public, anon;
 grant execute on function public.ops_load_places(uuid) to authenticated;
+
+-- ═══ 5. book_load v2 — the same call, with two optional places ══════════════
+-- Body is 0036's, plus: each place's city must be the city passed (only a
+-- client bug disagrees), checked BEFORE post_load so a refusal spends no rate
+-- limit; the places are inserted in the same transaction as the load.
+
+create or replace function private.place_city(p jsonb)
+returns bigint
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_lat double precision := (p ->> 'lat')::double precision;
+  v_lng double precision := (p ->> 'lng')::double precision;
+begin
+  if v_lat is null or v_lng is null
+     or v_lat not between 12 and 33 or v_lng not between 34 and 60 then
+    raise exception 'place out of range' using errcode = 'check_violation';
+  end if;
+  return private.nearest_city(v_lat, v_lng);
+end;
+$$;
+
+revoke all on function private.place_city(jsonb) from public, anon, authenticated;
+
+create or replace function private.insert_load_place(p_load_id uuid, p_kind text, p jsonb)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if p is null then
+    return;
+  end if;
+  insert into public.load_places (load_id, kind, lat, lng, place_name, note, contact_name, contact_phone)
+  values (
+    p_load_id, p_kind,
+    (p ->> 'lat')::double precision, (p ->> 'lng')::double precision,
+    nullif(btrim(p ->> 'place_name'), ''),
+    nullif(btrim(p ->> 'note'), ''),
+    nullif(btrim(p ->> 'contact_name'), ''),
+    nullif(btrim(p ->> 'contact_phone'), ''));
+end;
+$$;
+
+revoke all on function private.insert_load_place(uuid, text, jsonb) from public, anon, authenticated;
+
+drop function if exists public.book_load(bigint, bigint, date, date, text, integer, text, bigint);
+
+create function public.book_load(
+  p_origin_city bigint, p_dest_city bigint,
+  p_pickup_from date, p_pickup_to date, p_goods text,
+  p_weight_kg integer default null, p_truck_type_code text default null,
+  p_seen_price_baisa bigint default null,
+  p_origin_place jsonb default null, p_dest_place jsonb default null
+)
+returns table(load_id uuid, status public.load_status, price_baisa bigint, price_matched boolean)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_id      uuid;
+  v_price   bigint;
+  v_status  public.load_status;
+  v_matched boolean;
+begin
+  if p_origin_place is not null and private.place_city(p_origin_place) is distinct from p_origin_city then
+    raise exception 'city does not match place' using errcode = 'check_violation';
+  end if;
+  if p_dest_place is not null and private.place_city(p_dest_place) is distinct from p_dest_city then
+    raise exception 'city does not match place' using errcode = 'check_violation';
+  end if;
+
+  v_id := public.post_load(p_origin_city, p_dest_city, p_pickup_from, p_pickup_to,
+                           p_goods, p_weight_kg, p_truck_type_code);
+
+  perform private.insert_load_place(v_id, 'pickup', p_origin_place);
+  perform private.insert_load_place(v_id, 'drop', p_dest_place);
+
+  select l.price_baisa into v_price from public.loads l where l.id = v_id;
+
+  v_matched := v_price is not null and p_seen_price_baisa is not distinct from v_price;
+
+  if v_matched then
+    perform public.accept_quote(v_id);
+  end if;
+
+  select l.status into v_status from public.loads l where l.id = v_id;
+  return query select v_id, v_status, v_price,
+    (v_matched or (v_price is null and p_seen_price_baisa is null));
+end;
+$$;
+
+revoke all on function public.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)
+  from public, anon;
+grant execute on function public.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)
+  to authenticated;

@@ -148,5 +148,34 @@ select assert_raises($$select * from public.ops_load_places('c1000000-0000-4000-
   'a shipper cannot call the ops read');
 select act_as_reset();
 
+-- ═══ 7. book_load writes places, and derives the city ═══════════════════════
+select act_as('c0000000-0000-4000-8000-00000000000a');
+select assert_equals(
+  (select count(*) from public.book_load(
+     city('Muscat'), city('Salalah'), current_date + 2, current_date + 2, 'Booked with places',
+     null, null, null,
+     jsonb_build_object('lat', 23.588, 'lng', 58.408, 'place_name', 'Ruwi', 'note', '  ',
+                        'contact_name', 'Rashid', 'contact_phone', '+968 9000 0001'),
+     jsonb_build_object('lat', 17.02, 'lng', 54.09, 'place_name', 'Salalah port'))),
+  1, 'book_load accepts a pickup and a drop place');
+select assert_equals(
+  (select count(*) from public.load_places p join public.loads l on l.id = p.load_id
+    where l.goods_description = 'Booked with places'), 2,
+  'both places are written with the load');
+select assert_text(
+  (select coalesce(p.note, 'NULL') from public.load_places p join public.loads l on l.id = p.load_id
+    where l.goods_description = 'Booked with places' and p.kind = 'pickup'),
+  'NULL', 'a blank note is stored as nothing, not as spaces');
+select assert_raises(
+  $$select * from public.book_load(city('Muscat'), city('Salalah'), current_date + 2, current_date + 2,
+      'Mismatch', null, null, null,
+      jsonb_build_object('lat', 17.02, 'lng', 54.09), null)$$,
+  'a pickup place that is not in the pickup city is refused');
+select assert_equals(
+  (select count(*) from public.book_load(
+     city('Muscat'), city('Salalah'), current_date + 2, current_date + 2, 'Booked without places')),
+  1, 'book_load without places still books, as before');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL PLACES ASSERTIONS HELD'; end $$;
 rollback;
