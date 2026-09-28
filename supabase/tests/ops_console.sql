@@ -1747,7 +1747,7 @@ select assert_true(
   'health is not ok while alerts have nowhere to go');
 
 -- ════════════════════════════════════════════════════════════════════════════
--- 12. Migration 0036 — tripwires
+-- 12. Migration 0044 — tripwires (written as 0036 on main, renumbered: production had applied 0036_auto_dispatch)
 -- ════════════════════════════════════════════════════════════════════════════
 
 select assert_true(
