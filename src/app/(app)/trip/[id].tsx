@@ -38,6 +38,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
 import { DriverMoney } from '@/components/driver/Money';
+import { DriverPlaceDetails } from '@/components/driver/PlaceDetails';
 import { Icon } from '@/components/icon';
 import { BackButton, PressableSurface, PrimaryButton, SecondaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -45,7 +46,7 @@ import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
-import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
 import { directionsLink, safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
@@ -185,11 +186,15 @@ export default function TripScreen() {
   const done =
     trip.status === 'delivered' || trip.status === 'closed' || trip.status === 'cancelled';
   // Where the driver is headed next: the pickup until the load is on board, then
-  // the drop-off. A load stores a city, not a gate, so the label names the city
-  // and promises no more than that; when shipper pins land, only this point
-  // changes.
+  // the drop-off. The pinned gate when the shipper gave one (0041), else the
+  // city — and the label names whichever it is, promising no more than that.
+  const pickupPlace = placeOf(trip as unknown as Record<string, unknown>, 'pickup');
+  const dropPlace = placeOf(trip as unknown as Record<string, unknown>, 'drop');
+  const nextPlace = done ? null : collected ? dropPlace : pickupPlace;
   const nextStop = done ? undefined : collected ? dest : origin;
-  const directions = nextStop ? directionsLink(nextStop.lat, nextStop.lng) : null;
+  const target = nextPlace ?? nextStop;
+  const directions = target ? directionsLink(target.lat, target.lng) : null;
+  const directionsName = nextPlace?.name ?? (nextStop ? localized(nextStop) : '');
 
   return (
     <View style={styles.screen}>
@@ -266,6 +271,9 @@ export default function TripScreen() {
               }`}
             </Text>
           </View>
+
+          {pickupPlace && <DriverPlaceDetails label={t('book.dest.pickup')} place={pickupPlace} />}
+          {dropPlace && <DriverPlaceDetails label={t('book.dest.deliver')} place={dropPlace} />}
 
           {/* One 44px circle. The shipper is a contact here, not a profile. */}
           {!!trip.shipper_phone && (
@@ -362,10 +370,10 @@ export default function TripScreen() {
               )}
               {/* Secondary, and below: the primary keeps the accent and the
                   thumb. Navigating is Google's job — the app hands over. */}
-              {directions && nextStop && (
+              {directions && !!directionsName && (
                 <View style={styles.directions}>
                   <SecondaryButton
-                    label={t('drv.trip.directionsTo', { city: localized(nextStop) })}
+                    label={t('drv.trip.directionsTo', { city: safeText(directionsName) })}
                     icon="dropoff"
                     onPress={() => Linking.openURL(directions).catch(() => {})}
                   />

@@ -23,6 +23,7 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DriverMoney } from '@/components/driver/Money';
+import { DriverPlaceDetails } from '@/components/driver/PlaceDetails';
 import { BackButton, PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { RouteRail, SectionLabel, Sheet, Skeleton } from '@/components/ui';
@@ -34,6 +35,7 @@ import {
   cityIndex,
   useCities,
   useDriverOffer,
+  placeOf,
   useMyLegs,
   useRespondToOffer,
 } from '@/lib/queries';
@@ -72,6 +74,9 @@ export default function OfferDetail() {
 
   const from = data ? index.get(data.origin_city) : undefined;
   const to = data ? index.get(data.dest_city) : undefined;
+  // The exact spots and who is there, when the shipper gave them (0041).
+  const pickupPlace = data ? placeOf(data as unknown as Record<string, unknown>, 'pickup') : null;
+  const dropPlace = data ? placeOf(data as unknown as Record<string, unknown>, 'drop') : null;
 
   // The turn-off starts where the driver's own leg starts. Their legs are the
   // one thing they may read directly — they declared them.
@@ -189,6 +194,8 @@ export default function OfferDetail() {
 
             <View style={styles.block}>
               {!!from && !!to && <RouteRail origin={localized(from)} destination={localized(to)} />}
+              {pickupPlace && <DriverPlaceDetails label={t('book.dest.pickup')} place={pickupPlace} />}
+              {dropPlace && <DriverPlaceDetails label={t('book.dest.deliver')} place={dropPlace} />}
             </View>
 
             <View style={styles.facts}>

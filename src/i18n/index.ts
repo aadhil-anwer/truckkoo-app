@@ -304,6 +304,7 @@ const en = {
   'places.details.skip': 'Skip',
   'places.review.pickup': 'Pickup: {place}',
   'places.review.drop': 'Drop-off: {place}',
+  'places.call': 'Call {name}',
   'book.weight.value': '{weight} kg',
   'track.price.acceptNamed': 'Accept {amount}',
   'track.assigned.takingNamed': '{name} is taking your load.',
@@ -1257,6 +1258,7 @@ const ar: Partial<Record<StringKey, string>> = {
   'places.details.skip': 'تخطَّ',
   'places.review.pickup': 'الاستلام: {place}',
   'places.review.drop': 'التسليم: {place}',
+  'places.call': 'اتصل بـ{name}',
   'drv.trip.directionsTo': 'الاتجاهات إلى {city}',
 };
 

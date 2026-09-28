@@ -26,6 +26,8 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('@/lib/queries', () => ({
   cityIndex: (rows: { id: number }[] | undefined) => new Map((rows ?? []).map((c) => [c.id, c])),
+  // Pure — the real one, so the screen reads places exactly as it will in the app.
+  placeOf: jest.requireActual('@/lib/queries').placeOf,
   useCities: () => ({
     data: [
       { id: 1, name_en: 'Muscat', name_ar: 'مسقط', lat: 23.588, lng: 58.408, region_en: '', region_ar: '', country: 'OM' },

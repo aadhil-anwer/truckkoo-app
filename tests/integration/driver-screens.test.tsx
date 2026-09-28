@@ -348,6 +348,16 @@ describe('OfferDetail', () => {
     expect(getByTestId('detour-spur').props.strokeDasharray).toBeTruthy();
   });
 
+  it('shows the exact pickup and its contact in an open offer', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+      pickup_contact_name: 'Rashid', pickup_contact_phone: '+968 9000 0000',
+    })));
+    await render(<OfferDetail />);
+    expect(screen.getByText('Ruwi warehouse')).toBeTruthy();
+    expect(screen.getByLabelText('Call Rashid')).toBeTruthy();
+  });
+
   it('says what room is left, so a second load is a decision not a guess', async () => {
     (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer()));
     await render(<OfferDetail />);
@@ -646,6 +656,30 @@ describe('OnTheJob', () => {
     expect(screen.queryByText('Yes, it is loaded')).toBeNull();
     expect(screen.queryByLabelText('I have delivered it')).toBeNull();
     expect(screen.queryByLabelText('Take a photo')).toBeNull();
+  });
+
+  it('gives directions to the gate, not the city, when the shipper pinned it', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+    })));
+    await render(<TripDetail />);
+    await fireEvent.press(screen.getByLabelText('Directions to Ruwi warehouse'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=23.610000%2C58.420000&travelmode=driving',
+    );
+  });
+
+  it('shows the note and calls the person at the gate', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+      pickup_note: 'Gate 3, ask for Rashid', pickup_contact_name: 'Rashid', pickup_contact_phone: '+968 9000 0000',
+    })));
+    await render(<TripDetail />);
+    expect(screen.getByText('Gate 3, ask for Rashid')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Call Rashid'));
+    expect(openURL).toHaveBeenCalledWith('tel:+96890000000');
   });
 
   it('shows what the driver earns beside where it drops', async () => {
