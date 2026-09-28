@@ -69,7 +69,7 @@ import { align, formatNumber, getLanguage, localized, t } from '@/i18n';
 import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
 import { useTick } from '@/lib/use-tick';
 import { formatMoney, type Currency } from '@/lib/money';
-import { mapsLink, safeText, whatsappLink } from '@/lib/safe-text';
+import { safeText, whatsappLink } from '@/lib/safe-text';
 import {
   cityIndex,
   useAcceptQuote,
@@ -647,10 +647,6 @@ function InTransit({
   useTick(1000, fix);
   const age = formatAge(position?.seen_at);
   const remaining = position?.remaining_km ?? null;
-  // Only a reported fix is handed on: a link to a guessed point would be the
-  // same lie as a marker at one.
-  const maps =
-    fix && position?.lat != null && position.lng != null ? mapsLink(position.lat, position.lng) : null;
 
   return (
     <View style={styles.block}>
@@ -677,19 +673,6 @@ function InTransit({
             step={progressPercent(remaining, corridorKm)}
             total={100}
             ground="ink"
-          />
-        </View>
-      )}
-
-      {/* The close-up. Our map shows the corridor at about a pixel a
-          kilometre; streets are Google's, and the shipper already has the app.
-          Secondary, because T4 spends its accent on the live state. */}
-      {maps && (
-        <View style={styles.openMaps}>
-          <SecondaryButton
-            label={t('pos.openInMaps')}
-            icon="truck"
-            onPress={() => Linking.openURL(maps).catch(() => {})}
           />
         </View>
       )}
@@ -917,7 +900,6 @@ const styles = StyleSheet.create({
   // T4
   eta: { ...font.estimate, color: color.lightText, textAlign: align.start },
   progress: { alignSelf: 'stretch', paddingVertical: space.sm },
-  openMaps: { alignSelf: 'stretch' },
   owed: { gap: 2 },
   owedLabel: { ...arabicIfNeeded(font.caption), color: alpha.onInk.tertiary, textAlign: align.start },
   owedAmount: { ...font.statement, color: color.lightText, textAlign: align.start },

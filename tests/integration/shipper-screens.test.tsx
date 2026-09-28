@@ -536,28 +536,12 @@ describe('TrackLoad', () => {
       }
     });
 
-    it('hands the reported point to Google Maps for the close-up', async () => {
-      // Our map shows the corridor; streets are Google's. The Uber pattern: our
-      // own map in the app, and a button that opens the real one.
-      const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
-      (queries.useTripPosition as jest.Mock).mockReturnValue(
-        ok(tripPosition({ lat: 23.588, lng: 58.408 })),
-      );
+    it('leaves navigation to the driver — no Google Maps button for the shipper', async () => {
+      // The shipper is watching, not driving. Directions live on D7.
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
       await render(<TrackLoad />);
-      await fireEvent.press(screen.getByLabelText('Open in Google Maps'));
-      expect(openURL).toHaveBeenCalledWith(
-        'https://www.google.com/maps/search/?api=1&query=23.588000%2C58.408000',
-      );
-    });
-
-    it('offers no Google Maps button when nobody has reported a position', async () => {
-      // No fix, no marker, no button: a link to a guessed point is the same lie
-      // as a marker at one.
-      (queries.useTripPosition as jest.Mock).mockReturnValue(
-        ok(tripPosition({ lat: null, lng: null, seen_at: null, eta_source: 'corridor' })),
-      );
-      await render(<TrackLoad />);
-      expect(screen.queryByLabelText('Open in Google Maps')).toBeNull();
+      expect(screen.queryByLabelText(/Google Maps/)).toBeNull();
+      expect(screen.queryByLabelText(/Directions/)).toBeNull();
     });
 
     it('dims a marker the shipper should not read as current', async () => {

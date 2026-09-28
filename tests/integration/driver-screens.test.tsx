@@ -27,6 +27,7 @@ import {
   resetQueries,
 } from './harness';
 
+import { Linking } from 'react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import DriverHome from '@/app/(app)/(tabs)/driver';
@@ -688,6 +689,34 @@ describe('OnTheJob', () => {
     await render(<TripDetail />);
     expect(screen.getByText('Sharing your position with the shipper')).toBeTruthy();
     expect(screen.getByText('Only while you are carrying this load.')).toBeTruthy();
+  });
+
+  it('gives directions to the pickup city until the load is collected', async () => {
+    // A load stores a city, not a gate, so the label names the city: it does
+    // not promise the warehouse. Turn-by-turn is Google's; the app hands over.
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    await render(<TripDetail />);
+    await fireEvent.press(screen.getByLabelText('Directions to Muscat'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=23.588000%2C58.408000&travelmode=driving',
+    );
+  });
+
+  it('gives directions to the drop-off city once the load is on board', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({ status: 'in_transit' })));
+    await render(<TripDetail />);
+    expect(screen.queryByLabelText('Directions to Muscat')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Directions to Salalah'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=17.020000%2C54.092000&travelmode=driving',
+    );
+  });
+
+  it('gives no directions once the job is over', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({ status: 'delivered' })));
+    await render(<TripDetail />);
+    expect(screen.queryByLabelText(/Directions to/)).toBeNull();
   });
 
   it('says nothing about sharing before the load is collected', async () => {

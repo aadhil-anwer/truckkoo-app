@@ -39,14 +39,14 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { DriverMoney } from '@/components/driver/Money';
 import { Icon } from '@/components/icon';
-import { BackButton, PressableSurface, PrimaryButton } from '@/components/primitives';
+import { BackButton, PressableSurface, PrimaryButton, SecondaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
 import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
-import { safeText } from '@/lib/safe-text';
+import { directionsLink, safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
@@ -184,6 +184,12 @@ export default function TripScreen() {
   // server refused the transition — a button that could only ever fail.
   const done =
     trip.status === 'delivered' || trip.status === 'closed' || trip.status === 'cancelled';
+  // Where the driver is headed next: the pickup until the load is on board, then
+  // the drop-off. A load stores a city, not a gate, so the label names the city
+  // and promises no more than that; when shipper pins land, only this point
+  // changes.
+  const nextStop = done ? undefined : collected ? dest : origin;
+  const directions = nextStop ? directionsLink(nextStop.lat, nextStop.lng) : null;
 
   return (
     <View style={styles.screen}>
@@ -354,6 +360,17 @@ export default function TripScreen() {
                   loading={advance.isPending}
                 />
               )}
+              {/* Secondary, and below: the primary keeps the accent and the
+                  thumb. Navigating is Google's job — the app hands over. */}
+              {directions && nextStop && (
+                <View style={styles.directions}>
+                  <SecondaryButton
+                    label={t('drv.trip.directionsTo', { city: localized(nextStop) })}
+                    icon="dropoff"
+                    onPress={() => Linking.openURL(directions).catch(() => {})}
+                  />
+                </View>
+              )}
             </View>
           )}
         </Sheet>
@@ -471,4 +488,5 @@ const styles = StyleSheet.create({
 
   error: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
   action: { marginTop: space.sm },
+  directions: { marginTop: space.md },
 });

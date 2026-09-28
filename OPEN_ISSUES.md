@@ -77,10 +77,15 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
      ~15 min / 2 km.
   4. Go offline → notification gone; drive 3 km; `located_at` and `lat` are null.
   5. Take a demo load, start the trip → with the driver's app closed, the
-     shipper's T4 "Seen … s ago" resets at least every ~30 s (0040), and "Open in
-     Google Maps" drops a pin where the truck is.
+     shipper's T4 "Seen … s ago" resets at least every ~30 s (0040). On the
+     driver's D7, "Directions to <city>" opens Google Maps turn-by-turn.
   6. Reboot the phone, open the app once → notification returns.
   7. Sign out → notification gone.
+- **Driver directions go to the city centre, not the gate.** D7's "Directions
+  to <city>" (Google Maps turn-by-turn) routes to `cities.lat/lng`, because a
+  load stores a city and nothing finer. Good for the long drive; the last mile is
+  still a call to the shipper. Fixed by shipper pickup/drop pins (Part B, next):
+  only the point passed to `directionsLink` changes.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
   the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
   Firebase project + FCM credentials in EAS and a new dev build. Until then,
@@ -359,7 +364,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 224 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` + `pos.openInMaps` for live T4, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 224 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
