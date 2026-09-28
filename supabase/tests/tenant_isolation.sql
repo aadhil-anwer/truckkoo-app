@@ -1823,6 +1823,11 @@ select assert_raises(
   'driver A cannot switch driver B off');
 select act_as_reset();
 
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_raises($$select lat, lng from public.driver_availability$$,
+  'driver A cannot read a coordinate, even their own');
+select act_as_reset();
+
 select act_as('11111111-1111-4111-8111-111111111111');  -- Shipper A
 select assert_equals((select count(*) from public.driver_availability), 0,
   'a shipper reads no driver''s availability');

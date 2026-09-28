@@ -476,11 +476,15 @@ select assert_equals((select count(*) from public.driver_availability), 1,
   'a driver reads their own availability and nobody else''s');
 select act_as_reset();
 
+-- 0039 stores the latest GPS point (the founder's call, reversing 0036's "a
+-- town, never a coordinate"). What holds instead: no client can read it.
 select assert_equals(
-  (select count(*) from information_schema.columns
-    where table_schema = 'public' and table_name = 'driver_availability'
-      and column_name in ('lat', 'lng', 'latitude', 'longitude')), 0,
-  'no coordinate column exists to leak');
+  (select count(*) from unnest(array['lat', 'lng', 'accuracy_m']) c
+    where has_column_privilege('authenticated', 'public.driver_availability', c, 'select')
+       or has_column_privilege('anon', 'public.driver_availability', c, 'select')), 0,
+  'no client role can read a coordinate — not even the driver''s own');
+select assert_true(has_column_privilege('authenticated', 'public.driver_availability', 'located_at', 'select'),
+  'a driver can read when their location was last sent');
 
 select act_as('a0000000-0000-4000-8000-000000000001');
 select assert_raises($$select public.set_available(true)$$, 'a shipper cannot go online as a driver');
@@ -643,6 +647,101 @@ select assert_true(private.system_rescue_stranded() > 0,
   'and with both on, it resumes');
 
 -- ════════════════════════════════════════════════════════════════════════════
+-- 12. Background location — the latest point, and only while it is wanted (0039)
+-- ════════════════════════════════════════════════════════════════════════════
+
+update public.driver_availability set available = false, lat = null, lng = null,
+       accuracy_m = null, located_at = null;
+update public.driver_availability set available = true
+ where driver_id in ('d0000000-0000-4000-8000-000000000001',   -- A Muscat
+                     'd0000000-0000-4000-8000-000000000004');  -- D Sohar
+
+select act_as('d0000000-0000-4000-8000-000000000001');
+select assert_text((select stored::text || '/' || on_trip::text
+                      from public.report_location(23.59, 58.41, 20, now())),
+  'true/false', 'an online driver''s point is stored');
+select assert_text((select stored::text from public.report_location(23.00, 58.00, 20, now() - interval '10 minutes')),
+  'false', 'a point older than the stored one never overwrites it');
+select assert_text((select stored::text from public.report_location(23.60, 58.50, 20, now() - interval '25 hours')),
+  'false', 'a point more than a day old is dropped');
+select assert_raises($$select * from public.report_location(51.5, -0.1)$$, 'a point outside the region is refused');
+select assert_raises($$select * from public.report_location(23.6, null)$$, 'half a coordinate is refused');
+select assert_raises($$select lat from public.driver_availability$$, 'the driver cannot read their own coordinate');
+select act_as_reset();
+
+select assert_text(
+  (select lat::text || '/' || (select name_en from public.cities where id = city_id) || '/' || source
+     from public.driver_availability where driver_id = 'd0000000-0000-4000-8000-000000000001'),
+  '23.59/Muscat/gps', 'the latest point is kept, and the town snapped from it');
+
+-- A phone clock three hours fast is clamped, not locked out forever.
+select act_as('d0000000-0000-4000-8000-000000000004');
+select assert_text((select stored::text from public.report_location(24.35, 56.70, 30, now() + interval '3 hours')),
+  'true', 'a future timestamp is stored');
+select act_as_reset();
+select assert_true(
+  (select located_at = now() from public.driver_availability
+    where driver_id = 'd0000000-0000-4000-8000-000000000004'),
+  'and clamped to the server''s now');
+
+-- Offline: nothing.
+select act_as('d0000000-0000-4000-8000-000000000008');  -- X Offline
+select assert_text((select stored::text || '/' || on_trip::text from public.report_location(23.6, 58.5)),
+  'false/false', 'an offline driver''s point is not stored');
+select act_as_reset();
+select assert_true(
+  (select lat is null from public.driver_availability where driver_id = 'd0000000-0000-4000-8000-000000000008'),
+  'no tracking while off is a database fact');
+
+-- On a trip: offline by trigger, but the load they carry is tracked.
+update public.trips set status = 'in_transit' where load_id = 'b0000000-0000-4000-8000-000000000099';
+update public.driver_availability set available = false where driver_id = 'd0000000-0000-4000-8000-000000000011';
+select act_as('d0000000-0000-4000-8000-000000000011');  -- X Busy
+select assert_text((select stored::text || '/' || on_trip::text from public.report_location(23.9, 57.9, 25)),
+  'false/true', 'a driver on a trip: the trip gets the point, availability does not');
+select act_as_reset();
+select assert_equals(
+  (select count(*) from public.trip_positions t join public.trips tr on tr.id = t.trip_id
+    where tr.load_id = 'b0000000-0000-4000-8000-000000000099'), 1,
+  'the shipper''s tracking gets it with the driver''s app closed');
+
+-- Delivering clears the point, so a short trip's pickup-area fix never outranks the new town.
+update public.driver_availability set lat = 23.6, lng = 58.5, located_at = now()
+ where driver_id = 'd0000000-0000-4000-8000-000000000011';
+update public.trips set status = 'delivered' where load_id = 'b0000000-0000-4000-8000-000000000099';
+select assert_true(
+  (select available and lat is null and located_at is null
+     from public.driver_availability where driver_id = 'd0000000-0000-4000-8000-000000000011'),
+  'delivery puts the driver online at the destination town, with no stale point');
+
+-- Switching off forgets the point, keeps the town.
+select act_as('d0000000-0000-4000-8000-000000000001');
+select public.set_available(false);
+select act_as_reset();
+select assert_true(
+  (select lat is null and located_at is null and city_id is not null
+     from public.driver_availability where driver_id = 'd0000000-0000-4000-8000-000000000001'),
+  'switching off erases the point and keeps the town');
+
+-- Switching on with GPS stores the point too.
+select act_as('d0000000-0000-4000-8000-000000000001');
+select public.set_available(true, 23.59, 58.41);
+select act_as_reset();
+select assert_true(
+  (select lat = 23.59 and located_at = now() from public.driver_availability
+    where driver_id = 'd0000000-0000-4000-8000-000000000001'),
+  'the switch-on fix is the first point');
+
+-- Only drivers; and the rate limit holds.
+select act_as('a0000000-0000-4000-8000-000000000001');
+select assert_raises($$select * from public.report_location(23.6, 58.5)$$, 'a shipper cannot report a location');
+select act_as('d0000000-0000-4000-8000-000000000001');
+select assert_raises(
+  $$select count(*) from generate_series(1, 130) g, lateral public.report_location(23.59 + g * 0, 58.41, 20, now())$$,
+  'the rate limit holds (120 an hour)');
+select act_as_reset();
+
+-- ════════════════════════════════════════════════════════════════════════════
 -- 10. Static checks over everything 0036 added
 -- ════════════════════════════════════════════════════════════════════════════
 
@@ -654,7 +753,7 @@ select assert_equals(
                         'nearby_drivers', 'dispatch_wave', 'machine_owns', 'next_wave', 'auto_dispatch',
                         'offer_declined', 'loads_machine_guard', 'system_dispatch_waves',
                         'system_expire_availability', 'system_rescue_stranded',
-                        'driver_default_availability')
+                        'driver_default_availability', 'report_location')
       and not coalesce(p.proconfig @> array['search_path=""'], false)), 0,
   'every definer function 0036 touches pins search_path = ''''');
 

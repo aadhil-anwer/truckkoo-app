@@ -304,6 +304,15 @@ never a silent no-op.
   Proof of delivery remains append-only — there is still no `update` or `delete`
   policy on `storage.objects` for anyone, ops included. Asserted in
   `supabase/tests/ops_console.sql` §4.
+- **A driver's exact position is stored, and read by nobody.** Until 0039 only a
+  town was kept ("a town, never a coordinate", 0036). The founder reversed that
+  on 2026-09-28 so dispatch can rank by real distance
+  (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`). What
+  holds instead: one latest point per driver in `driver_availability`, never a
+  trail; stored only while online (`report_location` refuses otherwise); erased
+  on switch-off and at delivery; **no client grant on `lat`/`lng`/`accuracy_m`
+  for any role, the driver included** — only definer functions read them.
+  Asserted in `dispatch.sql` §8/§12 and `tenant_isolation.sql`.
 
 ## 11. Rate limiting and abuse
 

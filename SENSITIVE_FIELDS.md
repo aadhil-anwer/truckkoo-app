@@ -169,12 +169,14 @@ Coordinates are bounded twice — in the RPC and again by `trip_positions_in_reg
 | `city_id` | **Ranks drivers by distance.** A driver who could write their own town could put themselves first in line for every load from anywhere. Snapped server-side from one GPS reading, or taken from the last delivery. | Same as above |
 | `source` | Records how the town was learned (`gps`/`delivery`/`manual`) | Same as above |
 | `driver_id`, `updated_at` | Ownership; the 12 h expiry reads `updated_at` | Server only |
+| `lat`, `lng`, `accuracy_m` | **Where a driver is, to the metre.** Ranks who is offered cargo; also where someone lives. No client grant at all — not even the driver's own row. Overwritten, never kept as a trail; erased on switch-off and at delivery. | `report_location()` (online only), `set_available()`, the trip trigger |
+| `located_at` | When the phone took the fix (clamped to server time). Client may read its own. | Same as above |
 
 Client may write: **nothing.** Client may read: **its own row only** (RLS,
-column grant). No coordinate column exists — a position sent to
-`set_available()` is used to find the nearest town and dropped, so this table
-cannot leak where anyone lives. Asserted in `supabase/tests/dispatch.sql` and
-`tenant_isolation.sql`.
+column grant), and never a coordinate. Since 0039 the latest GPS point is
+stored (founder's decision, 2026-09-28, reversing 0036's "a town, never a
+coordinate"). No client role can read it; asserted in
+`supabase/tests/dispatch.sql` §8 and `tenant_isolation.sql`.
 
 ## `public.quotes`
 
