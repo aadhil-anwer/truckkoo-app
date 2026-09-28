@@ -25,6 +25,11 @@ jest.mock('@/lib/places', () => ({
 }));
 const search = places.usePlaceSearch as jest.Mock;
 
+// The first render here pulls in the whole booking tree cold: ~2 s on a laptop
+// with an empty cache, past the 5 s default on a CI runner (PR #10). A test
+// that genuinely hangs still fails, just at 20 s.
+jest.setTimeout(20_000);
+
 function searchState(over: Partial<ReturnType<typeof places.usePlaceSearch>> = {}) {
   return { query: '', setQuery: jest.fn(), suggestions: [], status: 'idle', pick: jest.fn(), ...over };
 }
