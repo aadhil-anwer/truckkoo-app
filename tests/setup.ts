@@ -125,3 +125,19 @@ jest.mock(
   '@react-native-async-storage/async-storage',
   () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+/* ─── background location (native modules absent under jest) ─────────────── */
+
+jest.mock('expo-task-manager', () => ({ defineTask: jest.fn() }));
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  ActivityType: { AutomotiveNavigation: 2 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  getBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  startLocationUpdatesAsync: jest.fn(async () => undefined),
+  stopLocationUpdatesAsync: jest.fn(async () => undefined),
+  getCurrentPositionAsync: jest.fn(async () => null),
+}));

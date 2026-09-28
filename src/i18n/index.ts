@@ -227,6 +227,8 @@ const en = {
   'drv.avail.goOff': 'Go offline',
   'drv.avail.help': 'While you are available, loads near you come straight to this screen.',
   'drv.avail.why': 'We check your location once, to find your town. We do not track you.',
+  'loc.notify.title': 'You are available',
+  'loc.notify.body': 'Sharing your location to find loads near you.',
   'drv.offer.minutesLeft': '{minutes} min left',
   'book.hours': 'h',
   'book.minutes': 'min',
@@ -1180,6 +1182,8 @@ const ar: Partial<Record<StringKey, string>> = {
   'drv.avail.help': 'ما دمت متاحاً، تصلك الشحنات القريبة منك على هذه الشاشة مباشرة.',
   'drv.avail.why': 'نتحقق من موقعك مرة واحدة لمعرفة مدينتك. لا نتتبعك.',
   'drv.offer.minutesLeft': 'متبقٍ {minutes} دقيقة',
+  'loc.notify.title': 'أنت متاح',
+  'loc.notify.body': 'نشارك موقعك لنجد لك شحنات قريبة منك.',
 };
 
 /**
