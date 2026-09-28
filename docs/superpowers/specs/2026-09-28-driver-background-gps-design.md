@@ -66,21 +66,27 @@ the reversal of "a town, never a coordinate" as the founder's decision, dated.
 Definer, `search_path = ''`, **volatile** (it writes — 0037's lesson), scoped to
 `auth.uid()`, driver role, `require_active`, rate-limited **120/hour**.
 
-1. Reject a bad point: half a coordinate, out of range, `p_recorded_at` in the
-   future (> now + 2 min for clock skew) or older than 24 h.
-2. **Offline → store nothing, return `stored = false`.** This is what makes "no
-   tracking while off" a database fact rather than a client promise — the same
-   pattern as `report_position` refusing outside an `in_transit` trip.
-3. Older than the stored `located_at` → ignore (a late retry never overwrites a
+1. Reject a bad point: half a coordinate, outside the region `report_position`
+   already accepts (lat 12–33, lng 34–60), or `p_recorded_at` older than 24 h.
+   A `p_recorded_at` in the **future is clamped to `now()`**, not rejected — a
+   phone whose clock runs fast would otherwise never be stored again, silently.
+2. If the caller has an `in_transit` trip, write the point to `trip_positions`
+   (the `report_position` rules: own trip, live), so the shipper's tracking works
+   with the driver's app closed. **This happens whatever the switch says** — the
+   trip trigger (0036) sets a driver on a job offline, and tracking the load they
+   are carrying is the point of the trip.
+3. **Offline → store nothing in `driver_availability`.** This is what makes "no
+   tracking while off" a database fact rather than a client promise.
+4. Older than the stored `located_at` → ignore (a late retry never overwrites a
    newer point).
-4. Overwrite `lat/lng/accuracy_m/located_at`; snap `city_id` to
+5. Overwrite `lat/lng/accuracy_m/located_at`; snap `city_id` to
    `private.nearest_city` and set `source = 'gps'`.
-5. If the caller has an `in_transit` trip, also call the existing
-   `report_position` path, so the shipper's tracking works with the driver's app
-   closed. `trip_positions` keeps its own rules (latest fix to shippers, trail
-   ops-only, swept).
 
-Returns `(stored boolean, city_id bigint)`.
+The phone runs the task while the driver is online **or** has an `in_transit`
+trip, and at no other time.
+
+Returns `(stored boolean, on_trip boolean)` — `stored` for the availability
+point, `on_trip` when the trip received it.
 
 ### 4.3 Ranking
 
