@@ -177,5 +177,45 @@ select assert_equals(
   1, 'book_load without places still books, as before');
 select act_as_reset();
 
+-- ═══ 8. drivers read places only through their functions ════════════════════
+insert into public.offers (id, load_id, driver_id, status)
+values ('c2000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
+        'c0000000-0000-4000-8000-00000000000d', 'pending');
+
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_text(
+  (select pickup_contact_phone from public.driver_offer('c2000000-0000-4000-8000-000000000001')),
+  '+968 9000 0000', 'a pending offer carries the contact at the gate');
+select assert_text(
+  (select pickup_name from public.driver_offers() where offer_id = 'c2000000-0000-4000-8000-000000000001'),
+  'Ruwi warehouse', 'and the list carries the place name');
+select act_as_reset();
+
+update public.offers set status = 'declined' where id = 'c2000000-0000-4000-8000-000000000001';
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_equals(
+  (select count(*) from public.driver_offer('c2000000-0000-4000-8000-000000000001')), 0,
+  'after a pass the offer — and its contact — is gone');
+select act_as_reset();
+
+insert into public.trips (id, load_id, driver_id, status)
+values ('c3000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
+        'c0000000-0000-4000-8000-00000000000d', 'assigned');
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_text((select pickup_note from public.driver_trip('c3000000-0000-4000-8000-000000000001')),
+  'Gate 3', 'the driver on the job reads the note');
+select assert_text((select pickup_contact_phone from public.driver_trip('c3000000-0000-4000-8000-000000000001')),
+  '+968 9000 0000', 'and the contact, while the job is open');
+select act_as_reset();
+
+update public.trips set status = 'delivered' where id = 'c3000000-0000-4000-8000-000000000001';
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_text(
+  (select coalesce(pickup_contact_phone, 'NULL') from public.driver_trip('c3000000-0000-4000-8000-000000000001')),
+  'NULL', 'after delivery the contact is hidden');
+select assert_text((select pickup_name from public.driver_trip('c3000000-0000-4000-8000-000000000001')),
+  'Ruwi warehouse', 'and the place stays, as a record');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL PLACES ASSERTIONS HELD'; end $$;
 rollback;

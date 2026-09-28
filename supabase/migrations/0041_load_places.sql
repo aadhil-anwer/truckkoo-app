@@ -239,3 +239,180 @@ revoke all on function public.book_load(bigint, bigint, date, date, text, intege
   from public, anon;
 grant execute on function public.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)
   to authenticated;
+
+-- ═══ 6. drivers read places through their functions ═════════════════════════
+-- driver_offers() already returns pending, unexpired offers only, so the places
+-- it carries vanish with the offer — the founder's safeguard, for free.
+-- driver_trip() hides the contact once the job is over. Return types change,
+-- so each is dropped and recreated; driver_offer depends on driver_offers.
+
+drop function if exists public.driver_offer(uuid);
+drop function if exists public.driver_offers();
+drop function if exists public.driver_trip(uuid);
+
+create function public.driver_offers()
+returns table (
+  offer_id      uuid,
+  expires_at    timestamptz,
+  leg_id        uuid,
+  origin_city   bigint,
+  dest_city     bigint,
+  pickup_from   date,
+  pickup_to     date,
+  goods         text,
+  weight_kg     integer,
+  truck_type_code text,
+  collect_baisa bigint,
+  payout_baisa  bigint,
+  owed_baisa    bigint,
+  currency      char(3),
+  detour_km     numeric,
+  free_after_kg integer,
+  pickup_lat double precision, pickup_lng double precision, pickup_name text, pickup_note text,
+  pickup_contact_name text, pickup_contact_phone text,
+  drop_lat double precision, drop_lng double precision, drop_name text, drop_note text,
+  drop_contact_name text, drop_contact_phone text
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare v_actor uuid := auth.uid();
+begin
+  if v_actor is null then
+    raise exception 'not authenticated' using errcode = 'insufficient_privilege';
+  end if;
+
+  return query
+  select
+    o.id, o.expires_at, o.leg_id,
+    l.origin_city, l.dest_city, l.pickup_from, l.pickup_to,
+    l.goods_description, l.weight_kg, l.truck_type_code,
+    l.price_baisa,
+    private.payout_for(l.price_baisa),
+    l.price_baisa - private.payout_for(l.price_baisa),
+    l.currency,
+    case when o.leg_id is null then null
+         else private.detour_km(o.leg_id, l.id) end,
+    case when t.capacity_kg is null or l.weight_kg is null then null
+         else greatest(0, t.capacity_kg - l.weight_kg) end,
+    pp.lat, pp.lng, pp.place_name, pp.note, pp.contact_name, pp.contact_phone,
+    dp.lat, dp.lng, dp.place_name, dp.note, dp.contact_name, dp.contact_phone
+  from public.offers o
+  join public.loads l on l.id = o.load_id
+  left join public.legs g on g.id = o.leg_id
+  left join public.trucks t on t.id = g.truck_id
+  left join public.load_places pp on pp.load_id = l.id and pp.kind = 'pickup'
+  left join public.load_places dp on dp.load_id = l.id and dp.kind = 'drop'
+  -- Scoped to the actor INSIDE the definer. Pending and unexpired only: a place
+  -- and its contact are visible exactly as long as the offer is (0041).
+  where o.driver_id = v_actor
+    and o.status = 'pending'::public.offer_status
+    and o.expires_at > now()
+  order by o.created_at desc;
+end;
+$$;
+
+revoke all on function public.driver_offers() from public, anon;
+grant execute on function public.driver_offers() to authenticated;
+
+create function public.driver_offer(p_offer_id uuid)
+returns table (
+  offer_id      uuid,
+  expires_at    timestamptz,
+  leg_id        uuid,
+  origin_city   bigint,
+  dest_city     bigint,
+  pickup_from   date,
+  pickup_to     date,
+  goods         text,
+  weight_kg     integer,
+  truck_type_code text,
+  collect_baisa bigint,
+  payout_baisa  bigint,
+  owed_baisa    bigint,
+  currency      char(3),
+  detour_km     numeric,
+  free_after_kg integer,
+  pickup_lat double precision, pickup_lng double precision, pickup_name text, pickup_note text,
+  pickup_contact_name text, pickup_contact_phone text,
+  drop_lat double precision, drop_lng double precision, drop_name text, drop_note text,
+  drop_contact_name text, drop_contact_phone text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select * from public.driver_offers() d where d.offer_id = p_offer_id;
+$$;
+
+revoke all on function public.driver_offer(uuid) from public, anon;
+grant execute on function public.driver_offer(uuid) to authenticated;
+
+create function public.driver_trip(p_trip_id uuid)
+returns table (
+  trip_id       uuid,
+  status        public.trip_status,
+  load_id       uuid,
+  origin_city   bigint,
+  dest_city     bigint,
+  pickup_from   date,
+  pickup_to     date,
+  goods         text,
+  weight_kg     integer,
+  collect_baisa bigint,
+  payout_baisa  bigint,
+  owed_baisa    bigint,
+  currency      char(3),
+  shipper_name  text,
+  shipper_phone text,
+  pickup_lat double precision, pickup_lng double precision, pickup_name text, pickup_note text,
+  pickup_contact_name text, pickup_contact_phone text,
+  drop_lat double precision, drop_lng double precision, drop_name text, drop_note text,
+  drop_contact_name text, drop_contact_phone text
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare v_actor uuid := auth.uid();
+begin
+  if v_actor is null then
+    raise exception 'not authenticated' using errcode = 'insufficient_privilege';
+  end if;
+
+  return query
+  select
+    t.id, t.status, l.id,
+    l.origin_city, l.dest_city, l.pickup_from, l.pickup_to,
+    l.goods_description, l.weight_kg,
+    l.price_baisa,
+    private.payout_for(l.price_baisa),
+    l.price_baisa - private.payout_for(l.price_baisa),
+    l.currency,
+    p.full_name, p.phone,
+    pp.lat, pp.lng, pp.place_name, pp.note,
+    case when t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+         then pp.contact_name end,
+    case when t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+         then pp.contact_phone end,
+    dp.lat, dp.lng, dp.place_name, dp.note,
+    case when t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+         then dp.contact_name end,
+    case when t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+         then dp.contact_phone end
+  from public.trips t
+  join public.loads l on l.id = t.load_id
+  join public.profiles p on p.id = l.shipper_id
+  left join public.load_places pp on pp.load_id = l.id and pp.kind = 'pickup'
+  left join public.load_places dp on dp.load_id = l.id and dp.kind = 'drop'
+  where t.id = p_trip_id
+    and t.driver_id = v_actor;
+end;
+$$;
+
+revoke all on function public.driver_trip(uuid) from public, anon;
+grant execute on function public.driver_trip(uuid) to authenticated;
