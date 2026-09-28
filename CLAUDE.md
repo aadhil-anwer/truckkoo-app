@@ -274,7 +274,8 @@ the guard removed. Its callers do the checking. Never grant it.
 **Dispatch is automatic (0036), Uber/Porter-style.** `book_load` posts, prices
 and — if the server's price is the one the shipper saw — accepts and starts the
 search in one call. `private.next_wave` offers the load to the nearest online,
-verified, fitting drivers (`driver_availability`, declared legs first), three at
+verified, fitting drivers — and every driver is online unless they switch off
+(0038, `drivers_online_by_default`) (`driver_availability`, declared legs first), three at
 a time for five minutes, the radius widening with time (`dispatch_*` settings);
 the every-minute `dispatch-waves` job advances it; after 15 minutes a person is
 alerted once. The machine keeps looking after that (0037, `dispatch-rescue`): an

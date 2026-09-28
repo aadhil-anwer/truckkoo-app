@@ -50,10 +50,11 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
 - **A priced load waits on the shipper, who is not told.** `ops_set_price` moves
   a load to `quoted`; dispatch starts only when the shipper accepts it in the
   app, and nothing tells them a price arrived (no push, no WhatsApp).
-- **Online never refreshes itself.** Only the switch and a delivery set
-  `updated_at`, so a driver working with the app open all day is switched off
-  at hour 12 without warning. A foreground heartbeat would fix it but would also
-  keep a phone left on the dashboard overnight online — a product call.
+- **Drivers are online by default (0038, founder's call 2026-09-28).** Every
+  driver starts on and the 12-hour auto-off is disabled; switching off still
+  works. Cost: offers reach drivers not looking at the app and lapse, and since
+  nobody toggles, a missed offer is not re-asked (0037's re-ask needs a toggle).
+  Reverse with `drivers_online_by_default = false`. Revisit once push lands.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
   the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
   Firebase project + FCM credentials in EAS and a new dev build. Until then,

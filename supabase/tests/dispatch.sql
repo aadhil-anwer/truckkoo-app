@@ -148,9 +148,12 @@ begin
     insert into public.trucks (owner_id, truck_type, plate, capacity_kg)
     values (('d0000000-0000-4000-8000-00000000' || r.sfx)::uuid, r.truck, 'T-' || r.sfx,
             (select capacity_kg from public.truck_types where code = r.truck));
+    -- The profile insert already made the row (0038: online by default).
     insert into public.driver_availability (driver_id, available, city_id, source)
     values (('d0000000-0000-4000-8000-00000000' || r.sfx)::uuid, r.available,
-            case when r.town is not null then city(r.town) end, 'manual');
+            case when r.town is not null then city(r.town) end, 'manual')
+    on conflict (driver_id) do update
+      set available = excluded.available, city_id = excluded.city_id, source = excluded.source;
   end loop;
 
   -- X Busy is on a job. Their switch still says available — the stale-switch
@@ -498,14 +501,37 @@ select assert_raises(
   $$select * from public.book_load(1, 2, current_date, current_date, 'x')$$, 'a driver cannot book a load');
 select act_as_reset();
 
--- Twelve idle hours turn the switch off.
+-- Online by default (0038): a new driver starts on, and idle hours do nothing.
+insert into auth.users (id, email) values ('d0000000-0000-4000-8000-000000000099', 'dispatch-new@test.local');
+insert into public.profiles (id, role, full_name)
+values ('d0000000-0000-4000-8000-000000000099', 'driver', 'New Driver');
+select assert_true(
+  (select available and city_id is null from public.driver_availability
+    where driver_id = 'd0000000-0000-4000-8000-000000000099'),
+  'a new driver is online from signup, town unknown until GPS or a delivery');
+insert into auth.users (id, email) values ('a0000000-0000-4000-8000-000000000099', 'dispatch-new-shipper@test.local');
+insert into public.profiles (id, role, full_name)
+values ('a0000000-0000-4000-8000-000000000099', 'shipper', 'New Shipper');
+select assert_equals(
+  (select count(*) from public.driver_availability
+    where driver_id = 'a0000000-0000-4000-8000-000000000099'), 0,
+  'a new shipper gets no availability row');
+delete from public.profiles where id in ('d0000000-0000-4000-8000-000000000099',
+                                         'a0000000-0000-4000-8000-000000000099');
+
 update public.driver_availability set available = true, updated_at = now() - interval '13 hours'
  where driver_id = 'd0000000-0000-4000-8000-000000000004';
+select assert_equals(private.system_expire_availability(), 0,
+  'with drivers online by default, twelve idle hours switch nobody off');
+
+-- With the setting off, 0036's rule is back.
+update private.app_settings set value = 'false'::jsonb where key = 'drivers_online_by_default';
 select private.system_expire_availability();
 select assert_true(
   (select not available from public.driver_availability
     where driver_id = 'd0000000-0000-4000-8000-000000000004'),
-  'a switch left on for twelve idle hours is turned off');
+  'setting off: a switch left on for twelve idle hours is turned off');
+update private.app_settings set value = 'true'::jsonb where key = 'drivers_online_by_default';
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 9. With verification off (the pre-launch setting)
@@ -627,7 +653,8 @@ select assert_equals(
                         'nearest_city', 'last_delivery_city', 'set_available', 'trip_availability',
                         'nearby_drivers', 'dispatch_wave', 'machine_owns', 'next_wave', 'auto_dispatch',
                         'offer_declined', 'loads_machine_guard', 'system_dispatch_waves',
-                        'system_expire_availability', 'system_rescue_stranded')
+                        'system_expire_availability', 'system_rescue_stranded',
+                        'driver_default_availability')
       and not coalesce(p.proconfig @> array['search_path=""'], false)), 0,
   'every definer function 0036 touches pins search_path = ''''');
 
@@ -636,7 +663,8 @@ select assert_equals(
     where n.nspname = 'private'
       and p.proname in ('resolve_truck_type', 'nearest_city', 'last_delivery_city', 'nearby_drivers',
                         'dispatch_wave', 'machine_owns', 'next_wave', 'system_dispatch_waves',
-                        'system_expire_availability', 'system_rescue_stranded')
+                        'system_expire_availability', 'system_rescue_stranded',
+                        'driver_default_availability')
       and (has_function_privilege('authenticated', p.oid, 'execute')
            or has_function_privilege('anon', p.oid, 'execute'))), 0,
   'no private dispatch function is executable by a client');
