@@ -81,11 +81,29 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
      driver's D7, "Directions to <city>" opens Google Maps turn-by-turn.
   6. Reboot the phone, open the app once → notification returns.
   7. Sign out → notification gone.
-- **Driver directions go to the city centre, not the gate.** D7's "Directions
-  to <city>" (Google Maps turn-by-turn) routes to `cities.lat/lng`, because a
-  load stores a city and nothing finer. Good for the long drive; the last mile is
-  still a call to the shipper. Fixed by shipper pickup/drop pins (Part B, next):
-  only the point passed to `directionsLink` changes.
+- **Shipper places are built (0041) and have never run on a real phone.** Before
+  shippers get them (all before the 1.1.0 build): Google Cloud project + billing
+  with a ~$20 budget alert and a daily quota on Places API (New); two keys —
+  Places API (New) only, and Maps SDK for Android only restricted to the package
+  + signing SHA-1; `npx supabase secrets set GOOGLE_PLACES_KEY=…` and
+  `npx supabase functions deploy places`; EAS env var `GOOGLE_MAPS_ANDROID_KEY`
+  (preview + production); `npx supabase db push` (0039–0041). Known gaps: iOS
+  shows Apple Maps; a city-only load still routes the driver to the city centre;
+  a move inside one city cannot be booked (`loads_not_circular`), and the pin
+  screen says so; the ops console does not show places yet (`ops_load_places`
+  exists).
+
+  Device check (preview build 1.1.0, one Android phone):
+  1. Book → search "Lulu Barka" → suggestions in under a second → pick → the map
+     opens on it; drag → the name and "Near Barka" update.
+  2. Confirm → details → type a phone on the Arabic keyboard → Continue → review
+     shows "Pickup: …".
+  3. "Use my current location" → allow → the pin opens where you stand; deny on a
+     fresh install → the row disappears, the city list works.
+  4. Airplane mode on the search step → the notice appears; pick a city; book.
+  5. As a driver offered that load: the place, note and Call show; pass → reopen
+     the offer → gone. Accept another → D7 "Directions to <place>" opens Google
+     Maps at the gate.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
   the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
   Firebase project + FCM credentials in EAS and a new dev build. Until then,
@@ -354,7 +372,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 224 Arabic strings have never been read by someone who reads Arabic
+### 251 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -364,7 +382,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 224 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 251 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 27 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.

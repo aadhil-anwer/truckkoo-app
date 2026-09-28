@@ -58,6 +58,9 @@ to make a build pass.
   `expo-task-manager`, so OS delivery of fixes, the foreground-service
   notification, reboot, OEM battery killers and the Android 11+ Settings hop are
   covered only by the device check in `OPEN_ISSUES.md` (Driver background GPS).
+- **Google itself.** The `places` function is tested with a fake `fetch`; real
+  suggestions, the Maps SDK key, and the phone geocoder are covered only by the
+  device check in `OPEN_ISSUES.md` (Shipper places).
 - **Anything on a real device.** No screen has been seen rendered. See
   `OPEN_ISSUES.md` items 9 and 10.
 - **RTL layout.** `align` and `directionArrow` are tested; whether the horizontal

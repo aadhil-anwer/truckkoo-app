@@ -39,6 +39,9 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Driver (D1–D7)', prefixes: ['drv.', 'driver.', 'leg.', 'loc.'] },
   { title: 'Loads list (X1)', prefixes: ['loads.', 'status.'] },
   { title: 'Account (X2)', prefixes: ['account.', 'whatsapp.'] },
+  // Search, pin and details in booking; the same place lines on review, T3/T4, D5 and D7.
+  { title: 'Places — booking, review, and the driver at the gate (0041)', prefixes: ['places.'] },
+  { title: 'Map labels — seas and countries, every drawn map', prefixes: ['map.'] },
   {
     title: 'Shared chrome',
     prefixes: ['common.', 'tab.', 'label.', 'action.', 'route.', 'date.', 'app.', 'country.', 'truck.', 'weight.', 'offers.', 'routes.'],

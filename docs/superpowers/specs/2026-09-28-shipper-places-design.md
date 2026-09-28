@@ -49,29 +49,29 @@ The six questions stay six; the step counter does not advance on sub-screens.
   unchanged in behaviour. Picking a city clears any place and goes straight to
   step 2, as now.
 
-**1b — "Put the pin on the gate"** (`book/origin-pin.tsx`, new)
+**1b — "Put the pin on the gate"** (`book/pin.tsx?end=pickup`, new)
 - Full-screen map, pin fixed at the centre; the shipper drags the map.
 - Under it: the place name (phone geocoder, on map idle, throttled) and
   *"Near Barka"* (server, `city_near`).
 - *Confirm pickup* stores `{lat, lng, placeName}` and the derived city in the
   draft.
 
-**1c — "Anything the driver should know?"** (`book/origin-details.tsx`, new)
+**1c — "Anything the driver should know?"** (`book/place-details.tsx?end=pickup`, new)
 - Directions note (≤300 chars): *"Gate 3, behind the Shell station"*.
 - *Someone else at pickup?* name + phone.
 - *Skip* has the same weight as *Continue*.
 
-**Step 2** mirrors it (`destination.tsx`, `destination-pin.tsx`,
-`destination-details.tsx`); the contact is the receiver. The country control on
+**Step 2** mirrors it (`destination.tsx`, and the same two screens with
+`?end=drop` — one pin screen and one details screen, parameterised by end); the contact is the receiver. The country control on
 S10 stays for the city list; search is limited to the GCC regardless.
 
 **Review (S9)** shows the place name under each city, and the note/contact when
 given.
 
 **Draft** (`src/lib/booking.ts`) gains `origin` / `destination` places:
-`{ lat, lng, placeName, note, contactName, contactPhone } | null`. The key
-becomes `truckkoo.booking.draft.v2`; a v1 draft is read once and migrated
-(places null). Back preserves everything, as now.
+`{ lat, lng, placeName, note, contactName, contactPhone } | null`. The draft key
+stays `truckkoo.booking.draft.v1`: `loadDraft()` spreads a stored draft over
+`EMPTY_DRAFT`, so the new `null` fields need no migration. Back preserves everything, as now.
 
 **After booking:** T3/T4 show the shipper's own place names. The drawn map stays
 at city level (no pin).
@@ -203,7 +203,7 @@ block and the count in `CLAUDE.md` / `OPEN_ISSUES.md` is updated.
   static definer/volatility checks still pass.
 - **Jest**: `places/core.ts` (field mask, regions, language, response trimming,
   error mapping); `src/lib/places.ts` (debounce, session token reuse, error →
-  fallback); draft v1→v2 migration; the new booking screens (search, current
+  fallback); an old draft loads with null places; the new booking screens (search, current
   location refused, pin confirm, skip, back keeps answers, search failure shows
   the city list); review shows places; offer and trip screens (pending shows,
   Call, Directions to the point); the map import guard.

@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
    and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **224 of its strings are
+   The Arabic dictionary is complete as of P7, but **251 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -310,7 +310,7 @@ and dispatch nobody (it happened, 2026-09-27).
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 598 tests
+npm run verify    # typecheck + lint + 675 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # four SQL suites (isolation + pricing + ops + dispatch) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
