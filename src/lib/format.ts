@@ -133,8 +133,13 @@ export function formatAge(iso: string | null | undefined): string | null {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return null;
 
-  const mins = Math.max(0, Math.floor((Date.now() - then) / 60_000));
-  if (mins < 1) return t('pos.now');
+  // Seconds inside a minute: a trip reports every 30 s (CADENCE.trip), and in
+  // minutes every fix T4 shows would read "just now" and never move.
+  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (secs < 10) return t('pos.now');
+  if (secs < 60) return t('pos.secondsAgo', { seconds: formatNumber(secs) });
+
+  const mins = Math.floor(secs / 60);
   if (mins < 60) return `${formatNumber(mins)} ${t('pos.min')}`;
 
   const hours = Math.floor(mins / 60);

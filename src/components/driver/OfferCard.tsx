@@ -69,9 +69,7 @@ export function OfferCard({
       <View style={styles.head}>
         {/* Neutral. The accent on this card is the button. */}
         <StatusPill label={t('drv.offer.fits')} tone="neutral" />
-        <Text style={styles.expiry}>
-          {t('drv.offer.expires', { when: formatDeadline(offer.expires_at) })}
-        </Text>
+        <Text style={styles.expiry}>{expiryLabel(offer.expires_at)}</Text>
       </View>
 
       <DriverMoney
@@ -177,3 +175,17 @@ const styles = StyleSheet.create({
     lineHeight: 44,
   },
 });
+
+/**
+ * A wave offer lives five minutes (0036), so "Expires Tue 10:53 AM" hides the
+ * one fact that matters — how long is left. Inside the hour it counts minutes;
+ * a dispatcher's longer offer keeps its deadline. Refreshed with the offer list
+ * every 15 s, which is finer than the minute it shows.
+ */
+export function expiryLabel(iso: string, now: number = Date.now()): string {
+  const ms = new Date(iso).getTime() - now;
+  if (ms > 0 && ms <= 60 * 60 * 1000) {
+    return t('drv.offer.minutesLeft', { minutes: formatNumber(Math.max(1, Math.ceil(ms / 60000))) });
+  }
+  return t('drv.offer.expires', { when: formatDeadline(iso) });
+}

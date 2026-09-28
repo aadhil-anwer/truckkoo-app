@@ -24,14 +24,31 @@ import { Notice } from '@/components/ui';
 import { t } from '@/i18n';
 import { loadLanguage, restartPending } from '@/lib/language';
 import { initMonitoring, wrapRoot } from '@/lib/monitoring';
+import { Observe, ObserveRoot } from 'expo-observe';
 import { SessionProvider, useSession } from '@/lib/session';
 import { color, space } from '@/theme/tokens';
 import { FONT_ASSETS } from '@/theme/faces';
+// Side effect: defines the background location task. It must exist on every
+// launch — including a headless one the OS starts to deliver a location.
+import '@/lib/background-location';
 
 // First, so a crash anywhere below — fonts, language, the gate — is reported.
 initMonitoring();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// EAS Observe: startup (TTR/TTI) and per-route navigation timings. Module scope
+// on purpose — integrations cannot be switched on after a screen mounts.
+//
+// Performance only: expo-observe 57.0.24 collects no errors — Sentry remains the
+// crash reporter (src/lib/monitoring.ts).
+//
+// `filteredParams: ['id']`. Load, offer and trip screens carry their id in the
+//   route; the route PATTERN (`/load/[id]`) is enough to bucket timings, so the
+//   resolved URL and the id itself are never sent.
+Observe.configure({
+  integrations: { 'expo-router': { filteredParams: ['id'] } },
+});
 
 // RTL is structural from day one (CLAUDE.md). Allowing it here means every layout
 // is exercised in both directions as soon as Arabic copy lands. The direction
@@ -70,7 +87,9 @@ if (Platform.OS !== 'web') {
 
 export { AppErrorBoundary as ErrorBoundary };
 
-export default wrapRoot(RootLayout);
+// Sentry outermost, so it sees anything Observe's wrapper throws; ObserveRoot
+// measures time to first render of the layout itself.
+export default wrapRoot(ObserveRoot.wrap(RootLayout));
 
 function RootLayout() {
   const [fontsLoaded] = useFonts(FONT_ASSETS);

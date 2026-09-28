@@ -15,9 +15,10 @@
  * nobody signed out can read that table — inventing coordinates here to get
  * around it is exactly what `cities.lat/lng` exists to prevent.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useObserve } from 'expo-observe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
@@ -32,6 +33,12 @@ import { GUTTER_INK, alpha, color, font, space } from '@/theme/tokens';
 
 export default function Welcome() {
   const router = useRouter();
+  // The signed-out entry screen: interactive as soon as it is drawn — nothing
+  // on it waits for the network.
+  const { markInteractive } = useObserve();
+  useEffect(() => {
+    markInteractive();
+  }, [markInteractive]);
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState<null | 'google' | 'apple'>(null);
@@ -75,9 +82,13 @@ export default function Welcome() {
       </Text>
 
       <View style={[styles.content, { paddingBottom: insets.bottom + space.xl }]}>
-        <QuestionHeading size="hero" ground="ink">
-          {t('auth.welcome.title')}
-        </QuestionHeading>
+        {/* Narrower than the column, so the line breaks where the handoff's does
+            ("…needs / to go.") instead of stranding "go." alone. */}
+        <View style={styles.headline}>
+          <QuestionHeading size="hero" ground="ink">
+            {t('auth.welcome.title')}
+          </QuestionHeading>
+        </View>
         <Text style={[arabicIfNeeded(font.body), styles.body]}>{t('auth.welcome.body')}</Text>
 
         <View style={styles.actions}>
@@ -130,6 +141,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: GUTTER_INK,
     gap: space.md,
   },
+  headline: { maxWidth: 330 },
   body: { color: alpha.onInk.body, textAlign: align.start, maxWidth: 300 },
   actions: { marginTop: space.lg, gap: space.sm },
   error: { color: color.dangerLight, textAlign: 'center' },

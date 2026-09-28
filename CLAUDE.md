@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
    and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **191 of its strings are
+   The Arabic dictionary is complete as of P7, but **254 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -98,6 +98,15 @@ cities, and truck types.
   only**, and the trail is ops-only and swept by hand. **Nothing computes a
   position** — `progressOf` and `interpolate` were deleted in P6, and a marker on
   a map without a reported fix behind it is a bug.
+- **A driver's latest GPS point is stored, and no client reads it** (0039,
+  founder's call 2026-09-28, reversing "a town, never a coordinate"). One point
+  per driver in `driver_availability.lat/lng`, overwritten — never a trail — with
+  no client grant for any role, the driver included. `report_location` stores it
+  only while the driver is online (and sends it to an `in_transit` trip whatever
+  the switch says); switch-off and delivery erase it. `nearby_drivers` ranks by
+  it when under 45 min old and ≤1 km accurate, else by town.
+  `src/lib/background-location.ts` is the **only** reporter, and
+  `src/lib/location-tracking.tsx` decides when it runs.
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who
@@ -185,6 +194,13 @@ projected by one `d3-geo` Mercator fitted to one of two fixed framings, drawn wi
 every screen picks a framing. Children take the projection from **context**, so a
 pin and its coastline cannot disagree.
 
+**One exception (0041, 2026-09-28):** the booking pin screen
+(`src/components/booking/PinAdjustMap.tsx`) uses `react-native-maps` — Google on
+Android, Apple Maps on iOS — because putting a pin on a gate needs streets and
+panning. It is the only importer (`tests/unit/map-import-guard.test.ts`); the
+key comes from the EAS env var `GOOGLE_MAPS_ANDROID_KEY` via `app.config.ts`.
+Every other map stays `src/map`.
+
 Two map distinctions carry meaning: **dashed corridor = uncommitted, solid =
 committed**, and **origin is a ring, destination is a filled square** (matching
 `RouteRail`). `tests/components/map.test.tsx` guards both.
@@ -271,18 +287,32 @@ empty leg, part-loaded leg, corridor history — and **does not check ownership*
 It is private and ungranted precisely for that reason: it is the load board with
 the guard removed. Its callers do the checking. Never grant it.
 
-`post_load` auto-dispatches tier-1 matches with no human in the loop, bounded by
-settings in `private.app_settings` (`auto_dispatch_enabled` and two caps). It
-fails *open into the human path* — a broken matcher must never lose a shipper's
-load — which is a deliberate exception to "fail closed and loud", logged in
-`private.dispatch_log`.
+**Dispatch is automatic (0036), Uber/Porter-style.** `book_load` posts, prices
+and — if the server's price is the one the shipper saw — accepts and starts the
+search in one call. `private.next_wave` offers the load to the nearest online,
+verified, fitting drivers — and every driver is online unless they switch off
+(0038, `drivers_online_by_default`) (`driver_availability`, declared legs first), three at
+a time for five minutes, the radius widening with time (`dispatch_*` settings);
+the every-minute `dispatch-waves` job advances it; after 15 minutes a person is
+alerted once. The machine keeps looking after that (0037, `dispatch-rescue`): an
+accepted load nobody has taken is offered to any driver who comes online, until
+its collection date — unless a dispatcher has taken it in hand. A lapsed offer
+is not a "no": a driver who switches on again is re-asked; a decline is final.
+**Any function that writes is `volatile`** — PostgREST runs `stable` ones
+read-only, so `quote_route` failed for every shipper in production while every
+psql test passed; dispatch.sql §10 now checks the whole class statically. `private.loads_machine_guard` stops older paths handing a load the
+machine still owns to a person between waves; a dispatcher's own move is never
+redirected. It still fails *open into the human path* — logged in
+`private.dispatch_log`. `dispatch_log`'s check constraints list every mode: add
+one there when you add one in code, or `accept_quote` will swallow the violation
+and dispatch nobody (it happened, 2026-09-27).
 
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 541 tests
+npm run verify    # typecheck + lint + 690 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
-npm run test:db   # three SQL suites (isolation + pricing + ops) — needs `npx supabase start`
+npm run test:db   # four SQL suites (isolation + pricing + ops + dispatch) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
 ```
 
@@ -323,6 +353,14 @@ Lessons already paid for:
 - `npx expo start` for dev; native Google/Apple sign-in needs a **development
   build**, not Expo Go.
 - Never eject from the managed workflow.
+- **EAS Update is on, with `runtimeVersion: { policy: "appVersion" }`.** An
+  update reaches every build whose `version` (app.json) matches. **Any native
+  change — a new native library, an SDK bump, a config plugin — means bumping
+  `version` before the next build**, or `eas update` can ship JS that calls
+  native code an installed build does not have, and crash it on launch. JS,
+  styles and assets only: `eas update --channel <preview|production>
+  --environment <env> --message "..."`. Never publish to `production` without
+  the founder's say-so.
 - Env changes need `npx expo start -c` — Expo inlines `EXPO_PUBLIC_*` at build
   time.
 - Migrations are append-only files in `supabase/migrations/`. Never edit an

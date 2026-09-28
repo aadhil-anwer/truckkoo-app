@@ -34,7 +34,7 @@ import {
 } from './harness';
 
 import { Linking } from 'react-native';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { act, render, screen, fireEvent } from '@testing-library/react-native';
 
 import CustomerHome from '@/app/(app)/(tabs)/customer';
 import LoadsTab from '@/app/(app)/(tabs)/loads';
@@ -475,6 +475,15 @@ describe('TrackLoad', () => {
       (queries.useMyTrips as jest.Mock).mockReturnValue(ok([tripOn()]));
     });
 
+    it('names the shipper\u2019s own pickup and drop-off places', async () => {
+      (queries.useLoadPlaces as jest.Mock).mockReturnValue(ok({
+        pickup: { lat: 23.6, lng: 58.4, name: 'Ruwi warehouse', note: null, contactName: null, contactPhone: null },
+        drop: null,
+      }));
+      await render(<TrackLoad />);
+      expect(screen.getByText('Pickup: Ruwi warehouse')).toBeTruthy();
+    });
+
     it('shows what will be owed at the gate', async () => {
       // Settlement is offline and the driver is about to ask for it. A shipper
       // hunting for the number at the gate is a shipper arguing with a driver.
@@ -514,6 +523,34 @@ describe('TrackLoad', () => {
       (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
       await render(<TrackLoad />);
       expect(screen.getByText(/Seen/)).toBeTruthy();
+    });
+
+    it('counts the age of the fix up while the shipper watches', async () => {
+      // A fix arrives every 30 s. Between two of them the label must keep
+      // telling the truth about how old the one on screen is.
+      jest.useFakeTimers();
+      try {
+        (queries.useTripPosition as jest.Mock).mockReturnValue(
+          ok(tripPosition({ seen_at: new Date(Date.now() - 20_000).toISOString() })),
+        );
+        await render(<TrackLoad />);
+        expect(screen.getByText('Seen 20 s ago')).toBeTruthy();
+
+        await act(async () => {
+          jest.advanceTimersByTime(15_000);
+        });
+        expect(screen.getByText('Seen 35 s ago')).toBeTruthy();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('leaves navigation to the driver — no Google Maps button for the shipper', async () => {
+      // The shipper is watching, not driving. Directions live on D7.
+      (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
+      await render(<TrackLoad />);
+      expect(screen.queryByLabelText(/Google Maps/)).toBeNull();
+      expect(screen.queryByLabelText(/Directions/)).toBeNull();
     });
 
     it('dims a marker the shipper should not read as current', async () => {

@@ -70,6 +70,7 @@ Client may write: `truck_type`, `plate`, `capacity_kg` (on own rows).
 | `status` | Business state machine (`SECURITY.md` §8). Self-setting `assigned` binds a truck without dispatch. | RPC transitions only |
 | `accepted_at` | **The fact `status` cannot carry** (0026). `matched` is reachable both before acceptance (a dispatcher offering by hand) and after it (auto-dispatch inside `accept_quote`), so a status check cannot tell a commitment from an intention. This is what makes an accepted price immutable to `ops_set_price`. | `accept_quote()` only |
 | `shipper_id` | Ownership | Fixed at insert to `auth.uid()` |
+| `priced_truck_type` | **The truck the price is for** (0036). "Let us choose" leaves `truck_type_code` NULL (non-negotiable #1) and this records which truck the server priced it as — smallest that carries the weight. A client that could write it would re-point the price at a cheaper truck. Readable by the shipper, so the screen can name it. | `private.issue_quote()` only |
 | `created_at` | Audit integrity | Nobody |
 
 Client may write on INSERT: `origin_city`, `dest_city`, `pickup_from`,
@@ -159,6 +160,23 @@ no policies, so a grant added by accident later still fails closed.
 
 Coordinates are bounded twice — in the RPC and again by `trip_positions_in_region`
 — like every other client-supplied number (`SECURITY.md` §6).
+
+## `public.driver_availability` — online, and which town (0036)
+
+| Field | Why it's locked | Who may change it |
+|---|---|---|
+| `available` | **Decides who is offered cargo.** A client write could keep a driver "online" forever, or switch a rival off. | `set_available()`, the trip trigger (a job takes a driver offline; delivering puts them back online at the destination), the 12 h expiry job |
+| `city_id` | **Ranks drivers by distance.** A driver who could write their own town could put themselves first in line for every load from anywhere. Snapped server-side from one GPS reading, or taken from the last delivery. | Same as above |
+| `source` | Records how the town was learned (`gps`/`delivery`/`manual`) | Same as above |
+| `driver_id`, `updated_at` | Ownership; the 12 h expiry reads `updated_at` | Server only |
+| `lat`, `lng`, `accuracy_m` | **Where a driver is, to the metre.** Ranks who is offered cargo; also where someone lives. No client grant at all — not even the driver's own row. Overwritten, never kept as a trail; erased on switch-off and at delivery. | `report_location()` (online only), `set_available()`, the trip trigger |
+| `located_at` | When the phone took the fix (clamped to server time). Client may read its own. | Same as above |
+
+Client may write: **nothing.** Client may read: **its own row only** (RLS,
+column grant), and never a coordinate. Since 0039 the latest GPS point is
+stored (founder's decision, 2026-09-28, reversing 0036's "a town, never a
+coordinate"). No client role can read it; asserted in
+`supabase/tests/dispatch.sql` §8 and `tenant_isolation.sql`.
 
 ## `public.quotes`
 
@@ -300,3 +318,11 @@ in an ops screen cannot widen what any other client sees.
   is admin-write-only from its first migration.
 
 *(`rate_cards.*` and `quotes.*` landed in `0010_pricing.sql` — see above.)*
+
+### `load_places` (0041)
+
+| Column | Client write | Why |
+|---|---|---|
+| every column | **none** | Written only by `book_load`, which derives the city from the point. |
+| `contact_name`, `contact_phone` | none | A third party's personal data (the person at the gate). Readable by the owning shipper; by a driver only through `driver_offers()` while pending and `driver_trip()` until delivery; by ops through `ops_load_places`. |
+| `lat`, `lng` | none | The shipper's premises. Same readers as above. |

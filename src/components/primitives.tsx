@@ -274,13 +274,30 @@ export function TextField({
   leading?: ReactNode;
   trailing?: ReactNode;
 }) {
+  // The active field wears the accent edge, as N3's active box does. On a phone
+  // there is otherwise no sign of where typing will land.
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.fieldWrap}>
-      <View style={StyleSheet.flatten([styles.field, !!error && styles.fieldError])}>
+      <View
+        style={StyleSheet.flatten([
+          styles.field,
+          focused && styles.fieldFocused,
+          !!error && styles.fieldError,
+        ])}
+      >
         {leading}
         <TextInput
           placeholderTextColor={color.mutedText}
           {...input}
+          onFocus={(e) => {
+            setFocused(true);
+            input.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            input.onBlur?.(e);
+          }}
           style={StyleSheet.flatten([styles.fieldInput, input.style])}
         />
         {trailing}
@@ -409,14 +426,27 @@ export function SelectCard({
       >
         <Icon name={icon} size={27} tint={selected ? color.accent : color.iconGrey} />
       </View>
-      <Text style={StyleSheet.flatten([font.title, { color: color.inkText }])}>{title}</Text>
-      <Text style={StyleSheet.flatten([font.bodySmall, { color: color.mutedText }])}>
-        {body}
-      </Text>
+      <View style={styles.selectText}>
+        <Text
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.title),
+            { color: color.inkText, textAlign: align.start },
+          ])}
+        >
+          {title}
+        </Text>
+        <Text
+          style={StyleSheet.flatten([
+            arabicIfNeeded(font.bodySmall),
+            { color: color.mutedText, textAlign: align.start },
+          ])}
+        >
+          {body}
+        </Text>
+      </View>
       <View
         style={StyleSheet.flatten([
           styles.radio,
-          styles.radioCorner,
           // SelectCard is cream-only, so the dark ring never needs the ink variant.
           { borderColor: selected ? color.accent : 'rgba(22,23,26,.18)' },
         ])}
@@ -568,11 +598,12 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     ...elevation.inputCream,
   },
+  fieldFocused: { borderColor: color.accent },
   fieldError: { borderColor: color.danger },
   fieldInput: {
     flex: 1,
-    // Without this a web input keeps its intrinsic width beside N2's dial code,
-    // overflows the card, and drags the whole screen sideways with it.
+    // Lets the input shrink beside N2's dial code rather than hold its natural
+    // width and push past the card's edge.
     minWidth: 0,
     minHeight: MIN_TARGET,
     ...font.title,
@@ -601,13 +632,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioCorner: { position: 'absolute', top: space.xl, insetInlineEnd: space.xl },
   radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: color.accent },
+  // A row, as every drawn instance is (N4, S7, D5): tile, words, radio. It was a
+  // stack — tile above title — which made each card half again as tall and
+  // pushed N4's second choice toward the fold.
   selectCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.lg,
     borderRadius: radius.card,
     borderWidth: 2,
     padding: space.xl,
-    gap: space.sm,
   },
   selectTile: {
     width: 54,
@@ -615,7 +650,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.tile,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: space.xs,
   },
   progressTrack: { height: 4, borderRadius: radius.round, overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: radius.round, backgroundColor: color.accent },

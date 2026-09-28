@@ -67,6 +67,7 @@ import { arabicIfNeeded } from '@/components/text-direction';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, roadKm } from '@/map';
 import { align, formatNumber, getLanguage, localized, t } from '@/i18n';
 import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from '@/lib/format';
+import { useTick } from '@/lib/use-tick';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import {
@@ -75,6 +76,7 @@ import {
   useCities,
   useCurrentQuote,
   useDriverSummary,
+  useLoadPlaces,
   useMyLoads,
   useMyTrips,
   usePodUrl,
@@ -139,8 +141,10 @@ export default function TrackLoad() {
   const counterpart = useTripCounterpart(trip?.id);
   const truck = useTripTruck(trip?.id);
   const events = useTripEvents(trip?.id);
-  const position = useTripPosition(trip?.id);
+  const position = useTripPosition(trip?.id, { live: load?.status === 'in_transit' });
   const summary = useDriverSummary(trip?.driver_id);
+  // The exact pickup and drop-off, when the shipper pinned them (0041).
+  const places = useLoadPlaces(load?.id);
 
   const origin = load ? index.get(load.origin_city) : undefined;
   const dest = load ? index.get(load.dest_city) : undefined;
@@ -313,6 +317,16 @@ export default function TrackLoad() {
             />
             <Chip label={formatWindow(load.pickup_from, load.pickup_to)} />
           </View>
+          {!!places.data?.pickup?.name && (
+            <Text style={styles.placeLine} numberOfLines={2}>
+              {t('places.review.pickup', { place: safeText(places.data.pickup.name) })}
+            </Text>
+          )}
+          {!!places.data?.drop?.name && (
+            <Text style={styles.placeLine} numberOfLines={2}>
+              {t('places.review.drop', { place: safeText(places.data.drop.name) })}
+            </Text>
+          )}
         </View>
 
         {delivered && <Rating trip={trip} />}
@@ -642,6 +656,8 @@ function InTransit({
   corridorKm: number;
 }) {
   const fix = position?.eta_source === 'fix';
+  // Once a second, so the age counts up between the 20 s fetches.
+  useTick(1000, fix);
   const age = formatAge(position?.seen_at);
   const remaining = position?.remaining_km ?? null;
 
@@ -862,6 +878,7 @@ const styles = StyleSheet.create({
     gap: space.md,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  placeLine: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start, marginTop: space.sm },
 
   // T2
   priceHero: { ...font.priceHero, color: color.lightText, textAlign: align.start },

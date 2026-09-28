@@ -80,6 +80,7 @@ jest.mock('@/lib/supabase', () => ({
     },
     from: jest.fn(),
     rpc: jest.fn(),
+    functions: { invoke: jest.fn() },
     storage: { from: jest.fn() },
   },
   signOutEverywhere: jest.fn(),
@@ -125,3 +126,31 @@ jest.mock(
   '@react-native-async-storage/async-storage',
   () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+/* ─── background location (native modules absent under jest) ─────────────── */
+
+jest.mock('expo-task-manager', () => ({ defineTask: jest.fn() }));
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  ActivityType: { AutomotiveNavigation: 2 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  getBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  startLocationUpdatesAsync: jest.fn(async () => undefined),
+  stopLocationUpdatesAsync: jest.fn(async () => undefined),
+  getCurrentPositionAsync: jest.fn(async () => null),
+  getLastKnownPositionAsync: jest.fn(async () => null),
+  reverseGeocodeAsync: jest.fn(async () => []),
+}));
+
+/* ─── react-native-maps (native; one screen uses it) ─────────────────────── */
+
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MapView = (props: Record<string, unknown>) =>
+    React.createElement(View, { testID: props.testID, onRegionChangeComplete: props.onRegionChangeComplete });
+  return { __esModule: true, default: MapView, PROVIDER_GOOGLE: 'google' };
+});

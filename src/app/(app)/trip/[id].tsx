@@ -38,16 +38,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
 import { DriverMoney } from '@/components/driver/Money';
+import { DriverPlaceDetails } from '@/components/driver/PlaceDetails';
 import { Icon } from '@/components/icon';
-import { BackButton, PressableSurface, PrimaryButton } from '@/components/primitives';
+import { BackButton, PressableSurface, PrimaryButton, SecondaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
-import { cityIndex, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
-import { usePositionReporter } from '@/lib/position';
-import { safeText } from '@/lib/safe-text';
+import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { directionsLink, safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
@@ -81,11 +81,10 @@ export default function TripScreen() {
   const trip = job.data;
 
   const live = trip?.status === 'in_transit';
-  // The reporter runs only on a live trip. `report_position` refuses anything
-  // else server-side (0032), so this is the client agreeing with the database
-  // rather than the client being the control.
-  const { lastSentAt } = usePositionReporter(id, live);
-  const position = useTripPosition(live ? id : undefined);
+  const position = useTripPosition(live ? id : undefined, { live: true });
+  // The background task (0039) reports, with the app open or not; D7 only reads
+  // what the server holds, so "last sent" is true even after the app was closed.
+  const lastSentAt = position.data?.seen_at ?? null;
 
   const origin = trip ? index.get(trip.origin_city) : undefined;
   const dest = trip ? index.get(trip.dest_city) : undefined;
@@ -186,6 +185,16 @@ export default function TripScreen() {
   // server refused the transition — a button that could only ever fail.
   const done =
     trip.status === 'delivered' || trip.status === 'closed' || trip.status === 'cancelled';
+  // Where the driver is headed next: the pickup until the load is on board, then
+  // the drop-off. The pinned gate when the shipper gave one (0041), else the
+  // city — and the label names whichever it is, promising no more than that.
+  const pickupPlace = placeOf(trip as unknown as Record<string, unknown>, 'pickup');
+  const dropPlace = placeOf(trip as unknown as Record<string, unknown>, 'drop');
+  const nextPlace = done ? null : collected ? dropPlace : pickupPlace;
+  const nextStop = done ? undefined : collected ? dest : origin;
+  const target = nextPlace ?? nextStop;
+  const directions = target ? directionsLink(target.lat, target.lng) : null;
+  const directionsName = nextPlace?.name ?? (nextStop ? localized(nextStop) : '');
 
   return (
     <View style={styles.screen}>
@@ -262,6 +271,9 @@ export default function TripScreen() {
               }`}
             </Text>
           </View>
+
+          {pickupPlace && <DriverPlaceDetails label={t('book.dest.pickup')} place={pickupPlace} />}
+          {dropPlace && <DriverPlaceDetails label={t('book.dest.deliver')} place={dropPlace} />}
 
           {/* One 44px circle. The shipper is a contact here, not a profile. */}
           {!!trip.shipper_phone && (
@@ -355,6 +367,17 @@ export default function TripScreen() {
                   onPress={confirmCollected}
                   loading={advance.isPending}
                 />
+              )}
+              {/* Secondary, and below: the primary keeps the accent and the
+                  thumb. Navigating is Google's job — the app hands over. */}
+              {directions && !!directionsName && (
+                <View style={styles.directions}>
+                  <SecondaryButton
+                    label={t('drv.trip.directionsTo', { city: safeText(directionsName) })}
+                    icon="dropoff"
+                    onPress={() => Linking.openURL(directions).catch(() => {})}
+                  />
+                </View>
               )}
             </View>
           )}
@@ -473,4 +496,5 @@ const styles = StyleSheet.create({
 
   error: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
   action: { marginTop: space.sm },
+  directions: { marginTop: space.md },
 });

@@ -65,6 +65,19 @@ export function hasUnsafeText(input: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Keep a left-to-right value — a phone number — in reading order inside copy
+ * that may be Arabic. An RTL paragraph lays the digit groups of
+ * "+968 9000 0000" out right to left; a first-strong isolate stops that.
+ *
+ * This is the one place the app ADDS a bidi control, and it adds it to text it
+ * has just cleaned: any control already inside is stripped first, so a value
+ * cannot close the isolate early and spoof what follows.
+ */
+export function ltrIsolate(input: string): string {
+  return `\u2066${input.replace(BIDI_CONTROLS, '')}\u2069`;
+}
+
 /** Collapse newlines and clamp length for single-line display. */
 export function oneLine(input: string | null | undefined, max = 160): string {
   const cleaned = safeText(input).replace(/\s+/g, ' ');
@@ -85,4 +98,22 @@ export function whatsappLink(message?: string): string {
   const base = `https://wa.me/${WHATSAPP_NUMBER}`;
   if (!message) return base;
   return `${base}?text=${encodeURIComponent(safeText(message))}`;
+}
+
+/**
+ * Turn-by-turn directions in Google Maps, from wherever the driver is (D7's
+ * "Directions to Sohar"). Our map shows the corridor at about a pixel a
+ * kilometre; navigating is Google's job, and every driver already has the app.
+ *
+ * The universal URL opens the Google Maps app when it is installed and the
+ * browser when it is not, on both platforms. Digits are `toFixed`, never
+ * `formatNumber`: in Arabic that renders ١٧٫٠٢, which Google cannot read. A URL
+ * is not copy. Anything that is not a finite coordinate gives no link, so the
+ * caller shows no button rather than a link to nowhere.
+ */
+export function directionsLink(lat: number, lng: number): string | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const destination = encodeURIComponent(`${lat.toFixed(6)},${lng.toFixed(6)}`);
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
 }

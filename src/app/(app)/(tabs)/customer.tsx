@@ -21,8 +21,9 @@
  * actually want to see, which is the line between two places.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -72,6 +73,12 @@ export default function ShipperHome() {
   const cities = useCities();
   const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
   const { data: truckTypes } = useTruckTypes();
+  // Interactive once the loads have answered, either way — the skeleton is
+  // not the screen. Only the first call per session is recorded.
+  const { markInteractive } = useObserve();
+  useEffect(() => {
+    if (!isLoading) markInteractive();
+  }, [isLoading, markInteractive]);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   // The gap between the greeting and the search block is the map's visible
   // band; the map fits there instead of under them (ISSUES.md 1.2).

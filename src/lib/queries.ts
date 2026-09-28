@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from './session';
 import { supabase } from './supabase';
+import type { PlacePayload } from './booking';
 
 /** One literal string. Supabase derives row types from it, so it cannot be built by concatenation. */
 const LOAD_COLUMNS =
@@ -235,7 +236,7 @@ export function usePostLoad() {
 export type QuoteOutcome =
   /** Priced from the rate card. */
   | 'quoted'
-  /** "Not sure — advise me": no truck type, so nothing to price against. */
+  /** "Let us choose" with no weight: nothing to choose a truck by (0036). */
   | 'advise_me'
   /** No rate loaded for this corridor band yet. The normal state at launch. */
   | 'no_rate'
@@ -291,6 +292,101 @@ export function useQuoteRoute() {
       });
       if (error) throw error;
       return ((data ?? []) as Quote[])[0] ?? null;
+    },
+  });
+}
+
+/** The exact price for a route before booking, and the truck it is for. */
+export type RoutePrice = {
+  /** NULL when a person has to price it (no weight on "let us choose", no rate). */
+  price_baisa: number | null;
+  currency: string;
+  outcome: QuoteOutcome;
+  /** The truck the price is for — the resolved one when the shipper said "let us choose". */
+  truck_type_code: string | null;
+};
+
+/**
+ * The review screen's price. The same `quote_route` the server books against,
+ * so the number shown is the number booked: `useBookLoad` sends it back and the
+ * server refuses to auto-accept anything else. `bigint` arrives from PostgREST
+ * as a string, and a string price concatenates — it is made a number here.
+ */
+export function useRoutePrice(input: {
+  originCity: number | null;
+  destCity: number | null;
+  truckTypeCode: string | null;
+  weightKg: number | null;
+}) {
+  return useQuery({
+    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg],
+    enabled: input.originCity != null && input.destCity != null,
+    // Rate-limited server-side (30 an hour); a review screen re-rendering must
+    // not spend them.
+    staleTime: 60_000,
+    queryFn: async (): Promise<RoutePrice | null> => {
+      const { data, error } = await supabase.rpc('quote_route', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_truck_type_code: input.truckTypeCode,
+        p_weight_kg: input.weightKg,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!row) return null;
+      return {
+        price_baisa: row.price_baisa == null ? null : Number(row.price_baisa),
+        currency: String(row.currency ?? 'OMR'),
+        outcome: row.outcome as QuoteOutcome,
+        truck_type_code: (row.truck_type_code as string | null) ?? null,
+      };
+    },
+  });
+}
+
+export type BookInput = {
+  originCity: number;
+  destCity: number;
+  collectionDate: string;
+  goods: string;
+  weightKg: number | null;
+  truckTypeCode: string | null;
+  /** The price on screen when "Book" was tapped; NULL when none was shown. */
+  seenPriceBaisa: number | null;
+  /** Exact places (0041); null when the shipper chose a city only. */
+  originPlace: PlacePayload | null;
+  destPlace: PlacePayload | null;
+};
+
+/**
+ * Book = accept, the Uber/Porter way. The server posts, prices, and — only if
+ * its price is the one the shipper saw — accepts and starts dispatch in the same
+ * call. If the price moved, the load is still posted and waits at "quoted" for
+ * the shipper to accept the real number on the load screen.
+ */
+export function useBookLoad() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: BookInput) => {
+      const { data, error } = await supabase.rpc('book_load', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_pickup_from: input.collectionDate,
+        p_pickup_to: input.collectionDate,
+        p_goods: input.goods,
+        p_weight_kg: input.weightKg,
+        p_truck_type_code: input.truckTypeCode,
+        p_seen_price_baisa: input.seenPriceBaisa,
+        p_origin_place: input.originPlace,
+        p_dest_place: input.destPlace,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!row?.load_id) throw new Error('book_load returned no load');
+      return { loadId: String(row.load_id), priceMatched: row.price_matched === true };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
     },
   });
 }
@@ -405,15 +501,82 @@ export type DriverOffer = {
   detour_km: number | null;
   /** NULL when capacity or weight is unknown — never a guess. */
   free_after_kg: number | null;
+  /** The exact places (0041). All null when the shipper chose cities only. */
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+  drop_contact_name: string | null;
+  drop_contact_phone: string | null;
 };
 
 export function useDriverOffers() {
   return useQuery({
     queryKey: ['driver', 'offers'],
+    // Waves last five minutes. Until push notifications land, an offer has to
+    // appear while the driver is looking at this screen, not when they next
+    // pull to refresh — by then the wave has moved on.
+    refetchInterval: 15_000,
     queryFn: async (): Promise<DriverOffer[]> => {
       const { data, error } = await supabase.rpc('driver_offers');
       if (error) throw error;
       return (data ?? []) as DriverOffer[];
+    },
+  });
+}
+
+export type Availability = {
+  available: boolean;
+  city_id: number | null;
+  source: 'gps' | 'delivery' | 'manual';
+  updated_at: string;
+  /** When the phone last sent a point (0039). The point itself is never readable. */
+  located_at: string | null;
+};
+
+/** The driver's own switch and town. NULL until they have ever set it. */
+export function useMyAvailability() {
+  return useQuery({
+    queryKey: ['driver', 'availability'],
+    // The server turns the switch off after twelve idle hours, and a delivery
+    // turns it on. Read once, the card kept saying "online" to a driver the
+    // server had already taken out of every wave.
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<Availability | null> => {
+      const { data, error } = await supabase
+        .from('driver_availability')
+        .select('available, city_id, source, updated_at, located_at')
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Availability | null) ?? null;
+    },
+  });
+}
+
+/**
+ * Go available or offline. A position, when there is one, is sent once and
+ * snapped server-side to the nearest town — only the town is kept.
+ */
+export function useSetAvailable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { available: boolean; lat?: number; lng?: number }) => {
+      const { error } = await supabase.rpc('set_available', {
+        p_available: input.available,
+        p_lat: input.lat ?? null,
+        p_lng: input.lng ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['driver', 'availability'] });
+      qc.invalidateQueries({ queryKey: ['driver', 'offers'] });
     },
   });
 }
@@ -525,7 +688,77 @@ export type DriverTrip = {
   currency: string;
   shipper_name: string | null;
   shipper_phone: string | null;
+  /** The exact places (0041). All null when the shipper chose cities only. */
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+  drop_contact_name: string | null;
+  drop_contact_phone: string | null;
 };
+
+/** One end of a load, as the driver or shipper reads it (0041). */
+export type LoadPlace = {
+  lat: number;
+  lng: number;
+  name: string | null;
+  note: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+};
+
+const num = (v: unknown) => (v == null ? null : Number(v));
+const str = (v: unknown) => (typeof v === 'string' && v.length ? v : null);
+
+/** Reads `pickup_*` / `drop_*` off a driver row. No point means no place. */
+export function placeOf(row: Record<string, unknown>, end: 'pickup' | 'drop'): LoadPlace | null {
+  const lat = num(row[`${end}_lat`]);
+  const lng = num(row[`${end}_lng`]);
+  if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return {
+    lat,
+    lng,
+    name: str(row[`${end}_name`]),
+    note: str(row[`${end}_note`]),
+    contactName: str(row[`${end}_contact_name`]),
+    contactPhone: str(row[`${end}_contact_phone`]),
+  };
+}
+
+/** The shipper's own places for one load. RLS scopes it; a miss is simply none. */
+export function useLoadPlaces(loadId: string | undefined) {
+  return useQuery({
+    queryKey: ['load', 'places', loadId],
+    enabled: !!loadId,
+    queryFn: async (): Promise<{ pickup: LoadPlace | null; drop: LoadPlace | null }> => {
+      const { data, error } = await supabase
+        .from('load_places')
+        .select('kind, lat, lng, place_name, note, contact_name, contact_phone')
+        .eq('load_id', loadId);
+      if (error) throw error;
+      const rows = (data ?? []) as Record<string, unknown>[];
+      const as = (kind: 'pickup' | 'drop') => {
+        const r = rows.find((x) => x.kind === kind);
+        if (!r) return null;
+        return placeOf(
+          {
+            [`${kind}_lat`]: r.lat, [`${kind}_lng`]: r.lng, [`${kind}_name`]: r.place_name,
+            [`${kind}_note`]: r.note, [`${kind}_contact_name`]: r.contact_name,
+            [`${kind}_contact_phone`]: r.contact_phone,
+          },
+          kind,
+        );
+      };
+      return { pickup: as('pickup'), drop: as('drop') };
+    },
+  });
+}
 
 export function useDriverTrip(tripId: string | undefined) {
   return useQuery({
@@ -561,14 +794,15 @@ export type TripPosition = {
   eta_source: 'fix' | 'corridor';
 };
 
-export function useTripPosition(tripId: string | undefined) {
+export function useTripPosition(tripId: string | undefined, { live = false }: { live?: boolean } = {}) {
   return useQuery({
     queryKey: ['trip', 'position', tripId],
     enabled: !!tripId,
     // A position is the one thing on T4 that changes without the shipper doing
-    // anything. Sixty seconds matches the driver's own reporting interval —
-    // asking faster cannot produce a newer fix.
-    refetchInterval: 60_000,
+    // anything. The phone reports every 30 s on a trip (CADENCE.trip), so asking
+    // every 20 s puts a new fix on screen within 20 s of it arriving. Only while
+    // the load is moving: before pickup and after delivery nothing changes.
+    refetchInterval: live ? 20_000 : false,
     queryFn: async (): Promise<TripPosition | null> => {
       const { data, error } = await supabase.rpc('trip_position', { p_trip_id: tripId });
       if (error) throw error;
@@ -587,36 +821,6 @@ export function useTripPosition(tripId: string | undefined) {
         eta_at: (r.eta_at as string | null) ?? null,
         eta_source: r.eta_source === 'fix' ? 'fix' : 'corridor',
       };
-    },
-  });
-}
-
-/**
- * Report one fix. Resolves `false` when the trip is no longer live, which is not
- * an error — the delivery transition and the last queued ping race by seconds,
- * and the driver must not see a failure at the gate.
- */
-export function useReportPosition() {
-  return useMutation({
-    mutationFn: async ({
-      tripId,
-      lat,
-      lng,
-      accuracyM,
-    }: {
-      tripId: string;
-      lat: number;
-      lng: number;
-      accuracyM?: number | null;
-    }): Promise<boolean> => {
-      const { data, error } = await supabase.rpc('report_position', {
-        p_trip_id: tripId,
-        p_lat: lat,
-        p_lng: lng,
-        p_accuracy_m: accuracyM ?? null,
-      });
-      if (error) throw error;
-      return data === true;
     },
   });
 }
@@ -716,6 +920,10 @@ export function useAdvanceTrip() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
+      // The trip screen and the home job card read ['driver', 'trip', id];
+      // without this both kept offering "Yes, it is loaded" after the trip had
+      // started. Delivering also moves the week's earnings and past trips.
+      qc.invalidateQueries({ queryKey: ['driver'] });
     },
   });
 }

@@ -13,6 +13,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MapStepShell } from '@/components/booking/shells';
 import { CityList } from '@/components/booking/CityList';
+import { PlaceSearch } from '@/components/booking/PlaceSearch';
 import { PrimaryButton, PressableSurface } from '@/components/primitives';
 import { Chip, Notice, QuestionHeading, RouteRail, SectionLabel } from '@/components/ui';
 import { Icon } from '@/components/icon';
@@ -85,6 +86,18 @@ export default function Destination() {
           {t('book.dest.q')}
         </QuestionHeading>
 
+        <View style={styles.search}>
+          <PlaceSearch
+            onPicked={(p) => {
+              // The city is the pin screen's to set, from the server. Until it
+              // does, this place sits beside no city — never beside one it
+              // was not checked against, which book_load would refuse.
+              update({ destinationPlace: { ...p, note: '', contactName: '', contactPhone: '' }, destinationCityId: null });
+              router.push({ pathname: '/book/pin', params: { end: 'drop' } });
+            }}
+          />
+        </View>
+
         {origin && (
           <View style={styles.routeCard}>
             <RouteRail
@@ -96,9 +109,13 @@ export default function Destination() {
               onPress={() => {
                 // Swapping is only meaningful once both ends exist.
                 if (draft.originCityId == null || draft.destinationCityId == null) return;
+                // The places travel with their cities, or book_load would find a
+                // pin in Salalah on a load that now starts in Muscat.
                 update({
                   originCityId: draft.destinationCityId,
                   destinationCityId: draft.originCityId,
+                  originPlace: draft.destinationPlace,
+                  destinationPlace: draft.originPlace,
                 });
               }}
               accessibilityLabel={t('book.dest.swap')}
@@ -125,7 +142,7 @@ export default function Destination() {
                   // Changing country clears the destination: keeping a city from
                   // the previous country would leave a selection the list no
                   // longer shows.
-                  update({ destinationCountry: c, destinationCityId: null })
+                  update({ destinationCountry: c, destinationCityId: null, destinationPlace: null })
                 }
                 accessibilityLabel={t(`country.${c}` as StringKey)}
                 style={[styles.segment, on && styles.segmentOn]}
@@ -159,6 +176,7 @@ export default function Destination() {
                     update({
                       destinationCityId: c.id,
                       destinationCountry: c.country as 'OM' | 'AE' | 'SA',
+                      destinationPlace: null,
                     })
                   }
                 />
@@ -168,10 +186,12 @@ export default function Destination() {
         )}
 
         <View style={styles.list}>
+          <SectionLabel>{t('places.search.or')}</SectionLabel>
           <CityList
             cities={shown}
             selectedId={draft.destinationCityId}
-            onSelect={(c) => update({ destinationCityId: c.id })}
+            // A city chosen by hand replaces any place.
+            onSelect={(c) => update({ destinationCityId: c.id, destinationPlace: null })}
             excludeId={draft.originCityId}
           />
         </View>
@@ -233,6 +253,7 @@ const styles = StyleSheet.create({
   notice: { marginTop: space.md },
   recent: { marginTop: space.lg, gap: space.sm },
   recentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  list: { marginTop: space.lg },
+  search: { marginTop: space.md },
+  list: { marginTop: space.lg, gap: space.sm },
   footer: { paddingTop: space.md, backgroundColor: color.surface, borderTopWidth: 1, borderTopColor: hairline.inner },
 });

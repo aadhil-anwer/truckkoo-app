@@ -255,6 +255,18 @@ describe('formatAge', () => {
     expect(formatAge(null)).toBeNull();
   });
 
+  it('reads in seconds inside a minute, so a live fix visibly ages', () => {
+    // A trip reports every 30 s (CADENCE.trip). In minutes, every fix T4 ever
+    // shows would read "just now" and the label would never move.
+    const iso = new Date(Date.now() - 40_000).toISOString();
+    expect(formatAge(iso)).toBe('40 s ago');
+  });
+
+  it('calls the first few seconds "just now" rather than counting them', () => {
+    const iso = new Date(Date.now() - 4_000).toISOString();
+    expect(formatAge(iso)).toBe('just now');
+  });
+
   it('reads in minutes inside an hour', () => {
     const iso = new Date(Date.now() - 4 * 60_000).toISOString();
     expect(formatAge(iso)).toMatch(/4/);

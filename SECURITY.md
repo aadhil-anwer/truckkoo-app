@@ -183,6 +183,29 @@ exactly the divergence this section forbids for the formula: two implementations
 of a price disagree eventually, and the disagreement surfaces as a number a
 customer was shown.
 
+### 5a. Automatic dispatch and "book = accept" (0036)
+
+- **"Let us choose" is priced**, for the smallest truck whose capacity carries
+  the weight (`private.resolve_truck_type`). Reversed from 0010 at the founder's
+  request; the screen names the truck. No weight → still `advise_me`.
+- **`book_load` compares, never stores, `p_seen_price_baisa`.** The load is
+  accepted and dispatched only when the server's price equals the one the
+  shipper saw. A mismatch does **not raise**: raising would roll back the load
+  *and the rate-limit counter*, and the RPC would become an unlimited yes/no
+  oracle for binary-searching the rate card. Instead the load is posted and
+  priced but not accepted, and every probe spends one of `post_load`'s 20/hour.
+- **Candidates are private.** `private.nearby_drivers` and `private.dispatch_wave`
+  read every driver's availability and are ungranted, like `candidates_for`.
+  A wave offers a load to at most `auto_dispatch_max_offers` drivers who are
+  online, verified when `require_verified_driver` is on (**off until launch** — see
+  OPEN_ISSUES), fitting, not
+  suspended and not already on a job — nearest first, radius widening over time.
+- **Lock order.** A decline holds its offer row; an accept holds the load and
+  wants the sibling offers. `private.next_wave` therefore takes the load lock
+  `SKIP LOCKED` and backs off rather than waiting, and the every-minute job
+  retries. Exercised with concurrent sessions (accept vs decline, three accepts
+  at once): no deadlock, exactly one trip.
+
 ## 6. Input validation
 
 - Every entry point — RPC, Edge Function, webhook, background job — begins with
@@ -281,6 +304,15 @@ never a silent no-op.
   Proof of delivery remains append-only — there is still no `update` or `delete`
   policy on `storage.objects` for anyone, ops included. Asserted in
   `supabase/tests/ops_console.sql` §4.
+- **A driver's exact position is stored, and read by nobody.** Until 0039 only a
+  town was kept ("a town, never a coordinate", 0036). The founder reversed that
+  on 2026-09-28 so dispatch can rank by real distance
+  (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`). What
+  holds instead: one latest point per driver in `driver_availability`, never a
+  trail; stored only while online (`report_location` refuses otherwise); erased
+  on switch-off and at delivery; **no client grant on `lat`/`lng`/`accuracy_m`
+  for any role, the driver included** — only definer functions read them.
+  Asserted in `dispatch.sql` §8/§12 and `tenant_isolation.sql`.
 
 ## 11. Rate limiting and abuse
 

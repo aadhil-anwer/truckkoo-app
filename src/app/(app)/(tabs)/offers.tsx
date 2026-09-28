@@ -26,6 +26,7 @@ import { QuestionHeading, SectionLabel, Skeleton } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { DECLARED_TRIPS } from '@/lib/features';
 import { cityIndex, useCities, useDriverOffers, useRespondToOffer } from '@/lib/queries';
+import { offerErrorMessage } from '@/lib/offer-errors';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
@@ -70,12 +71,8 @@ export default function OffersTab() {
     respond.mutate(
       { offerId, accept },
       {
-        onError: (e: unknown) => {
-          const msg = e instanceof Error ? e.message : '';
-          setError(
-            msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
-          );
-        },
+        // A lost race is normal with waves; offerErrorMessage names it.
+        onError: (e: unknown) => setError(offerErrorMessage(e)),
       },
     );
   }

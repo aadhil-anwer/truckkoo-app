@@ -10,13 +10,15 @@
  * Arabic. Only the chrome *around* the map obeys direction.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import Svg, { G, Path, Rect } from 'react-native-svg';
-import { geoPath, type GeoProjection } from 'd3-geo';
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { View } from "react-native";
+import Svg, { G, Path, Rect } from "react-native-svg";
+import { geoPath, type GeoProjection } from "d3-geo";
 
-import geometry from './geometry.json';
-import { projectionFor, type FitBox, type Framing } from './framing';
-import { map } from '@/theme/tokens';
+import geometry from "./geometry.json";
+import { projectionFor, type FitBox, type Framing } from "./framing";
+import { MapLabels } from "./MapLabels";
+import { map } from "@/theme/tokens";
 
 const ProjectionContext = createContext<GeoProjection | null>(null);
 
@@ -29,7 +31,7 @@ const ProjectionContext = createContext<GeoProjection | null>(null);
  */
 export function useProjection(): GeoProjection {
   const p = useContext(ProjectionContext);
-  if (!p) throw new Error('useProjection must be used inside a MapCanvas');
+  if (!p) throw new Error("useProjection must be used inside a MapCanvas");
   return p;
 }
 
@@ -55,7 +57,9 @@ export function MapCanvas({
         framing,
         width,
         height,
-        fitTop == null && fitBottom == null ? undefined : { top: fitTop, bottom: fitBottom },
+        fitTop == null && fitBottom == null
+          ? undefined
+          : { top: fitTop, bottom: fitBottom },
       ),
     [framing, width, height, fitTop, fitBottom],
   );
@@ -63,7 +67,7 @@ export function MapCanvas({
   const { omanPath, neighbourPaths } = useMemo(() => {
     const toPath = geoPath(projection);
     return {
-      omanPath: toPath(geometry.oman as never) ?? '',
+      omanPath: toPath(geometry.oman as never) ?? "",
       neighbourPaths: (geometry.neighbours.features as unknown[])
         .map((f) => toPath(f as never))
         .filter((d): d is string => !!d),
@@ -72,35 +76,51 @@ export function MapCanvas({
 
   return (
     <ProjectionContext.Provider value={projection}>
-      <Svg width={width} height={height}>
-        {/* The sea is an explicit fill, not the absence of one — the map is
+      {/* `direction: 'ltr'` holds the label overlay in the same physical space
+          as the SVG: under RTL, React Native would otherwise mirror `left`, and
+          Muscat's name would land over the Empty Quarter. */}
+      <View style={{ width, height, direction: "ltr" }}>
+        <Svg width={width} height={height}>
+          {/* The sea is an explicit fill, not the absence of one — the map is
             often composited over a screen with a different background. */}
-        <Rect x={0} y={0} width={width} height={height} fill={map.sea} />
+          <Rect x={0} y={0} width={width} height={height} fill={map.sea} />
 
-        {/* Neighbours first, so Oman's coastline draws over their border where
+          {/* Neighbours first, so Oman's coastline draws over their border where
             the two meet. */}
-        <G testID="map-neighbours">
-          {neighbourPaths.map((d, i) => (
-            <Path
-              key={i}
-              d={d}
-              fill={map.neighbourLand}
-              stroke={map.neighbourBorder}
-              strokeWidth={0.9}
-            />
-          ))}
-        </G>
+          <G testID="map-neighbours">
+            {neighbourPaths.map((d, i) => (
+              <Path
+                key={i}
+                d={d}
+                fill={map.neighbourLand}
+                stroke={map.neighbourBorder}
+                strokeWidth={0.9}
+              />
+            ))}
+          </G>
 
-        <Path
-          testID="map-oman"
-          d={omanPath}
-          fill={map.omanLand}
-          stroke={map.omanCoast}
-          strokeWidth={1}
+          <Path
+            testID="map-oman"
+            d={omanPath}
+            fill={map.omanLand}
+            stroke={map.omanCoast}
+            strokeWidth={1}
+          />
+
+          {children}
+        </Svg>
+        {/* Names as native text, over the SVG. react-native-svg draws text glyph
+          by glyph on Android and does not shape Arabic — "مسقط" came out as
+          disjoined letters. React Native's Text shapes it properly. Lifted
+          above their points and untouchable (pointerEvents none), so a pin
+          stays visible and tappable under its town's name. */}
+        <MapLabels
+          width={width}
+          height={height}
+          top={fitTop}
+          bottom={fitBottom}
         />
-
-        {children}
-      </Svg>
+      </View>
     </ProjectionContext.Provider>
   );
 }

@@ -14,6 +14,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
 import { t } from '@/i18n';
+import { stopTracking } from './background-location';
 import { OMAN_DIAL } from './auth-draft';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
@@ -70,7 +71,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function signUpWithEmail(
   email: string,
   password: string,
-): Promise<AuthResult & { needsConfirmation?: boolean }> {
+): Promise<AuthResult & { needsConfirmation?: boolean; existing?: boolean }> {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -79,8 +80,10 @@ export async function signUpWithEmail(
 
   if (error) {
     const raw = error.message.toLowerCase();
+    // Worded so it neither confirms nor denies the account (SECURITY.md §3),
+    // but still points at the one thing that helps.
     if (raw.includes('already')) {
-      return { ok: false, message: t('error.signIn.failed') };
+      return { ok: false, message: t('error.signUp.failed'), existing: true };
     }
     if (raw.includes('password')) {
       return { ok: false, message: t('error.password.short') };
@@ -320,6 +323,9 @@ export async function finishSetup(input: {
 }
 
 export async function signOut(): Promise<void> {
+  // Before the session goes: a shared phone must never report a position under
+  // the account that just left. A failure to stop does not block signing out.
+  await stopTracking().catch(() => {});
   // Global scope revokes server-side, not just locally (SECURITY.md §2).
   await supabase.auth.signOut({ scope: 'global' });
 }

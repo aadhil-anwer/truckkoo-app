@@ -18,7 +18,6 @@ import {
   OFFER_ID,
   driverOffer,
   driverTrip,
-  mockReporterArgs,
   tripPosition,
   load,
   mockParams,
@@ -28,6 +27,7 @@ import {
   resetQueries,
 } from './harness';
 
+import { Linking } from 'react-native';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import DriverHome from '@/app/(app)/(tabs)/driver';
@@ -348,6 +348,16 @@ describe('OfferDetail', () => {
     expect(getByTestId('detour-spur').props.strokeDasharray).toBeTruthy();
   });
 
+  it('shows the exact pickup and its contact in an open offer', async () => {
+    (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+      pickup_contact_name: 'Rashid', pickup_contact_phone: '+968 9000 0000',
+    })));
+    await render(<OfferDetail />);
+    expect(screen.getByText('Ruwi warehouse')).toBeTruthy();
+    expect(screen.getByLabelText('Call Rashid')).toBeTruthy();
+  });
+
   it('says what room is left, so a second load is a decision not a guess', async () => {
     (queries.useDriverOffer as jest.Mock).mockReturnValue(ok(driverOffer()));
     await render(<OfferDetail />);
@@ -648,6 +658,39 @@ describe('OnTheJob', () => {
     expect(screen.queryByLabelText('Take a photo')).toBeNull();
   });
 
+  it('gives directions to the gate, not the city, when the shipper pinned it', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+    })));
+    await render(<TripDetail />);
+    await fireEvent.press(screen.getByLabelText('Directions to Ruwi warehouse'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=23.610000%2C58.420000&travelmode=driving',
+    );
+  });
+
+  it('shows the note and calls the person at the gate', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse',
+      pickup_note: 'Gate 3, ask for Rashid', pickup_contact_name: 'Rashid', pickup_contact_phone: '+968 9000 0000',
+    })));
+    await render(<TripDetail />);
+    expect(screen.getByText('Gate 3, ask for Rashid')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Call Rashid'));
+    expect(openURL).toHaveBeenCalledWith('tel:+96890000000');
+  });
+
+  it('names the person at the gate even without a number', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({
+      pickup_lat: 23.61, pickup_lng: 58.42, pickup_name: 'Ruwi warehouse', pickup_contact_name: 'Rashid',
+    })));
+    await render(<TripDetail />);
+    expect(screen.getByText('Ask for Rashid')).toBeTruthy();
+    expect(screen.queryByLabelText('Call Rashid')).toBeNull();
+  });
+
   it('shows what the driver earns beside where it drops', async () => {
     await render(<TripDetail />);
     expect(screen.getByText('YOU EARN')).toBeTruthy();
@@ -691,6 +734,34 @@ describe('OnTheJob', () => {
     expect(screen.getByText('Only while you are carrying this load.')).toBeTruthy();
   });
 
+  it('gives directions to the pickup city until the load is collected', async () => {
+    // A load stores a city, not a gate, so the label names the city: it does
+    // not promise the warehouse. Turn-by-turn is Google's; the app hands over.
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    await render(<TripDetail />);
+    await fireEvent.press(screen.getByLabelText('Directions to Muscat'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=23.588000%2C58.408000&travelmode=driving',
+    );
+  });
+
+  it('gives directions to the drop-off city once the load is on board', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({ status: 'in_transit' })));
+    await render(<TripDetail />);
+    expect(screen.queryByLabelText('Directions to Muscat')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Directions to Salalah'));
+    expect(openURL).toHaveBeenCalledWith(
+      'https://www.google.com/maps/dir/?api=1&destination=17.020000%2C54.092000&travelmode=driving',
+    );
+  });
+
+  it('gives no directions once the job is over', async () => {
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip({ status: 'delivered' })));
+    await render(<TripDetail />);
+    expect(screen.queryByLabelText(/Directions to/)).toBeNull();
+  });
+
   it('says nothing about sharing before the load is collected', async () => {
     // Nothing is sent on an `assigned` trip — report_position refuses it — so a
     // line claiming otherwise would be false.
@@ -699,11 +770,15 @@ describe('OnTheJob', () => {
     expect(screen.queryByText('Sharing your position with the shipper')).toBeNull();
   });
 
-  it('reports only while the trip is live', async () => {
-    (queries.useDriverTrip as jest.Mock).mockReturnValue(ok(driverTrip()));
+  it('says when the truck was last seen, from what the server holds', async () => {
+    // The background task (0039) reports; D7 only reads. The age comes from the
+    // server's latest fix, so it is true even when the app was closed.
+    (queries.useDriverTrip as jest.Mock).mockReturnValue(
+      ok(driverTrip({ status: 'in_transit' })),
+    );
+    (queries.useTripPosition as jest.Mock).mockReturnValue(ok(tripPosition()));
     await render(<TripDetail />);
-    // usePositionReporter(tripId, active)
-    expect(mockReporterArgs[1]).toBe(false);
+    expect(screen.getByText('Last sent 4 min ago')).toBeTruthy();
   });
 
   it('draws its own last reported position, never a guess', async () => {

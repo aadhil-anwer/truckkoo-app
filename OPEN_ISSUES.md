@@ -9,6 +9,116 @@ an entry only when it is actually closed.
 
 ---
 
+## Automatic dispatch (0036, 2026-09-27)
+
+Uber/Porter-style dispatch replaced the dispatcher as the first step: instant
+price for "let us choose" + weight, book = accept (`book_load`), drivers'
+Available switch, and time-based waves (3 at a time, 5 min, 150 → 400 → 1,500 km)
+before a person is alerted. Proven by `supabase/tests/dispatch.sql` (56
+assertions), the other three suites (updated), concurrency runs against two
+live sessions, and `tests/integration/auto-dispatch-screens.test.tsx`.
+
+**Before launch — `require_verified_driver` is still OFF.** Left off on the
+founder's call (2026-09-27) so the app could be shared before drivers were
+vetted. While off, unverified drivers are offered loads — which contradicts the
+website's "100% verified drivers". Near launch: verify the real drivers in the
+ops console, then
+`update private.app_settings set value = 'true' where key = 'require_verified_driver';`
+(`nearby_drivers` and `accept_offer` both honour it; dispatch.sql tests both ways).
+
+**When 0036 reaches production:**
+- **Nobody is "available" on day one.** The switch is new, so until drivers flip
+  it, only drivers with a declared empty leg are matched; everything else
+  searches for 15 minutes and then alerts a dispatcher. Tell drivers.
+- **Rates for the resolved truck.** "Let us choose" + 8 t is priced as a 10 t;
+  a corridor with no 10 t row returns `no_rate` and goes to a person, as before.
+
+**Fixed in 0037 (2026-09-28), found on production:** `quote_route` and
+`estimate_route` were `stable` but write a rate-limit row, so PostgREST ran them
+read-only and every price lookup failed — every booking went to a person. A
+driver coming online after the 15-minute search now gets the load
+(`system_rescue_stranded`, every minute; off via `dispatch_rescue_enabled`), and
+a driver who missed an offer is re-asked after switching on again. The driver
+card re-reads the switch every minute, so the 12-hour auto-off is visible.
+
+**Still open:**
+
+- **The production rate card is empty (2026-09-28).** Every booking returns
+  `no_rate` and goes to a person; automatic dispatch cannot start until a
+  dispatcher enters real rates in the ops console. Not a code fix — rates are
+  never invented in a migration.
+- **A priced load waits on the shipper, who is not told.** `ops_set_price` moves
+  a load to `quoted`; dispatch starts only when the shipper accepts it in the
+  app, and nothing tells them a price arrived (no push, no WhatsApp).
+- **Drivers are online by default (0038, founder's call 2026-09-28).** Every
+  driver starts on and the 12-hour auto-off is disabled; switching off still
+  works. Cost: offers reach drivers not looking at the app and lapse, and since
+  nobody toggles, a missed offer is not re-asked (0037's re-ask needs a toggle).
+  Reverse with `drivers_online_by_default = false`. Revisit once push lands.
+- **Driver background GPS is built (0039, app 1.1.0) and has never run on a
+  real phone** (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`).
+  Before drivers get it: `npx supabase db push` (0039, 0040); a 1.1.0 preview build
+  (a native change — `eas update` cannot deliver it, and a 1.0.0 build must not
+  receive 1.1.0 JS); the Google Play background-location declaration with a video
+  of the disclosure screen; the device check below. Known gaps: iOS permission
+  text is English-only; after a hard "Don't allow" there is no in-app link to
+  Settings; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
+  kill the task (ranking then falls back to the town after 45 min). Better
+  options were set aside for now — Transistorsoft background-geolocation, on-demand
+  location via silent push, Google road-distance APIs — the spec's §9 says when
+  each is worth revisiting.
+
+  Device check (preview build 1.1.0, one Android phone, ~1 hour driving):
+  1. Fresh install → driver → Go available → disclosure appears → Continue →
+     "While using" → Settings → "Allow all the time".
+  2. Notification "You are available" is in the status bar.
+  3. Lock the phone, drive 5 km. In SQL: `select located_at, city_id from
+     public.driver_availability where driver_id = '<id>'` — updated within
+     ~15 min / 2 km.
+  4. Go offline → notification gone; drive 3 km; `located_at` and `lat` are null.
+  5. Take a demo load, start the trip → with the driver's app closed, the
+     shipper's T4 "Seen … s ago" resets at least every ~30 s (0040). On the
+     driver's D7, "Directions to <city>" opens Google Maps turn-by-turn.
+  6. Reboot the phone, open the app once → notification returns.
+  7. Sign out → notification gone.
+- **Shipper places are built (0041) and have never run on a real phone.** Before
+  shippers get them (all before the 1.1.0 build): Google Cloud project + billing
+  with a ~$20 budget alert and a daily quota on Places API (New); two keys —
+  Places API (New) only, and Maps SDK for Android only restricted to the package
+  + signing SHA-1; `npx supabase secrets set GOOGLE_PLACES_KEY=…` and
+  `npx supabase functions deploy places`; EAS env var `GOOGLE_MAPS_ANDROID_KEY`
+  (preview + production); `npx supabase db push` (0038–0044; 0044 is the tripwires migration from main, renumbered). Known gaps: iOS
+  shows Apple Maps; a city-only load still routes the driver to the city centre; a pin more than 100 km from every city on our list (Qatar, Kuwait, deep desert) has no city and must be booked by city (0042);
+  a move inside one city cannot be booked (`loads_not_circular`), and the pin
+  screen says so; the ops console does not show places yet (`ops_load_places`
+  exists).
+
+  Device check (preview build 1.1.0, one Android phone):
+  1. Book → search "Lulu Barka" → suggestions in under a second → pick → the map
+     opens on it; drag → the name and "Near Barka" update.
+  2. Confirm → details → type a phone on the Arabic keyboard → Continue → review
+     shows "Pickup: …".
+  3. "Use my current location" → allow → the pin opens where you stand; deny on a
+     fresh install → the row disappears, the city list works.
+  4. Airplane mode on the search step → the notice appears; pick a city; book.
+  5. As a driver offered that load: the place, note and Call show; pass → reopen
+     the offer → gone. Accept another → D7 "Directions to <place>" opens Google
+     Maps at the gate.
+- **No push notifications (plan Phase E).** Drivers see a new offer only while
+  the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
+  Firebase project + FCM credentials in EAS and a new dev build. Until then,
+  waves reach only drivers looking at their phone.
+- **Ops console not updated (Phase F).** It shows new `dispatch_log` modes
+  (`nearby`, `mixed`) and the `exhausted` ending raw, and still has the stale
+  "In phase 2 you will be able to send one" copy.
+- **A double tap can book twice.** `book_load`, like `post_load` before it, has
+  no idempotency key; the button disables while pending, but a retry after a
+  timeout on bad signal posts a second load. Fix: a client request id, unique
+  per shipper.
+- **The shipper is not told when a price changed under them.** `book_load` posts
+  unaccepted and the load screen shows the new price to accept, but says nothing
+  about it having moved.
+
 ## Sentry (2026-09-26)
 
 `src/lib/monitoring.ts`, initialised first in `_layout.tsx`; render crashes
@@ -262,7 +372,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 191 Arabic strings have never been read by someone who reads Arabic
+### 254 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -272,7 +382,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 191 of them.** Not from either source. They sit in one delimited
+- **Drafted — 254 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -381,6 +491,9 @@ What differs from the handoff, on purpose, until then:
 - **N1's two decorative pins are not drawn**: `cities` is not readable signed
   out, and coordinates are not invented in a screen.
 - **No plate question.** Never drawn, always optional; dispatch adds it.
+- **Questions step down to 32px below 360pt wide** (every cream question, not
+  just auth). The handoff says not to scale its 42px; at 320pt that wrapped every
+  question to three lines and pushed N4's second choice under the fold.
 
 Also fixed on the way: `TertiaryButton` was ink-only, so on cream it rendered .5
 white on #F4F0E9 — S8's "Skip — I do not know the weight" and S5's "Show more
@@ -1353,7 +1466,7 @@ auth, reset, date and picker keys this entry named are among them.
 
 **The other half of the original "done when" stands**, and it is the harder
 half: proofed by a native speaker, and walked end to end on an Arabic device.
-191 of the strings are unproofed drafts. See the P7 entries at the top of this
+211 of the strings are unproofed drafts. See the P7 entries at the top of this
 file — that is where this is tracked now.
 
 ### 8. Client test suite — RESOLVED 2026-07-26
@@ -1544,7 +1657,7 @@ cannot reach:
   key per language now, so the Arabic places both the number and the unit
   itself. The strings that "exist in both languages" actually did not — 214 of
   387 keys had no Arabic at all, including every tab label and every status
-  pill; P7 completed the dictionary, and 191 of those strings are still
+  pill; P7 completed the dictionary, and 211 of those strings are still
   unproofed drafts (see the P7 section at the top of this file).
   `tests/components/rtl.test.tsx` now asserts the mechanical rules and
   `tests/unit/no-literals.test.ts` guards the lexical ones.

@@ -11,5 +11,6 @@ export { DetourSpur } from './DetourSpur';
 export { CityPin, type PinState } from './CityPin';
 export { TruckMarker } from './TruckMarker';
 export { Scrim } from './Scrim';
+export { MapPlacesProvider, type MapPlace } from './MapLabels';
 export { useMapBand } from './useMapBand';
 export { ROAD_FACTOR, greatCircleKm, roadHours, roadKm, type Coord } from './distance';

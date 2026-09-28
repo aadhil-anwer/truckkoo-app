@@ -33,20 +33,27 @@
  * keeps the compact row, so none is left without a way back to it.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
+import { AvailabilityCard } from '@/components/driver/Availability';
 import { JobCard } from '@/components/driver/JobCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, Skeleton, StatusPill } from '@/components/ui';
 import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
+import { currentFix } from '@/lib/background-location';
+import { formatAge } from '@/lib/format';
+import { useLocationAccess } from '@/lib/location-tracking';
+import { claimLocationPrompt } from '@/lib/location-prompt';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
+import { offerErrorMessage } from '@/lib/offer-errors';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   cityIndex,
@@ -54,8 +61,10 @@ import {
   useDriverEarnings,
   useDriverOffers,
   useDriverTrip,
+  useMyAvailability,
   useMyTrips,
   useRespondToOffer,
+  useSetAvailable,
 } from '@/lib/queries';
 import {
   GUTTER_INK,
@@ -76,6 +85,22 @@ export default function DriverHome() {
   const earnings = useDriverEarnings();
   const trips = useMyTrips();
   const respond = useRespondToOffer();
+  const availability = useMyAvailability();
+  const setAvailable = useSetAvailable();
+  const location = useLocationAccess();
+
+  // Online without "Allow all the time": explain, once per launch, then let the
+  // disclosure screen ask. Never the OS prompt straight from here.
+  useEffect(() => {
+    if (
+      availability.data?.available &&
+      location.access !== null &&
+      location.access !== 'always' &&
+      claimLocationPrompt()
+    ) {
+      router.push('/location-permission');
+    }
+  }, [availability.data?.available, location.access, router]);
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
@@ -97,15 +122,48 @@ export default function DriverHome() {
   const job = useDriverTrip(lead?.id);
 
   const busy = offers.isPending || trips.isPending;
+  // Interactive once offers and trips have answered — the skeleton is not the
+  // screen. Only the first call per session is recorded.
+  const { markInteractive } = useObserve();
+  useEffect(() => {
+    if (!busy) markInteractive();
+  }, [busy, markInteractive]);
   const failed = offers.isError || trips.isError;
   useAnnounceOnError(failed, t('common.error.title'));
   useAnnounceOnError(job.isError, t('common.error.title'));
 
+  /**
+   * Go available or offline.
+   *
+   * Going available sends one position if the phone already lets us read it,
+   * and the background task (0039) takes over from there. It never raises the
+   * OS prompt itself: the disclosure screen asks first, in our words (spec
+   * §5.3). No permission, no fix, or a slow fix are all fine — the server falls
+   * back to where the last delivery ended, and the card says which town.
+   */
+  async function toggleAvailable() {
+    setError(null);
+    const goingOn = !availability.data?.available;
+    let coords: { lat: number; lng: number } | undefined;
+    if (goingOn) {
+      const fix = await currentFix();
+      if (fix) coords = fix;
+    }
+    setAvailable.mutate(
+      { available: goingOn, ...coords },
+      { onError: () => setError(t('error.generic')) },
+    );
+  }
+
   function refetchAll() {
+    availability.refetch();
     offers.refetch();
     earnings.refetch();
     trips.refetch();
     cities.refetch();
+    // The job card has its own query. Leaving it out made pull-to-refresh
+    // update everything on this screen except the one card that leads it.
+    if (lead) job.refetch();
   }
 
   /**
@@ -120,14 +178,8 @@ export default function DriverHome() {
     respond.mutate(
       { offerId, accept },
       {
-        onError: (e: unknown) => {
-          // The race, made recognisable. 0013 raises a domain error rather than a
-          // constraint violation precisely so this line can exist.
-          const msg = e instanceof Error ? e.message : '';
-          setError(
-            msg.includes('load already assigned') ? t('driver.offer.taken') : t('error.generic'),
-          );
-        },
+        // A lost race is normal with waves; offerErrorMessage names it.
+        onError: (e: unknown) => setError(offerErrorMessage(e)),
       },
     );
   }
@@ -169,6 +221,20 @@ export default function DriverHome() {
             as "null this week" is worse than no line at all. */}
         {!!week && week.week_baisa > 0 && !!weekAmount && (
           <Text style={styles.week}>{t('drv.home.week', { amount: weekAmount })}</Text>
+        )}
+
+        {/* The switch. Not shown on a job: a driver carrying a load is not free,
+            whatever a switch would say, and the server treats them that way. */}
+        {!lead && !availability.isPending && (
+          <AvailabilityCard
+            available={availability.data?.available ?? false}
+            town={availability.data?.city_id != null ? cityName(availability.data.city_id) : null}
+            pending={setAvailable.isPending}
+            onToggle={toggleAvailable}
+            location={location.access}
+            lastSentAge={formatAge(availability.data?.located_at ?? null)}
+            onFixLocation={() => router.push('/location-permission')}
+          />
         )}
 
         {/* The job just taken, in full. Its own retry, independent of the
