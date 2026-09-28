@@ -22,10 +22,14 @@ export const LOCATION_TASK = 'truckkoo-driver-location';
 export type TrackingMode = 'online' | 'trip';
 export type LocationAccess = 'always' | 'foreground' | 'none';
 
-/** Online: often enough that a point is rarely 15 min old at dispatch. On a trip: the shipper is watching. */
+/**
+ * Online: often enough that a point is rarely 15 min old at dispatch. On a trip:
+ * the shipper is watching T4, so the marker should move while they look — and
+ * `report_location` allows 240 an hour for it (0040).
+ */
 export const CADENCE: Record<TrackingMode, { timeInterval: number; distanceInterval: number }> = {
   online: { timeInterval: 15 * 60_000, distanceInterval: 2000 },
-  trip: { timeInterval: 2 * 60_000, distanceInterval: 500 },
+  trip: { timeInterval: 30_000, distanceInterval: 150 },
 };
 
 /** Waiting longer than this for a fix is a driver staring at a switch. */

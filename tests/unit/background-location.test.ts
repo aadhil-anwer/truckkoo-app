@@ -72,7 +72,9 @@ it('starts at the online cadence, with the notification', async () => {
     }),
   );
   expect(CADENCE.online.timeInterval).toBe(15 * 60_000);
-  expect(CADENCE.trip).toEqual({ timeInterval: 2 * 60_000, distanceInterval: 500 });
+  // On a trip the shipper is watching T4: a fix every 30 s or 150 m is what
+  // makes the marker move while they look at it.
+  expect(CADENCE.trip).toEqual({ timeInterval: 30_000, distanceInterval: 150 });
 });
 
 it('restarts when the mode changes, not when it is the same', async () => {

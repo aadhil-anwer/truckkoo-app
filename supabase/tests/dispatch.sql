@@ -736,9 +736,15 @@ select assert_true(
 select act_as('a0000000-0000-4000-8000-000000000001');
 select assert_raises($$select * from public.report_location(23.6, 58.5)$$, 'a shipper cannot report a location');
 select act_as('d0000000-0000-4000-8000-000000000001');
+-- A trip reports every 30 s (0040): 120 an hour is the real phone, not a
+-- broken one, so the ceiling is 240.
+select assert_equals(
+  (select count(*) from generate_series(1, 200) g, lateral public.report_location(23.59 + g * 0, 58.41, 20, now())),
+  200,
+  'a phone reporting every 30 s is not rate-limited (0040)');
 select assert_raises(
-  $$select count(*) from generate_series(1, 130) g, lateral public.report_location(23.59 + g * 0, 58.41, 20, now())$$,
-  'the rate limit holds (120 an hour)');
+  $$select count(*) from generate_series(1, 50) g, lateral public.report_location(23.59 + g * 0, 58.41, 20, now())$$,
+  'the rate limit holds (240 an hour)');
 select act_as_reset();
 
 -- ════════════════════════════════════════════════════════════════════════════
