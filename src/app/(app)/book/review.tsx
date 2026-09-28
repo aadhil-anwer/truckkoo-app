@@ -26,7 +26,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, TertiaryButton } from '@/components/primitives';
 import { Card, Notice, RouteRail, SectionLabel, Skeleton } from '@/components/ui';
 import { roadKm } from '@/map';
-import { clearDraft, truckTypeForPost, useBookingDraft } from '@/lib/booking';
+import { clearDraft, toPlacePayload, truckTypeForPost, useBookingDraft } from '@/lib/booking';
 import { cityIndex, useBookLoad, useCities, useRoutePrice, useTruckTypes } from '@/lib/queries';
 import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
@@ -90,6 +90,8 @@ export default function Review() {
         // NULL means "advise me". Never a guessed code.
         truckTypeCode: requested,
         seenPriceBaisa: priced ? quote!.price_baisa : null,
+        originPlace: toPlacePayload(draft.originPlace),
+        destPlace: toPlacePayload(draft.destinationPlace),
       },
       {
         onSuccess: async ({ loadId }) => {

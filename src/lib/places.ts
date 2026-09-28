@@ -35,19 +35,26 @@ function language(): 'en' | 'ar' {
 }
 
 export function usePlaceSearch() {
-  const [query, setQuery] = useState('');
+  const [query, setQueryState] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [status, setStatus] = useState<Status>('idle');
   const session = useRef(newSessionToken());
   const latest = useRef(0);
 
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < MIN_CHARS) {
+  // A query too short to search clears the list here, in the event, rather than
+  // in the effect: and it retires any search still in flight.
+  const setQuery = useCallback((next: string) => {
+    setQueryState(next);
+    if (next.trim().length < MIN_CHARS) {
+      latest.current += 1;
       setSuggestions([]);
       setStatus('idle');
-      return;
     }
+  }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < MIN_CHARS) return;
     const ticket = ++latest.current;
     const timer = setTimeout(async () => {
       setStatus('loading');

@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from './session';
 import { supabase } from './supabase';
+import type { PlacePayload } from './booking';
 
 /** One literal string. Supabase derives row types from it, so it cannot be built by concatenation. */
 const LOAD_COLUMNS =
@@ -352,6 +353,9 @@ export type BookInput = {
   truckTypeCode: string | null;
   /** The price on screen when "Book" was tapped; NULL when none was shown. */
   seenPriceBaisa: number | null;
+  /** Exact places (0041); null when the shipper chose a city only. */
+  originPlace: PlacePayload | null;
+  destPlace: PlacePayload | null;
 };
 
 /**
@@ -373,6 +377,8 @@ export function useBookLoad() {
         p_weight_kg: input.weightKg,
         p_truck_type_code: input.truckTypeCode,
         p_seen_price_baisa: input.seenPriceBaisa,
+        p_origin_place: input.originPlace,
+        p_dest_place: input.destPlace,
       });
       if (error) throw error;
       const row = ((data ?? []) as Record<string, unknown>[])[0];
@@ -495,6 +501,19 @@ export type DriverOffer = {
   detour_km: number | null;
   /** NULL when capacity or weight is unknown — never a guess. */
   free_after_kg: number | null;
+  /** The exact places (0041). All null when the shipper chose cities only. */
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+  drop_contact_name: string | null;
+  drop_contact_phone: string | null;
 };
 
 export function useDriverOffers() {
@@ -669,7 +688,77 @@ export type DriverTrip = {
   currency: string;
   shipper_name: string | null;
   shipper_phone: string | null;
+  /** The exact places (0041). All null when the shipper chose cities only. */
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+  drop_contact_name: string | null;
+  drop_contact_phone: string | null;
 };
+
+/** One end of a load, as the driver or shipper reads it (0041). */
+export type LoadPlace = {
+  lat: number;
+  lng: number;
+  name: string | null;
+  note: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+};
+
+const num = (v: unknown) => (v == null ? null : Number(v));
+const str = (v: unknown) => (typeof v === 'string' && v.length ? v : null);
+
+/** Reads `pickup_*` / `drop_*` off a driver row. No point means no place. */
+export function placeOf(row: Record<string, unknown>, end: 'pickup' | 'drop'): LoadPlace | null {
+  const lat = num(row[`${end}_lat`]);
+  const lng = num(row[`${end}_lng`]);
+  if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return {
+    lat,
+    lng,
+    name: str(row[`${end}_name`]),
+    note: str(row[`${end}_note`]),
+    contactName: str(row[`${end}_contact_name`]),
+    contactPhone: str(row[`${end}_contact_phone`]),
+  };
+}
+
+/** The shipper's own places for one load. RLS scopes it; a miss is simply none. */
+export function useLoadPlaces(loadId: string | undefined) {
+  return useQuery({
+    queryKey: ['load', 'places', loadId],
+    enabled: !!loadId,
+    queryFn: async (): Promise<{ pickup: LoadPlace | null; drop: LoadPlace | null }> => {
+      const { data, error } = await supabase
+        .from('load_places')
+        .select('kind, lat, lng, place_name, note, contact_name, contact_phone')
+        .eq('load_id', loadId);
+      if (error) throw error;
+      const rows = (data ?? []) as Record<string, unknown>[];
+      const as = (kind: 'pickup' | 'drop') => {
+        const r = rows.find((x) => x.kind === kind);
+        if (!r) return null;
+        return placeOf(
+          {
+            [`${kind}_lat`]: r.lat, [`${kind}_lng`]: r.lng, [`${kind}_name`]: r.place_name,
+            [`${kind}_note`]: r.note, [`${kind}_contact_name`]: r.contact_name,
+            [`${kind}_contact_phone`]: r.contact_phone,
+          },
+          kind,
+        );
+      };
+      return { pickup: as('pickup'), drop: as('drop') };
+    },
+  });
+}
 
 export function useDriverTrip(tripId: string | undefined) {
   return useQuery({

@@ -28,6 +28,16 @@ const KEY = 'truckkoo.booking.draft.v1';
 /** ISO `YYYY-MM-DD`. Dates are days, not instants — a pickup has no timezone. */
 export type IsoDate = string;
 
+/** An exact place (0041). The city beside it is always the server's `city_near`. */
+export type DraftPlace = {
+  lat: number;
+  lng: number;
+  placeName: string | null;
+  note: string;
+  contactName: string;
+  contactPhone: string;
+};
+
 export type BookingDraft = {
   originCityId: number | null;
   destinationCityId: number | null;
@@ -38,6 +48,9 @@ export type BookingDraft = {
   /** `auto` posts NULL — see the note above. */
   truckPreference: 'auto' | string;
   weightKg: number | null;
+  /** Null when the shipper chose a city only — a real answer, not a gap. */
+  originPlace: DraftPlace | null;
+  destinationPlace: DraftPlace | null;
 };
 
 export const EMPTY_DRAFT: BookingDraft = {
@@ -48,6 +61,8 @@ export const EMPTY_DRAFT: BookingDraft = {
   cargoDescription: '',
   truckPreference: 'auto',
   weightKg: null,
+  originPlace: null,
+  destinationPlace: null,
 };
 
 /** The six steps, in order. Used for the progress counter and for routing. */
@@ -68,6 +83,51 @@ export function stepNumber(step: Step): number {
  */
 export function truckTypeForPost(draft: BookingDraft): string | null {
   return draft.truckPreference === 'auto' ? null : draft.truckPreference;
+}
+
+/** What book_load's p_origin_place / p_dest_place receive. Blank means nothing. */
+export type PlacePayload = {
+  lat: number;
+  lng: number;
+  place_name: string | null;
+  note: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+};
+
+const blank = (s: string | null | undefined) => {
+  const v = (s ?? '').trim();
+  return v.length ? v : null;
+};
+
+export function toPlacePayload(p: DraftPlace | null): PlacePayload | null {
+  if (!p) return null;
+  return {
+    lat: p.lat,
+    lng: p.lng,
+    place_name: blank(p.placeName),
+    note: blank(p.note),
+    contact_name: blank(p.contactName),
+    contact_phone: blank(normalizePhone(p.contactPhone)),
+  };
+}
+
+/**
+ * An Arabic keyboard types ٩٦٨, a Persian one ۹۶۸; the database accepts 0-9.
+ * Normalised here, before validation and before saving, or every contact typed
+ * on an Arabic phone would be refused at the last step.
+ */
+export function normalizePhone(raw: string): string {
+  return raw
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .trim();
+}
+
+/** Empty is fine — the contact is optional. Mirrors load_places_phone. */
+export function isValidPhone(raw: string): boolean {
+  const v = normalizePhone(raw);
+  return v.length === 0 || /^\+?[0-9 ]{6,24}$/.test(v);
 }
 
 /** Whether the draft has enough to post. Weight and truck are deliberately absent. */
