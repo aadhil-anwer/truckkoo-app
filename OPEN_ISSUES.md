@@ -87,8 +87,8 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   Places API (New) only, and Maps SDK for Android only restricted to the package
   + signing SHA-1; `npx supabase secrets set GOOGLE_PLACES_KEY=…` and
   `npx supabase functions deploy places`; EAS env var `GOOGLE_MAPS_ANDROID_KEY`
-  (preview + production); `npx supabase db push` (0039–0041). Known gaps: iOS
-  shows Apple Maps; a city-only load still routes the driver to the city centre;
+  (preview + production); `npx supabase db push` (0039–0042). Known gaps: iOS
+  shows Apple Maps; a city-only load still routes the driver to the city centre; a pin more than 100 km from every city on our list (Qatar, Kuwait, deep desert) has no city and must be booked by city (0042);
   a move inside one city cannot be booked (`loads_not_circular`), and the pin
   screen says so; the ops console does not show places yet (`ops_load_places`
   exists).

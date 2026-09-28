@@ -43,28 +43,33 @@ export default function Pin() {
   // Until the map has settled somewhere, the spot is the stored place — derived,
   // not copied into state, so it is right on the first render after the draft loads.
   const [moved, setMoved] = useState<{ lat: number; lng: number } | null>(null);
-  const [spotName, setSpotName] = useState<string | null>(null);
-  const [cityId, setCityId] = useState<number | null>(null);
-  const [checking, setChecking] = useState(true);
+  // What the server and the geocoder said, and WHERE they said it. An answer
+  // counts only for the point it was asked about, so a slow reply for the last
+  // drag can never name or place this one — and "checking" is simply "no answer
+  // for this point yet", which cannot get stuck when the map re-reports a spot.
+  const [checked, setChecked] = useState<{
+    lat: number;
+    lng: number;
+    cityId: number | null;
+    name: string | null;
+  } | null>(null);
   const centre = moved ?? (place ? { lat: place.lat, lng: place.lng } : null);
-  const name = spotName ?? place?.placeName ?? null;
   const lat = centre?.lat;
   const lng = centre?.lng;
-
-  function settle(at: { lat: number; lng: number }) {
-    setChecking(true);
-    setMoved(at);
-  }
+  const answer = checked && checked.lat === lat && checked.lng === lng ? checked : null;
+  const checking = answer == null;
+  const cityId = answer?.cityId ?? null;
+  // Unmoved, the name is the one the shipper picked (Google's "Lulu Hypermarket"
+  // beats the phone's street address). Moved, it is the geocoder's name for the
+  // new point or none — never the old name kilometres away.
+  const name = moved == null ? (place?.placeName ?? null) : (answer?.name ?? null);
 
   useEffect(() => {
     if (lat == null || lng == null) return;
     let alive = true;
     const timer = setTimeout(async () => {
       const [city, spot] = await Promise.all([cityNear(lat, lng), nameAt(lat, lng)]);
-      if (!alive) return;
-      setCityId(city);
-      if (spot) setSpotName(spot);
-      setChecking(false);
+      if (alive) setChecked({ lat, lng, cityId: city, name: spot || null });
     }, SETTLE_MS);
     return () => {
       alive = false;
@@ -95,7 +100,7 @@ export default function Pin() {
 
   return (
     <View style={styles.screen}>
-      <PinAdjustMap initial={{ lat: place.lat, lng: place.lng }} onSettle={settle} />
+      <PinAdjustMap initial={{ lat: place.lat, lng: place.lng }} onSettle={setMoved} />
 
       <View style={[styles.top, { paddingTop: insets.top + space.sm }]}>
         <BackButton onPress={() => router.back()} />

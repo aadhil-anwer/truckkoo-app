@@ -310,7 +310,7 @@ and dispatch nobody (it happened, 2026-09-27).
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 675 tests
+npm run verify    # typecheck + lint + 680 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # four SQL suites (isolation + pricing + ops + dispatch) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits

@@ -38,6 +38,7 @@ beforeEach(async () => {
   mockPush.mockReset();
   await AsyncStorage.clear();
   search.mockReturnValue(searchState());
+  (places.nameAt as jest.Mock).mockResolvedValue('Lulu Barka');
 });
 
 it('takes a searched place to the pin screen', async () => {
@@ -154,4 +155,83 @@ it('swaps the places with the cities', async () => {
   const d = await loadDraft();
   expect(d.originPlace).toEqual(b);
   expect(d.destinationPlace).toEqual(a);
+});
+
+// ─── final review fixes ─────────────────────────────────────────────────────
+
+const RUWI = { lat: 23.6, lng: 58.4, placeName: 'Ruwi', note: '', contactName: '', contactPhone: '' };
+
+it('does not leave a picked place beside a city it was never checked against', async () => {
+  // Muscat by hand, then a search for somewhere else, then Back out of the pin:
+  // "Continue from Muscat" with a Sohar place would fail on review, every time.
+  await seed({ originCityId: MUSCAT.id });
+  const pick = jest.fn(async () => ({ lat: 24.35, lng: 56.7, placeName: 'Sohar port' }));
+  search.mockReturnValue(searchState({
+    status: 'ready', suggestions: [{ placeId: 'p2', main: 'Sohar port', secondary: 'Sohar, Oman' }], pick,
+  }));
+  await render(<Origin />);
+  await fireEvent.press(await screen.findByText('Sohar port'));
+  await waitFor(() => expect(mockPush).toHaveBeenCalled());
+  const d = await loadDraft();
+  expect(d.originPlace).toEqual(expect.objectContaining({ placeName: 'Sohar port' }));
+  expect(d.originCityId).toBeNull();
+});
+
+it('keeps the note when the shipper goes back to the pin and confirms again', async () => {
+  // The pin screen stays mounted under the details screen. It must not write
+  // back the draft it loaded before the note existed.
+  mockParams.current = { end: 'pickup' };
+  (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
+  await seed({ originPlace: RUWI });
+  await render(
+    <>
+      <Pin />
+      <PlaceDetails />
+    </>,
+  );
+  await fireEvent.changeText(await screen.findByLabelText('e.g. Gate 3, behind the Shell station'), 'Gate 3');
+  expect(await screen.findByText('Near Muscat')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Confirm pickup'));
+  expect((await loadDraft()).originPlace?.note).toBe('Gate 3');
+});
+
+it('keeps the searched name while the pin has not moved', async () => {
+  mockParams.current = { end: 'pickup' };
+  (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
+  await seed({ originPlace: RUWI });
+  await render(<Pin />);
+  expect(await screen.findByText('Near Muscat')).toBeTruthy();
+  expect(screen.getByText('Ruwi')).toBeTruthy();
+  expect(screen.queryByText('Lulu Barka')).toBeNull();
+});
+
+it('never gives a moved pin an old name', async () => {
+  // No signal for the phone geocoder at the new spot: "This spot", not "Ruwi"
+  // several kilometres away — the driver would be sent looking for Ruwi.
+  mockParams.current = { end: 'pickup' };
+  (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
+  (places.nameAt as jest.Mock).mockResolvedValue(null);
+  await seed({ originPlace: RUWI });
+  await render(<Pin />);
+  await fireEvent(await screen.findByTestId('pin-map'), 'regionChangeComplete', {
+    latitude: 23.65, longitude: 58.45, latitudeDelta: 0.004, longitudeDelta: 0.004,
+  });
+  expect(await screen.findByText('Near Muscat')).toBeTruthy();
+  expect(screen.getByText('This spot')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Confirm pickup'));
+  expect((await loadDraft()).originPlace).toEqual(expect.objectContaining({ lat: 23.65, placeName: null }));
+});
+
+it('can still confirm when the map re-reports the spot it already checked', async () => {
+  mockParams.current = { end: 'pickup' };
+  (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
+  await seed({ originPlace: RUWI });
+  await render(<Pin />);
+  expect(await screen.findByText('Near Muscat')).toBeTruthy();
+  await fireEvent(screen.getByTestId('pin-map'), 'regionChangeComplete', {
+    latitude: RUWI.lat, longitude: RUWI.lng, latitudeDelta: 0.004, longitudeDelta: 0.004,
+  });
+  await waitFor(() =>
+    expect(screen.getByLabelText('Confirm pickup').props.accessibilityState.disabled).toBe(false),
+  );
 });

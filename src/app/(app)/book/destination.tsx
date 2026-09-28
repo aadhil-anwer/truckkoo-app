@@ -89,7 +89,10 @@ export default function Destination() {
         <View style={styles.search}>
           <PlaceSearch
             onPicked={(p) => {
-              update({ destinationPlace: { ...p, note: '', contactName: '', contactPhone: '' } });
+              // The city is the pin screen's to set, from the server. Until it
+              // does, this place sits beside no city — never beside one it
+              // was not checked against, which book_load would refuse.
+              update({ destinationPlace: { ...p, note: '', contactName: '', contactPhone: '' }, destinationCityId: null });
               router.push({ pathname: '/book/pin', params: { end: 'drop' } });
             }}
           />

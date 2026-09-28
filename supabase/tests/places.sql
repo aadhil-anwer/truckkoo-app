@@ -124,6 +124,12 @@ select act_as('c0000000-0000-4000-8000-00000000000a');
 select assert_equals(public.city_near(23.588, 58.408), city('Muscat'), 'a point in Muscat is near Muscat');
 select assert_equals(public.city_near(17.02, 54.09), city('Salalah'), 'a point in Salalah is near Salalah');
 select assert_raises($$select public.city_near(51.5, -0.1)$$, 'city_near refuses a point outside the region');
+-- 0042: inside the box is not inside the network. Doha has no city of ours,
+-- and Bandar Abbas is across the strait — neither may snap to a town and be
+-- priced as one.
+select assert_equals(public.city_near(25.29, 51.53), null, 'a point in Doha is near no city of ours');
+select assert_equals(public.city_near(27.18, 56.27), null, 'a point in Bandar Abbas is near no city of ours');
+select assert_equals(public.city_near(23.70, 57.88), city('Barka'), 'a point just outside Barka is still Barka');
 select act_as_reset();
 
 -- ═══ 5. the search quota ════════════════════════════════════════════════════
@@ -171,6 +177,11 @@ select assert_raises(
       'Mismatch', null, null, null,
       jsonb_build_object('lat', 17.02, 'lng', 54.09), null)$$,
   'a pickup place that is not in the pickup city is refused');
+select assert_raises(
+  $$select * from public.book_load(city('Muscat'), city('Salalah'), current_date + 2, current_date + 2,
+      'Doha', null, null, null,
+      jsonb_build_object('lat', 25.29, 'lng', 51.53), null)$$,
+  'a place far from every city is refused, whatever city is passed');
 select assert_equals(
   (select count(*) from public.book_load(
      city('Muscat'), city('Salalah'), current_date + 2, current_date + 2, 'Booked without places')),
