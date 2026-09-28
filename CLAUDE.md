@@ -98,6 +98,15 @@ cities, and truck types.
   only**, and the trail is ops-only and swept by hand. **Nothing computes a
   position** — `progressOf` and `interpolate` were deleted in P6, and a marker on
   a map without a reported fix behind it is a bug.
+- **A driver's latest GPS point is stored, and no client reads it** (0039,
+  founder's call 2026-09-28, reversing "a town, never a coordinate"). One point
+  per driver in `driver_availability.lat/lng`, overwritten — never a trail — with
+  no client grant for any role, the driver included. `report_location` stores it
+  only while the driver is online (and sends it to an `in_transit` trip whatever
+  the switch says); switch-off and delivery erase it. `nearby_drivers` ranks by
+  it when under 45 min old and ≤1 km accurate, else by town.
+  `src/lib/background-location.ts` is the **only** reporter, and
+  `src/lib/location-tracking.tsx` decides when it runs.
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who

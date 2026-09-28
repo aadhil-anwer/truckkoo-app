@@ -2,7 +2,7 @@
   "expo": {
     "name": "Truckkoo",
     "slug": "truckkoo",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "truckkoo",
@@ -32,9 +32,6 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
-      ],
-      "blockedPermissions": [
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -64,10 +61,11 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": false,
-          "locationWhenInUsePermission": "Truckkoo shares your position with the shipper while you are carrying their load, so they can see where their cargo is. It is only shared during a delivery.",
-          "isAndroidBackgroundLocationEnabled": false,
-          "isIosBackgroundLocationEnabled": false
+          "locationWhenInUsePermission": "Truckkoo uses your location to send you loads near your truck, and to show the shipper where their cargo is during a delivery.",
+          "locationAlwaysAndWhenInUsePermission": "While you are available, Truckkoo uses your location in the background to send you loads near your truck, and during a delivery to show the shipper where their cargo is. Only your latest location is kept.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "./plugins/with-first-launch-direction",

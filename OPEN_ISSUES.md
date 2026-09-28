@@ -55,12 +55,31 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   works. Cost: offers reach drivers not looking at the app and lapse, and since
   nobody toggles, a missed offer is not re-asked (0037's re-ask needs a toggle).
   Reverse with `drivers_online_by_default = false`. Revisit once push lands.
-- **Driver GPS is being designed with `expo-location` background updates**
-  (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`). Better
-  options exist and were set aside for now — Transistorsoft
-  background-geolocation (battery, OEM killers), on-demand location via silent
-  push, Google road-distance APIs, a battery-optimisation exemption prompt. The
-  spec's §9 says when each is worth revisiting.
+- **Driver background GPS is built (0039, app 1.1.0) and has never run on a
+  real phone** (`docs/superpowers/specs/2026-09-28-driver-background-gps-design.md`).
+  Before drivers get it: `npx supabase db push` (0039); a 1.1.0 preview build
+  (a native change — `eas update` cannot deliver it, and a 1.0.0 build must not
+  receive 1.1.0 JS); the Google Play background-location declaration with a video
+  of the disclosure screen; the device check below. Known gaps: iOS permission
+  text is English-only; after a hard "Don't allow" there is no in-app link to
+  Settings; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
+  kill the task (ranking then falls back to the town after 45 min). Better
+  options were set aside for now — Transistorsoft background-geolocation, on-demand
+  location via silent push, Google road-distance APIs — the spec's §9 says when
+  each is worth revisiting.
+
+  Device check (preview build 1.1.0, one Android phone, ~1 hour driving):
+  1. Fresh install → driver → Go available → disclosure appears → Continue →
+     "While using" → Settings → "Allow all the time".
+  2. Notification "You are available" is in the status bar.
+  3. Lock the phone, drive 5 km. In SQL: `select located_at, city_id from
+     public.driver_availability where driver_id = '<id>'` — updated within
+     ~15 min / 2 km.
+  4. Go offline → notification gone; drive 3 km; `located_at` and `lat` are null.
+  5. Take a demo load, start the trip → the shipper's T4 moves every ~2 min with
+     the driver's app closed.
+  6. Reboot the phone, open the app once → notification returns.
+  7. Sign out → notification gone.
 - **No push notifications (plan Phase E).** Drivers see a new offer only while
   the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
   Firebase project + FCM credentials in EAS and a new dev build. Until then,

@@ -54,6 +54,10 @@ to make a build pass.
 
 ## What these do not cover
 
+- **The background location task itself.** Jest mocks `expo-location` and
+  `expo-task-manager`, so OS delivery of fixes, the foreground-service
+  notification, reboot, OEM battery killers and the Android 11+ Settings hop are
+  covered only by the device check in `OPEN_ISSUES.md` (Driver background GPS).
 - **Anything on a real device.** No screen has been seen rendered. See
   `OPEN_ISSUES.md` items 9 and 10.
 - **RTL layout.** `align` and `directionArrow` are tested; whether the horizontal
