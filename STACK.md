@@ -63,7 +63,7 @@ everything else. Add structure when the pain is real, not in anticipation of it.
 | Background location | The single hardest thing in the whole product, and it gates store review. Phase 3. **P6 ships foreground-only reporting; the table, the RLS posture and `trip_position()` are already what background tracking needs, so it is a client change** |
 | Arabic strings | Structure is RTL-safe from day one; translation waits — see §5 |
 | Phone / SMS OTP | Sender-ID registration with Gulf regulators takes weeks |
-| Push notifications | Phase 2. Email or WhatsApp is enough at MVP volume |
+| ~~Push notifications~~ | Built 2026-10-04 (0046, app 1.2.0): Expo push, sent by database triggers through pg_net |
 | Payments | Permanently out of scope. Settlement is offline |
 | Component library | DESIGN.md's hairline-border, weight-900 identity fights every stock library's defaults |
 | Monorepo, admin app, E2E tests | Supabase Studio is your admin panel. Test by hand |

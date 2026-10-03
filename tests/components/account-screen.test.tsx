@@ -35,6 +35,7 @@ jest.mock('@/lib/session', () => ({ useSession: jest.fn() }));
 jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
 
 import AccountTab from '@/app/(app)/(tabs)/account';
+import * as pushContext from '@/lib/push-context';
 
 const { useSession } = jest.requireMock('@/lib/session');
 
@@ -131,5 +132,37 @@ describe('X2 · account', () => {
     // Both options must still be their own reachable radios.
     expect(screen.getByRole('radio', { name: 'English' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'العربية' })).toBeTruthy();
+  });
+});
+
+describe('X2 · notifications', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const pushState = (access: 'granted' | 'denied') => {
+    const request = jest.fn(async () => 'granted' as const);
+    jest.spyOn(pushContext, 'usePush').mockReturnValue({
+      access,
+      settled: true,
+      request,
+      decline: jest.fn(),
+      settle: jest.fn(),
+    });
+    return request;
+  };
+
+  it('keeps a way back to notifications after "Not now"', async () => {
+    useSession.mockReturnValue(session('shipper'));
+    const request = pushState('denied');
+    await render(<AccountTab />);
+    fireEvent.press(screen.getByLabelText('Notifications, Off — tap to turn on'));
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('says they are on, and offers nothing to press, once they are', async () => {
+    useSession.mockReturnValue(session('driver'));
+    pushState('granted');
+    await render(<AccountTab />);
+    expect(screen.getByText('On')).toBeTruthy();
+    expect(screen.queryByLabelText(/Notifications, /)).toBeNull();
   });
 });

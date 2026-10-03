@@ -690,6 +690,18 @@ const en = {
   'drv.bid.submit': 'Send {amount}',
   'drv.bid.submit.bare': 'Send my price',
   'drv.bid.notEligible': 'You cannot send a price right now — check you are online and not on another job.',
+
+  // ── push notifications (0046, 2026-10-04) ─────────────────────────────────
+  'push.channel': 'Jobs and deliveries',
+  'push.ask.q': 'Get a buzz when something happens?',
+  'push.ask.shipper': 'We tell you when a driver names a price, takes your load, picks it up and delivers it. Nothing else.',
+  'push.ask.driver': 'We tell you the moment a job comes in, and when you get one. Nothing else.',
+  'push.ask.cta': 'Turn on notifications',
+  'push.ask.later': 'Not now',
+  'push.ask.settings': 'Your phone will open Settings — switch notifications on for Truckkoo there.',
+  'push.row': 'Notifications',
+  'push.row.on': 'On',
+  'push.row.off': 'Off — tap to turn on',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -1273,6 +1285,17 @@ const ar: Partial<Record<StringKey, string>> = {
   'drv.bid.submit': 'أرسل {amount}',
   'drv.bid.submit.bare': 'أرسل سعري',
   'drv.bid.notEligible': 'لا يمكنك إرسال سعر الآن — تأكد أنك متصل ولست في رحلة أخرى.',
+  // push notifications, 2026-10-04 (10 strings)
+  'push.channel': 'الأعمال والتسليمات',
+  'push.ask.q': 'هل نُعلمك عندما يحدث شيء؟',
+  'push.ask.shipper': 'نُعلمك عندما يحدد سائق سعراً، ويستلم شحنتك، ويحملها، ويسلّمها. لا شيء غير ذلك.',
+  'push.ask.driver': 'نُعلمك لحظة وصول عمل جديد، وعندما تحصل عليه. لا شيء غير ذلك.',
+  'push.ask.cta': 'شغّل الإشعارات',
+  'push.ask.later': 'ليس الآن',
+  'push.ask.settings': 'سيفتح هاتفك الإعدادات — فعّل الإشعارات لتركو من هناك.',
+  'push.row': 'الإشعارات',
+  'push.row.on': 'مفعّلة',
+  'push.row.off': 'متوقفة — اضغط لتفعيلها',
 };
 
 /**

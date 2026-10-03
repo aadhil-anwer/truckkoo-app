@@ -355,3 +355,13 @@ Bid invitations do **not** carry the pickup/drop contact's name or phone
 (`driver_bid_invites`), unlike fixed-price offers (0041 P3): far more drivers
 are invited to an auction than to a wave. The winner gets them from
 `driver_trip`.
+
+### Push notifications (0046)
+
+| Table | Client write | Client read | Why |
+|---|---|---|---|
+| `private.push_tokens` | `register_push_token` (own, validated, rate-limited, newest five kept) / `unregister_push_token` (own) | none | A token addresses one phone. Readable, it would let anyone push to — or learn the devices of — any account. A shared phone moves to whoever signed in last. |
+| `private.push_log` | none | none | Who was told what, about which load. Also the throttle for price pushes. |
+
+Message bodies are composed server-side and name cities and amounts only: a
+lock screen is public, so cargo, names and phones never go in a push.

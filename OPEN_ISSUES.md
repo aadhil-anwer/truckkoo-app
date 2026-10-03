@@ -47,9 +47,8 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   `no_rate` and goes to a person; automatic dispatch cannot start until a
   dispatcher enters real rates in the ops console. Not a code fix — rates are
   never invented in a migration.
-- **A priced load waits on the shipper, who is not told.** `ops_set_price` moves
-  a load to `quoted`; dispatch starts only when the shipper accepts it in the
-  app, and nothing tells them a price arrived (no push, no WhatsApp).
+- **A priced load waits on the shipper** — who is now told by push (0046,
+  "Your price is ready") once 1.2.0 is installed. No WhatsApp message.
 - **Drivers are online by default (0038, founder's call 2026-09-28).** Every
   driver starts on and the 12-hour auto-off is disabled; switching off still
   works. Cost: offers reach drivers not looking at the app and lapse, and since
@@ -103,10 +102,8 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   5. As a driver offered that load: the place, note and Call show; pass → reopen
      the offer → gone. Accept another → D7 "Directions to <place>" opens Google
      Maps at the gate.
-- **No push notifications (plan Phase E).** Drivers see a new offer only while
-  the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
-  Firebase project + FCM credentials in EAS and a new dev build. Until then,
-  waves reach only drivers looking at their phone.
+- **Push notifications are built (0046, app 1.2.0) and have never reached a
+  phone.** See *Push notifications* below for what has to happen first.
 - **Ops console not updated (Phase F).** It shows new `dispatch_log` modes
   (`nearby`, `mixed`) and the `exhausted` ending raw, and still has the stale
   "In phase 2 you will be able to send one" copy.
@@ -117,6 +114,46 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
 - **The shipper is not told when a price changed under them.** `book_load` posts
   unaccepted and the load screen shows the new price to accept, but says nothing
   about it having moved.
+
+## Push notifications (0046, app 1.2.0, 2026-10-04)
+
+Founder's call: a driver hears about a new job and getting it; a shipper hears
+about a price arriving (a bid, prices closing, or a dispatcher's price), a
+driver assigned, pick-up and delivery. Asked right after sign-up, and once more
+if a permission that was on is switched off. Database triggers send through
+Expo's push service via pg_net — no service-role key, no Edge Function.
+Proven by `supabase/tests/push.sql` (22 assertions, bodies checked in both
+languages) and `tests/unit/push.test.ts` / `tests/integration/push-screens.test.tsx`.
+
+**Before it reaches anyone — all founder steps:**
+1. Firebase project → add the Android app `com.truckkoo.app` → download
+   `google-services.json` → `eas env:create --type file --name
+   GOOGLE_SERVICES_JSON` (preview + production).
+2. Firebase → Project settings → Service accounts → generate a key, then
+   `eas credentials` → Android → *FCM V1 service account key* → upload it.
+3. iOS: `eas credentials` creates the APNs key on the first iOS build.
+4. `npx supabase db push` (0045, 0046).
+5. **A new build, 1.2.0** — `expo-notifications` is native, so `eas update`
+   cannot deliver it, and 1.1.0 phones must not receive 1.2.0 JS (the
+   `runtimeVersion` policy already prevents that).
+
+**Device check (preview 1.2.0, one Android phone):**
+1. Fresh install, sign up → "Get a buzz…?" appears → Turn on → Android's dialog.
+2. As a shipper, book; as a driver on a second phone, see "New job" with the app
+   closed; tap it → the bid screen opens.
+3. Send a price → the shipper's phone buzzes "New price"; tap → the load.
+4. Accept → driver "You got the job"; pick up, deliver → shipper buzzes twice.
+5. Turn notifications off in Settings, reopen → the question appears once;
+   Turn on → Settings opens.
+6. Sign out → no further buzzes on that phone.
+
+**Open:**
+- **Dead tokens are never pruned.** Expo reports `DeviceNotRegistered` in its
+  response (in `net._http_response`); nothing reads it yet. Harmless at this
+  volume; a sweep belongs in a `system_*` job.
+- **Message copy is in SQL**, not `t()` — the server composes it. The Arabic
+  there is drafted, like the unproofed block, and needs the same reader.
+- **No quiet hours, no per-kind opt-out.** One switch: on or off.
 
 ## Driver bidding (0045, 2026-10-04)
 
@@ -138,8 +175,9 @@ returned columns were checked against the local database. Behind
   price → accept, end to end, is the device check.
 
 **Open:**
-- **No push.** Invitations and prices appear while the app is open (both poll
-  every 15 s). A shipper who sets no limit has to come back to choose.
+- **Push lands with 0046 / app 1.2.0.** Until that build is installed,
+  invitations and prices appear only while the app is open (both poll every
+  15 s).
 - **The limit can be set only while booking.** `set_bid_target` exists and is
   tested; the load screen has no control for it yet.
 - **Dispatcher actions are not bid-aware** (`ops_send_offer`, `ops_set_price`).
@@ -401,7 +439,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 310 Arabic strings have never been read by someone who reads Arabic
+### 320 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -411,7 +449,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 310 of them**, counted from the block itself on 2026-10-04 (the running total kept here had drifted to 254 against a real 289 before bidding; 191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04, less 23 that left with `post-load.tsx`; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 320 of them**, counted from the block itself on 2026-10-04 (the running total kept here had drifted to 254 against a real 289 before bidding; 191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04, less 23 that left with `post-load.tsx`, and 10 for push notifications; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.

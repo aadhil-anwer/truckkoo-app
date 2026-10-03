@@ -51,6 +51,7 @@ import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
 import { currentFix } from '@/lib/background-location';
 import { formatAge } from '@/lib/format';
 import { useLocationAccess } from '@/lib/location-tracking';
+import { usePush } from '@/lib/push-context';
 import { claimLocationPrompt } from '@/lib/location-prompt';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
@@ -92,11 +93,14 @@ export default function DriverHome() {
   const availability = useMyAvailability();
   const setAvailable = useSetAvailable();
   const location = useLocationAccess();
+  const push = usePush();
 
   // Online without "Allow all the time": explain, once per launch, then let the
   // disclosure screen ask. Never the OS prompt straight from here.
   useEffect(() => {
     if (
+      // One permission screen at a time: the notification question first.
+      push.settled &&
       availability.data?.available &&
       location.access !== null &&
       location.access !== 'always' &&
@@ -104,7 +108,7 @@ export default function DriverHome() {
     ) {
       router.push('/location-permission');
     }
-  }, [availability.data?.available, location.access, router]);
+  }, [push.settled, availability.data?.available, location.access, router]);
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);

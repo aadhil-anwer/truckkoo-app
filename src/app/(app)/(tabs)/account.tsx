@@ -40,6 +40,7 @@ import { arabicIfNeeded } from '@/components/text-direction';
 import { DetailGroup, DetailRow, Notice } from '@/components/ui';
 import { align, getLanguage, t, type Language } from '@/i18n';
 import { signOut } from '@/lib/auth';
+import { usePush } from '@/lib/push-context';
 import { setLanguage } from '@/lib/language';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { useSession } from '@/lib/session';
@@ -71,6 +72,7 @@ function initialsOf(name: string): string {
 
 export default function AccountTab() {
   const { profile } = useSession();
+  const push = usePush();
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
@@ -117,6 +119,11 @@ export default function AccountTab() {
 
         <DetailGroup label={t('account.details')}>
           <DetailRow label={t('auth.phone')} value={safeText(profile?.phone ?? '—')} />
+          <DetailRow
+            label={t('push.row')}
+            value={t(push.access === 'granted' ? 'push.row.on' : 'push.row.off')}
+            onPress={push.access === 'granted' ? undefined : () => void push.request()}
+          />
           <DetailRow
             label={t('account.language')}
             value={LANGUAGE_NAME[current]}

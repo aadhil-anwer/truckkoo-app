@@ -145,6 +145,20 @@ jest.mock('expo-location', () => ({
   reverseGeocodeAsync: jest.fn(async () => []),
 }));
 
+/* ─── expo-notifications (native, 0046) ──────────────────────────────────── */
+
+// Default: never asked. A test about push sets what it needs.
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4 },
+  setNotificationHandler: jest.fn(),
+  getPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'undetermined', canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'denied', canAskAgain: true })),
+  setNotificationChannelAsync: jest.fn(async () => null),
+  getExpoPushTokenAsync: jest.fn(async () => ({ type: 'expo', data: 'ExponentPushToken[testtokenaaaaaaaa]' })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+}));
+
 /* ─── react-native-maps (native; one screen uses it) ─────────────────────── */
 
 jest.mock('react-native-maps', () => {

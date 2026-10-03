@@ -1,0 +1,157 @@
+/**
+ * Push notifications, the phone's half (0046). The server composes and sends;
+ * this asks permission, registers the phone, and opens the right screen when a
+ * notification is tapped.
+ *
+ * WHEN THE PHONE WILL NO LONGER ASK, SEND THE PERSON TO SETTINGS — the same
+ * rule as location (`background-location.ts`). After a refusal Android and iOS
+ * stop showing their dialog, and a button that calls the request anyway does
+ * nothing at all.
+ *
+ * THE TOKEN IS THE DEVICE. It goes to `register_push_token`, which moves a
+ * shared phone to whoever signed in last; `unregisterPush` runs before sign-out
+ * so the account that left stops buzzing a phone it no longer holds.
+ */
+import { Linking, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
+
+import { t } from '@/i18n';
+import { supabase } from '@/lib/supabase';
+
+export type PushAccess = 'granted' | 'denied' | 'undetermined';
+
+const TOKEN_KEY = 'truckkoo.push.token';
+const ASKED_KEY = 'truckkoo.push.asked';
+const GRANTED_KEY = 'truckkoo.push.wasGranted';
+
+/** Show a notification even while the app is open — a new job is news either way. */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+export async function pushStatus(): Promise<{ access: PushAccess; canAskAgain: boolean }> {
+  const p = await Notifications.getPermissionsAsync();
+  const access: PushAccess = p.granted ? 'granted' : p.status === 'undetermined' ? 'undetermined' : 'denied';
+  return { access, canAskAgain: p.canAskAgain !== false };
+}
+
+/** Ask, or open Settings when the phone has stopped offering to. */
+export async function requestPush(): Promise<PushAccess> {
+  await markAsked();
+  const now = await pushStatus();
+  if (now.access === 'granted') return 'granted';
+  if (!now.canAskAgain) {
+    await Linking.openSettings().catch(() => {});
+    return 'denied';
+  }
+  const p = await Notifications.requestPermissionsAsync();
+  return p.granted ? 'granted' : 'denied';
+}
+
+/**
+ * Android 8+ shows nothing without a channel. One, named in the app's language,
+ * matching the `channelId` the server sends.
+ */
+async function ensureChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('default', {
+    name: t('push.channel'),
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
+
+/** Register this phone for the signed-in account. Never throws. */
+export async function registerPush(): Promise<string | null> {
+  try {
+    const { access } = await pushStatus();
+    if (access !== 'granted') return null;
+    await AsyncStorage.setItem(GRANTED_KEY, '1').catch(() => {});
+    await ensureChannel();
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+    const { data: token } = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    const { error } = await supabase.rpc('register_push_token', {
+      p_token: token,
+      p_platform: Platform.OS === 'ios' ? 'ios' : 'android',
+    });
+    if (error) return null;
+    await AsyncStorage.setItem(TOKEN_KEY, token).catch(() => {});
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+/** Before sign-out: this account stops buzzing this phone. Never throws. */
+export async function unregisterPush(): Promise<void> {
+  try {
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    await supabase.rpc('unregister_push_token', { p_token: token });
+    await AsyncStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Signing out must not wait on this.
+  }
+}
+
+async function markAsked(): Promise<void> {
+  await AsyncStorage.setItem(ASKED_KEY, '1').catch(() => {});
+}
+
+/**
+ * Whether to show the permission screen on this launch.
+ *
+ * Right after sign-up (never asked on this phone), and once when a permission
+ * that WAS granted has been taken away in Settings — the case where silence
+ * looks like the app is broken. A plain "Not now" is not asked about again on
+ * every launch; the account screen keeps a way back.
+ */
+export async function shouldAskForPush(): Promise<boolean> {
+  const { access } = await pushStatus();
+  if (access === 'granted') return false;
+  const [asked, wasGranted] = await Promise.all([
+    AsyncStorage.getItem(ASKED_KEY).catch(() => null),
+    AsyncStorage.getItem(GRANTED_KEY).catch(() => null),
+  ]);
+  return asked !== '1' || wasGranted === '1';
+}
+
+/** "Not now": stop treating a revoked permission as news. */
+export async function declinePush(): Promise<void> {
+  await markAsked();
+  await AsyncStorage.removeItem(GRANTED_KEY).catch(() => {});
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Where a tapped notification goes. The data is the server's, but it is still
+ * input to a router: only known kinds, only well-formed ids.
+ */
+export function hrefFor(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  const id = (k: string) => (typeof d[k] === 'string' && UUID.test(d[k] as string) ? (d[k] as string) : null);
+  switch (d.kind) {
+    case 'driver_new_job': {
+      const offer = id('offer_id');
+      return offer ? (d.bid === true ? `/bid/${offer}` : `/offer/${offer}`) : null;
+    }
+    case 'driver_trip': {
+      const trip = id('trip_id');
+      return trip ? `/trip/${trip}` : null;
+    }
+    case 'shipper_load': {
+      const load = id('load_id');
+      return load ? `/load/${load}` : null;
+    }
+    default:
+      return null;
+  }
+}

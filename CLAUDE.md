@@ -53,7 +53,7 @@ cities, and truck types.
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
    arrow and alignment rules; its only exemption is `src/map`, and adding a
    second to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **310 of its strings are
+   The Arabic dictionary is complete as of P7, but **320 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -97,6 +97,11 @@ cities, and truck types.
   awarded payout live in `private.bid_loads`, and a bid load's `price_baisa`
   stays NULL until award. Drivers see competing bids as payouts, shippers as
   totals — never both on one side.
+- **Push is sent by the database** (0046): deferred triggers re-read the row at
+  commit and hand Expo a message through pg_net. A push never raises into the
+  transaction that caused it, nothing intermediate buzzes, and the lock screen
+  gets cities and amounts only — never cargo, a name or a phone. Device tokens
+  are in `private.push_tokens`, written only through `register_push_token`.
 - **A position is only ever one row.** `trip_positions` (0032) has no client
   grant of any kind. `report_position` stores nothing outside an `in_transit`
   trip owned by the caller, so tracking stopping when a trip ends is a database
@@ -314,9 +319,9 @@ and dispatch nobody (it happened, 2026-09-27).
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 728 tests
+npm run verify    # typecheck + lint + 756 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
-npm run test:db   # six SQL suites (isolation, pricing, ops, dispatch, places, bidding) — needs `npx supabase start`
+npm run test:db   # seven SQL suites (isolation, pricing, ops, dispatch, places, bidding, push) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
 ```
 
