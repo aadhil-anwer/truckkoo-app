@@ -42,6 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/icon';
 import { AvailabilityCard } from '@/components/driver/Availability';
 import { JobCard } from '@/components/driver/JobCard';
+import { BidInviteCard } from '@/components/driver/BidInviteCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -59,6 +60,7 @@ import {
   cityIndex,
   useCities,
   useDriverEarnings,
+  useDriverBidInvites,
   useDriverOffers,
   useDriverTrip,
   useMyAvailability,
@@ -82,6 +84,8 @@ export default function DriverHome() {
   const insets = useSafeAreaInsets();
   const cities = useCities();
   const offers = useDriverOffers();
+  // Loads waiting for this driver to name a price (0045).
+  const invites = useDriverBidInvites();
   const earnings = useDriverEarnings();
   const trips = useMyTrips();
   const respond = useRespondToOffer();
@@ -110,6 +114,7 @@ export default function DriverHome() {
   };
 
   const pending = offers.data ?? [];
+  const asks = invites.data ?? [];
   const week = earnings.data;
   const weekAmount = week ? formatMoney(week.week_baisa, 'OMR') : null;
   // Newest first — `useMyTrips` orders by created_at desc — so the job just
@@ -158,6 +163,7 @@ export default function DriverHome() {
   function refetchAll() {
     availability.refetch();
     offers.refetch();
+    invites.refetch();
     earnings.refetch();
     trips.refetch();
     cities.refetch();
@@ -299,7 +305,7 @@ export default function DriverHome() {
           </PressableSurface>
         )}
 
-        {!busy && !failed && !lead && pending.length === 0 && (
+        {!busy && !failed && !lead && pending.length === 0 && asks.length === 0 && (
           <View style={styles.empty}>
             <QuestionHeading ground="ink" size="question">
               {DECLARED_TRIPS ? t('drv.none.title') : t('drv.waiting.title')}
@@ -309,6 +315,17 @@ export default function DriverHome() {
             </Text>
           </View>
         )}
+
+        {!lead &&
+          asks.map((invite) => (
+            <BidInviteCard
+              key={invite.offer_id}
+              invite={invite}
+              origin={cityName(invite.origin_city)}
+              destination={cityName(invite.dest_city)}
+              onOpen={() => router.push(`/bid/${invite.offer_id}`)}
+            />
+          ))}
 
         {!lead &&
           pending.map((offer) => (

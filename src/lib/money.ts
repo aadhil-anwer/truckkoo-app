@@ -99,3 +99,25 @@ export function parseMoney(
 
   return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
 }
+
+/**
+ * Parse an amount a person typed, on whatever keyboard they had.
+ *
+ * An Arabic keyboard types ١٢٠٫٥ — Arabic-Indic digits and the Arabic decimal
+ * separator (U+066B) — and a Persian one ۱۲۰. `parseMoney` accepts ASCII only,
+ * deliberately, so this folds those into ASCII first and then hands over: the
+ * validation rules stay in one place. The Arabic thousands separator (U+066C)
+ * becomes a comma, which `parseMoney` then accepts only in genuine thousands
+ * positions.
+ */
+export function parseTypedMoney(
+  input: string,
+  currency: Currency = DEFAULT_CURRENCY,
+): number | null {
+  const ascii = input
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/٫/g, '.')
+    .replace(/٬/g, ',');
+  return parseMoney(ascii, currency);
+}

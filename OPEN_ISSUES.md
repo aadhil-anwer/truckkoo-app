@@ -119,6 +119,40 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   unaccepted and the load screen shows the new price to accept, but says nothing
   about it having moved.
 
+## Driver bidding (0045, 2026-10-04)
+
+Drivers name the price; the shipper chooses, or sets a limit and lets the
+server take the cheapest price within it. `docs/bidding-v1-design.md` is the
+decision record. Proven by `supabase/tests/bidding.sql` (60 assertions) and
+`tests/integration/bidding-screens.test.tsx`; the client's RPC parameters and
+returned columns were checked against the local database. Behind
+`BIDDING` in `src/lib/features.ts` — on.
+
+**Before it reaches shippers:**
+- `npx supabase db push` (0045), then set the fee from the console:
+  `ops_set_bid_fee(0, 'launch: no commission for six months')`. Until a fee is
+  set, posting refuses with "bid fee is not configured" and the booking review
+  says "We could not post that".
+- An `eas update` is enough — no native change. Publish only after the
+  migration and the fee are live.
+- **Nobody has walked it.** Not on a phone, not on web: post → invitation →
+  price → accept, end to end, is the device check.
+
+**Open:**
+- **No push.** Invitations and prices appear while the app is open (both poll
+  every 15 s). A shipper who sets no limit has to come back to choose.
+- **The limit can be set only while booking.** `set_bid_target` exists and is
+  tested; the load screen has no control for it yet.
+- **"Send this route again"** still goes to the legacy `post-load` screen, which
+  posts a fixed-price load through `post_load` — and with the rate card empty
+  that lands on a person, against the no-dispatcher intent. Move it onto the
+  booking flow (it is also the last thing keeping `legacy.tsx` alive).
+- **Dispatcher actions are not bid-aware** (`ops_send_offer`, `ops_set_price`).
+  Harmless while no dispatcher acts.
+- **Ops console** shows bid loads with raw statuses and knows nothing of bids.
+- The question screens for an amount show a `1 / 1` step counter on the
+  driver's price screen — a one-question flow in the shared shell.
+
 ## Sentry (2026-09-26)
 
 `src/lib/monitoring.ts`, initialised first in `_layout.tsx`; render crashes
@@ -372,7 +406,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 254 Arabic strings have never been read by someone who reads Arabic
+### 298 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -382,7 +416,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 254 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 298 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.

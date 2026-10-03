@@ -17,6 +17,13 @@
  *
  * NOTHING IS CHARGED HERE. Showing a price is fine; taking one is not, ever
  * (#3). The reassurance strip says so out loud.
+ *
+ * UNDER BIDDING (0045, `BIDDING`) there is no price yet, by design: drivers name
+ * theirs after this screen. The price card becomes how-it-is-priced, the target
+ * the shipper gave (or "You choose") is a row in the summary, and the button
+ * posts through `post_bid_load`, which takes no price from the client at all.
+ * The rate-card lookup is not made — it would spend a rate-limited call on a
+ * number this flow never shows.
  */
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
@@ -34,7 +41,15 @@ import {
   useBookingDraft,
   type DraftPlace,
 } from '@/lib/booking';
-import { cityIndex, useBookLoad, useCities, useRoutePrice, useTruckTypes } from '@/lib/queries';
+import {
+  cityIndex,
+  useBookLoad,
+  useCities,
+  usePostBidLoad,
+  useRoutePrice,
+  useTruckTypes,
+} from '@/lib/queries';
+import { BIDDING } from '@/lib/features';
 import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, localized, t } from '@/i18n';
@@ -60,7 +75,7 @@ export default function Review() {
 
   const requested = truckTypeForPost(draft);
   const price = useRoutePrice({
-    originCity: ready ? draft.originCityId : null,
+    originCity: ready && !BIDDING ? draft.originCityId : null,
     destCity: ready ? draft.destinationCityId : null,
     truckTypeCode: requested,
     weightKg: draft.weightKg,
@@ -70,6 +85,8 @@ export default function Review() {
   const amount = priced ? formatMoney(quote!.price_baisa!, quote!.currency as Currency) : null;
 
   const book = useBookLoad();
+  const postBid = usePostBidLoad();
+  const posting = BIDDING ? postBid.isPending : book.isPending;
 
   if (!ready || !origin || !dest) return null;
 
@@ -86,8 +103,36 @@ export default function Review() {
           })
         : t('book.review.weWillChoose');
 
+  const target =
+    draft.targetTotalBaisa == null ? t('book.review.noTarget') : formatMoney(draft.targetTotalBaisa, 'OMR')!;
+
   function submit() {
     setError(null);
+    if (BIDDING) {
+      postBid.mutate(
+        {
+          originCity: draft.originCityId!,
+          destCity: draft.destinationCityId!,
+          collectionDate: draft.collectionDate!,
+          goods: draft.cargoDescription.trim(),
+          weightKg: draft.weightKg,
+          // NULL means "advise me". Never a guessed code.
+          truckTypeCode: requested,
+          originPlace: toPlacePayload(draft.originPlace),
+          destPlace: toPlacePayload(draft.destinationPlace),
+          targetTotalBaisa: draft.targetTotalBaisa,
+        },
+        {
+          onSuccess: async ({ loadId }) => {
+            await clearDraft();
+            // The load screen is where the prices arrive.
+            router.replace(`/load/${loadId}`);
+          },
+          onError: () => setError(t('book.failed')),
+        },
+      );
+      return;
+    }
     book.mutate(
       {
         originCity: draft.originCityId!,
@@ -134,13 +179,19 @@ export default function Review() {
                   ? t('book.review.notSaid')
                   : t('book.weight.value', { weight: formatNumber(draft.weightKg) })
               }
-              last
+              last={!BIDDING}
             />
+            {BIDDING && <Fact label={t('book.review.target')} value={target} last />}
           </View>
         </Card>
 
         <Card tone="raised" style={styles.estimate}>
-          {price.isPending ? (
+          {BIDDING ? (
+            <>
+              <SectionLabel>{t('book.review.bidLabel')}</SectionLabel>
+              <Text style={styles.estimateWhy}>{t('book.review.bidWhy')}</Text>
+            </>
+          ) : price.isPending ? (
             <Skeleton height={64} />
           ) : priced ? (
             <>
@@ -173,12 +224,19 @@ export default function Review() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
         <TertiaryButton label={t('book.review.change')} onPress={() => router.back()} />
         <PrimaryButton
-          label={amount ? t('book.review.bookFor', { price: amount }) : t('book.review.cta')}
+          label={
+            BIDDING
+              ? t('book.review.bidCta')
+              : amount
+                ? t('book.review.bookFor', { price: amount })
+                : t('book.review.cta')
+          }
           onPress={submit}
           // Never book while the price is still arriving: the button would
-          // commit to a number the shipper has not seen yet.
-          disabled={price.isPending}
-          loading={book.isPending}
+          // commit to a number the shipper has not seen yet. (No price is
+          // fetched under bidding, so there is nothing to wait for.)
+          disabled={!BIDDING && price.isPending}
+          loading={posting}
         />
       </View>
     </View>

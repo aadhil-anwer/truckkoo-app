@@ -102,11 +102,14 @@ runs; `system_bid_tick` (every minute) owns their lifecycle.
 ## Release order
 
 1. ~~Schema/RPC migration with isolation and race tests~~ — done, local.
-2. Build the booking review, driver bid and shipper bid screens on the new RPCs
+2. ~~Build the booking review, driver bid and shipper bid screens on the new RPCs
    (`post_bid_load`, `driver_bid_invites`, `driver_load_bids`,
    `place_driver_bid`, `shipper_load_bids`, `shipper_bid_status`,
    `accept_driver_bid`, `close_bidding`, `extend_bidding`, `set_bid_target`).
-   Keep the legacy screens for existing loads.
+   Keep the legacy screens for existing loads.~~ — done behind `BIDDING`: the
+   optional limit step (`book/target`), the review, the shipper's bid states on
+   `load/[id]`, the driver's invitations, `bid/[id]` and `bid/price`. Not yet:
+   changing the limit after posting, extending from the app.
 3. Verify a complete bid-to-assignment flow against local Supabase, then a
    preview Android build on a phone.
 4. Set the fee (`ops_set_bid_fee(0, 'launch: no commission for six months')`)

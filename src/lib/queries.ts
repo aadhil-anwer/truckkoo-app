@@ -12,7 +12,7 @@ import type { PlacePayload } from './booking';
 
 /** One literal string. Supabase derives row types from it, so it cannot be built by concatenation. */
 const LOAD_COLUMNS =
-  "id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description, status, price_baisa, currency, created_at";
+  "id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description, status, price_baisa, currency, created_at, pricing_mode, bid_deadline";
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 
@@ -68,6 +68,14 @@ export type Load = {
   price_baisa: number | null;
   currency: string;
   created_at: string;
+  /**
+   * `bid` loads (0045) are priced by drivers' bids. Their `price_baisa` stays
+   * NULL until a bid is accepted, so a bid load's screens read the bids through
+   * `shipper_load_bids` / `shipper_bid_status`, never this column.
+   */
+  pricing_mode: 'fixed' | 'bid';
+  /** When bidding closes. NULL on a fixed-price load. */
+  bid_deadline: string | null;
 };
 
 export type Leg = {
@@ -438,6 +446,178 @@ export function useAcceptQuote() {
   });
 }
 
+/* ─── bidding · the shipper (0045) ───────────────────────────────────────── */
+
+/** Bids arrive while the shipper watches; poll as offers do, until push lands. */
+const BID_POLL_MS = 15_000;
+
+export type PostBidLoadInput = {
+  originCity: number;
+  destCity: number;
+  collectionDate: string;
+  goods: string;
+  weightKg: number | null;
+  /** NULL means "advise me". Never a guessed code. */
+  truckTypeCode: string | null;
+  originPlace: PlacePayload | null;
+  destPlace: PlacePayload | null;
+  /** The most the shipper will pay in total; null is "I will choose myself". */
+  targetTotalBaisa: number | null;
+};
+
+/**
+ * Post a load for drivers to bid on. No price goes up — there is none yet, and
+ * the server never takes one from a client. The fee is the server's, snapshotted
+ * at posting.
+ */
+export function usePostBidLoad() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: PostBidLoadInput): Promise<{ loadId: string }> => {
+      const { data, error } = await supabase.rpc('post_bid_load', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_pickup_from: input.collectionDate,
+        p_pickup_to: input.collectionDate,
+        p_goods: input.goods,
+        p_weight_kg: input.weightKg,
+        p_truck_type_code: input.truckTypeCode,
+        p_origin_place: input.originPlace,
+        p_dest_place: input.destPlace,
+        p_target_total_baisa: input.targetTotalBaisa,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('post_bid_load returned no load');
+      return { loadId: String(data) };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
+    },
+  });
+}
+
+/**
+ * One bid, as the shipper sees it: a total with the fee in it, never the
+ * driver's payout (total minus payout is the fee — SENSITIVE_FIELDS.md).
+ */
+export type ShipperBid = {
+  bid_id: string;
+  driver_name: string;
+  truck_type: string | null;
+  total_baisa: number;
+  submitted_at: string;
+  selected: boolean;
+  /** False once the driver went offline or took another job. */
+  eligible: boolean;
+};
+
+export function useShipperLoadBids(loadId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['bids', 'shipper', loadId],
+    enabled: !!loadId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<ShipperBid[]> => {
+      const { data, error } = await supabase.rpc('shipper_load_bids', { p_load_id: loadId });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        bid_id: String(r.bid_id),
+        driver_name: String(r.driver_name ?? ''),
+        truck_type: (r.truck_type as string | null) ?? null,
+        total_baisa: Number(r.total_baisa),
+        submitted_at: String(r.submitted_at),
+        selected: r.selected === true,
+        eligible: r.eligible === true,
+      }));
+    },
+  });
+}
+
+export type ShipperBidStatus = {
+  bid_deadline: string;
+  target_total_baisa: number | null;
+  selected_bid_id: string | null;
+  /** The proposed bid's total. Not on `loads` until a bid is accepted. */
+  selected_total_baisa: number | null;
+  bid_count: number;
+};
+
+export function useShipperBidStatus(loadId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['bids', 'status', loadId],
+    enabled: !!loadId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<ShipperBidStatus | null> => {
+      const { data, error } = await supabase.rpc('shipper_bid_status', { p_load_id: loadId });
+      if (error) throw error;
+      const r = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!r) return null;
+      const num = (v: unknown) => (v == null ? null : Number(v));
+      return {
+        bid_deadline: String(r.bid_deadline),
+        target_total_baisa: num(r.target_total_baisa),
+        selected_bid_id: (r.selected_bid_id as string | null) ?? null,
+        selected_total_baisa: num(r.selected_total_baisa),
+        bid_count: Number(r.bid_count ?? 0),
+      };
+    },
+  });
+}
+
+/** Everything a bid decision moves: the bids, the load, and the trip it makes. */
+function invalidateBidding(qc: ReturnType<typeof useQueryClient>, loadId: string) {
+  qc.invalidateQueries({ queryKey: ['bids', 'shipper', loadId] });
+  qc.invalidateQueries({ queryKey: ['bids', 'status', loadId] });
+  qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
+  qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
+}
+
+/**
+ * Take a bid. Returns the trip, or NULL when the bid went stale after bidding
+ * closed and the server proposed the next one instead. While bidding is open a
+ * stale bid is refused ("bid no longer available") and nothing changes.
+ */
+export function useAcceptDriverBid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ loadId, bidId }: { loadId: string; bidId: string }) => {
+      const { data, error } = await supabase.rpc('accept_driver_bid', {
+        p_load_id: loadId,
+        p_bid_id: bidId,
+      });
+      if (error) throw error;
+      return (data as string | null) ?? null;
+    },
+    onSettled: (_d, _e, { loadId }) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** End bidding now: the lowest bid is proposed, or taken if it is within the target. */
+export function useCloseBidding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (loadId: string) => {
+      const { error } = await supabase.rpc('close_bidding', { p_load_id: loadId });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, loadId) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** Set, change or clear the most the shipper will pay, while bidding is open. */
+export function useSetBidTarget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ loadId, targetBaisa }: { loadId: string; targetBaisa: number | null }) => {
+      const { error } = await supabase.rpc('set_bid_target', {
+        p_load_id: loadId,
+        p_target_total_baisa: targetBaisa,
+      });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, { loadId }) => invalidateBidding(qc, loadId),
+  });
+}
+
 /* ─── driver ─────────────────────────────────────────────────────────────── */
 
 export function useMyLegs() {
@@ -527,6 +707,137 @@ export function useDriverOffers() {
       const { data, error } = await supabase.rpc('driver_offers');
       if (error) throw error;
       return (data ?? []) as DriverOffer[];
+    },
+  });
+}
+
+/* ─── bidding · the driver (0045) ────────────────────────────────────────── */
+
+/**
+ * A load this driver is invited to bid on. The pins and notes are here so the
+ * trip can be priced; the contact's name and phone are NOT — far more drivers
+ * are invited to bid than to a wave, and the winner gets them from
+ * `driver_trip()`.
+ */
+export type BidInvite = {
+  offer_id: string;
+  load_id: string;
+  bid_deadline: string;
+  origin_city: number;
+  dest_city: number;
+  pickup_from: string;
+  pickup_to: string;
+  goods: string;
+  weight_kg: number | null;
+  truck_type_code: string | null;
+  /** What this driver asked to keep; null until they bid. */
+  own_bid_baisa: number | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+};
+
+export function useDriverBidInvites() {
+  return useQuery({
+    queryKey: ['driver', 'bids'],
+    // Same reason as useDriverOffers: until push lands, an invitation has to
+    // appear while the driver is looking.
+    refetchInterval: BID_POLL_MS,
+    queryFn: async (): Promise<BidInvite[]> => {
+      const { data, error } = await supabase.rpc('driver_bid_invites');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(toBidInvite);
+    },
+  });
+}
+
+function toBidInvite(r: Record<string, unknown>): BidInvite {
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    offer_id: String(r.offer_id),
+    load_id: String(r.load_id),
+    bid_deadline: String(r.bid_deadline),
+    origin_city: Number(r.origin_city),
+    dest_city: Number(r.dest_city),
+    pickup_from: String(r.pickup_from),
+    pickup_to: String(r.pickup_to),
+    goods: String(r.goods ?? ''),
+    weight_kg: num(r.weight_kg),
+    truck_type_code: (r.truck_type_code as string | null) ?? null,
+    own_bid_baisa: num(r.own_bid_baisa),
+    pickup_lat: num(r.pickup_lat),
+    pickup_lng: num(r.pickup_lng),
+    pickup_name: (r.pickup_name as string | null) ?? null,
+    pickup_note: (r.pickup_note as string | null) ?? null,
+    drop_lat: num(r.drop_lat),
+    drop_lng: num(r.drop_lng),
+    drop_name: (r.drop_name as string | null) ?? null,
+    drop_note: (r.drop_note as string | null) ?? null,
+  };
+}
+
+/**
+ * One invitation, by OFFER id — never by load id, for the reason
+ * useDriverOffer gives. Read from the same list the offers tab polls, so the
+ * two cannot disagree about whether bidding is still open.
+ */
+export function useDriverBidInvite(offerId: string | undefined) {
+  const invites = useDriverBidInvites();
+  return {
+    ...invites,
+    data: invites.data ? (invites.data.find((i) => i.offer_id === offerId) ?? null) : undefined,
+  };
+}
+
+/**
+ * The competing bids, semi-anonymised: a bidder number, a truck type, and the
+ * amount each driver keeps. Never a name, a phone or a shipper total.
+ */
+export type CompetingBid = {
+  bidder_no: number;
+  truck_type: string | null;
+  payout_baisa: number;
+  updated_at: string;
+  is_you: boolean;
+};
+
+export function useDriverLoadBids(offerId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['driver', 'bids', offerId],
+    enabled: !!offerId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<CompetingBid[]> => {
+      const { data, error } = await supabase.rpc('driver_load_bids', { p_offer_id: offerId });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        bidder_no: Number(r.bidder_no),
+        truck_type: (r.truck_type as string | null) ?? null,
+        payout_baisa: Number(r.payout_baisa),
+        updated_at: String(r.updated_at),
+        is_you: r.is_you === true,
+      }));
+    },
+  });
+}
+
+/** Bid, or change a bid. The amount is what the driver keeps, in baisa. */
+export function usePlaceDriverBid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ offerId, payoutBaisa }: { offerId: string; payoutBaisa: number }) => {
+      const { error } = await supabase.rpc('place_driver_bid', {
+        p_offer_id: offerId,
+        p_payout_baisa: payoutBaisa,
+      });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['driver', 'bids'] });
     },
   });
 }

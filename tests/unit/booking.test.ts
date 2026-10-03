@@ -8,6 +8,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BIDDING } from '@/lib/features';
 
 import {
   EMPTY_DRAFT,
@@ -34,6 +35,7 @@ const FILLED: BookingDraft = {
   weightKg: null,
   originPlace: null,
   destinationPlace: null,
+  targetTotalBaisa: 150000,
 };
 
 beforeEach(async () => {
@@ -110,13 +112,25 @@ describe('persistence', () => {
 });
 
 describe('steps', () => {
-  it('is a six-step flow', () => {
-    expect(TOTAL_STEPS).toBe(6);
+  it('is six steps, plus the optional target while bidding is on', () => {
+    expect(TOTAL_STEPS).toBe(BIDDING ? 7 : 6);
   });
 
   it('numbers steps from one, for the counter', () => {
     expect(stepNumber('origin')).toBe(1);
     expect(stepNumber('weight')).toBe(6);
+    expect(stepNumber('target')).toBe(7);
+  });
+});
+
+describe('the target price in the draft', () => {
+  it('starts with no target — "I will choose myself" is the default', () => {
+    expect(EMPTY_DRAFT.targetTotalBaisa).toBeNull();
+  });
+
+  it('opens a draft saved before targets existed, with no target', async () => {
+    await AsyncStorage.setItem('truckkoo.booking.draft.v1', JSON.stringify({ originCityId: 3 }));
+    expect((await loadDraft()).targetTotalBaisa).toBeNull();
   });
 });
 

@@ -11,6 +11,7 @@ import {
   exponentFor,
   formatMoney,
   parseMoney,
+  parseTypedMoney,
   type Currency,
 } from '@/lib/money';
 
@@ -151,5 +152,26 @@ describe('parseMoney', () => {
       expect(minor).not.toBeNull();
       expect(formatMoney(minor)).toBe(`${input} OMR`);
     }
+  });
+});
+
+describe('parseTypedMoney — what an Arabic keyboard types', () => {
+  it('reads Arabic-Indic digits and the Arabic decimal separator', () => {
+    // ١٢٠٫٥ — written as escapes so the test is reviewable in a diff.
+    expect(parseTypedMoney('١٢٠٫٥')).toBe(120500);
+  });
+
+  it('reads Persian digits', () => {
+    expect(parseTypedMoney('۱۲۰')).toBe(120000);
+  });
+
+  it('reads the Arabic thousands separator only where a comma would be valid', () => {
+    expect(parseTypedMoney('1٬200')).toBe(1200000);
+    expect(parseTypedMoney('12٬٬5')).toBeNull();
+  });
+
+  it('leaves ASCII input to parseMoney unchanged', () => {
+    expect(parseTypedMoney('120.500')).toBe(120500);
+    expect(parseTypedMoney('abc')).toBeNull();
   });
 });

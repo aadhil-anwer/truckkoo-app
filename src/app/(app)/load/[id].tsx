@@ -19,6 +19,13 @@
  *   in_transit              → T4   ETA, progress, what is owed
  *   delivered / closed      → T5   the receipt, and the rating
  *
+ * A BID LOAD (0045, `pricing_mode = 'bid'`) replaces the first three: while
+ * bidding is open (`posted`/`matched`) the prices arrive as a choice with one
+ * pinned "Accept …"; once it closes (`quoted`) the server's proposal is the
+ * price. From `assigned` on it is the same screen as any other load. The branch
+ * follows the load, not the BIDDING flag, so a bid load is never stranded by
+ * turning the flag off.
+ *
  * THE MAP IS THE GROUND, as on home. The corridor is **dashed until a driver
  * actually has the load** — that distinction is load-bearing (DESIGN.md), and
  * drawing it solid at `quoted` would tell a shipper their truck was booked when
@@ -70,8 +77,12 @@ import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from
 import { useTick } from '@/lib/use-tick';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
+import { BidsOpen, BidsProposal, choosable } from '@/components/shipper/Bids';
 import {
   cityIndex,
+  useAcceptDriverBid,
+  useShipperBidStatus,
+  useShipperLoadBids,
   useAcceptQuote,
   useCities,
   useCurrentQuote,
@@ -145,6 +156,27 @@ export default function TrackLoad() {
   const summary = useDriverSummary(trip?.driver_id);
   // The exact pickup and drop-off, when the shipper pinned them (0041).
   const places = useLoadPlaces(load?.id);
+
+  // Bid loads (0045). Read only while there is a price to choose; both poll.
+  const isBid = load?.pricing_mode === 'bid';
+  const biddingOpen = isBid && (load?.status === 'posted' || load?.status === 'matched');
+  const proposing = isBid && load?.status === 'quoted';
+  const bidLoadId = biddingOpen || proposing ? load?.id : undefined;
+  const bids = useShipperLoadBids(bidLoadId);
+  const bidStatus = useShipperBidStatus(bidLoadId);
+  const acceptBid = useAcceptDriverBid();
+  const [pickedBid, setPickedBid] = useState<string | null>(null);
+  const [bidError, setBidError] = useState<string | null>(null);
+  // Keep the price on screen while it ticks down.
+  useTick(30_000, biddingOpen);
+  const live = choosable(bids.data);
+  // The shipper's pick while it is still choosable; else the server's proposal;
+  // else the cheapest. Never a price that has gone.
+  const chosenBid =
+    live.find((b) => b.bid_id === pickedBid) ??
+    live.find((b) => b.bid_id === bidStatus.data?.selected_bid_id) ??
+    live[0] ??
+    null;
 
   const origin = load ? index.get(load.origin_city) : undefined;
   const dest = load ? index.get(load.dest_city) : undefined;
@@ -276,9 +308,30 @@ export default function TrackLoad() {
           onLayout={(e) => setContentTop(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
         />
 
-        {(status === 'posted' || status === 'finding_truck') && <Waiting />}
-        {status === 'quoted' && <Priced load={load} />}
-        {(status === 'accepted' || status === 'matched') && <Accepted />}
+        {biddingOpen && (
+          <BidsOpen
+            deadline={load.bid_deadline ?? load.created_at}
+            bids={live}
+            status={bidStatus.data}
+            loading={bids.isPending}
+            chosen={chosenBid?.bid_id ?? null}
+            onChoose={setPickedBid}
+            names={truckName}
+          />
+        )}
+        {proposing && (
+          <BidsProposal
+            bids={live}
+            chosen={chosenBid?.bid_id ?? null}
+            onChoose={setPickedBid}
+            names={truckName}
+          />
+        )}
+        {!!bidError && <Text style={styles.bidError}>{bidError}</Text>}
+        {!isBid && (status === 'posted' || status === 'finding_truck') && <Waiting />}
+        {isBid && status === 'finding_truck' && <Waiting />}
+        {!isBid && status === 'quoted' && <Priced load={load} />}
+        {!isBid && (status === 'accepted' || status === 'matched') && <Accepted />}
         {status === 'assigned' && (
           <Assigned driver={counterpart.data} truck={truck.data} summary={summary.data} names={truckName} />
         )}
@@ -334,7 +387,37 @@ export default function TrackLoad() {
       </ScrollView>
 
       <View style={[styles.dock, { paddingBottom: insets.bottom + space.lg }]}>
-        {status === 'quoted' ? (
+        {(biddingOpen || proposing) && chosenBid ? (
+          <>
+            {/* The amount is in the label, as on T2: the thing agreed to is the
+                thing pressed. */}
+            <PrimaryButton
+              label={t('track.price.acceptNamed', {
+                amount: formatMoney(chosenBid.total_baisa, 'OMR', getLanguage()) ?? '',
+              })}
+              loading={acceptBid.isPending}
+              onPress={() => {
+                setBidError(null);
+                acceptBid.mutate(
+                  { loadId: load.id, bidId: chosenBid.bid_id },
+                  {
+                    // NULL: the price went stale after bidding closed and the
+                    // server proposed the next one. Say so; the list refreshes.
+                    onSuccess: (tripId) => {
+                      if (!tripId) setBidError(t('bid.gone'));
+                    },
+                    onError: (e: unknown) => {
+                      const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? '');
+                      setBidError(msg.includes('no longer available') ? t('bid.gone') : t('error.generic'));
+                    },
+                  },
+                );
+              }}
+            />
+            <Text style={styles.dockNote}>{t('track.price.pay')}</Text>
+            <TertiaryButton label={t('track.price.ask')} onPress={() => askHuman()} />
+          </>
+        ) : !isBid && status === 'quoted' ? (
           <AcceptBar load={load} onAsk={() => askHuman()} />
         ) : status === 'assigned' ? (
           <PrimaryButton
@@ -879,6 +962,8 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   placeLine: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start, marginTop: space.sm },
+
+  bidError: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
 
   // T2
   priceHero: { ...font.priceHero, color: color.lightText, textAlign: align.start },

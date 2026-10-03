@@ -23,6 +23,8 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { BIDDING } from './features';
+
 const KEY = 'truckkoo.booking.draft.v1';
 
 /** ISO `YYYY-MM-DD`. Dates are days, not instants — a pickup has no timezone. */
@@ -51,6 +53,12 @@ export type BookingDraft = {
   /** Null when the shipper chose a city only — a real answer, not a gap. */
   originPlace: DraftPlace | null;
   destinationPlace: DraftPlace | null;
+  /**
+   * The most the shipper will pay in total, in baisa (0045). Optional; never
+   * shown to a driver. When bidding closes, the lowest bid at or under it is
+   * taken without asking again. Null is "I will choose myself".
+   */
+  targetTotalBaisa: number | null;
 };
 
 export const EMPTY_DRAFT: BookingDraft = {
@@ -63,12 +71,19 @@ export const EMPTY_DRAFT: BookingDraft = {
   weightKg: null,
   originPlace: null,
   destinationPlace: null,
+  targetTotalBaisa: null,
 };
 
-/** The six steps, in order. Used for the progress counter and for routing. */
-export const STEPS = ['origin', 'destination', 'date', 'cargo', 'truck', 'weight'] as const;
+/**
+ * The steps, in order. Used for the progress counter and for routing.
+ *
+ * `target` — "the most you will pay" — exists only for bid loads (0045), so it
+ * is last and counted only while BIDDING is on: six steps without it, seven
+ * with it.
+ */
+export const STEPS = ['origin', 'destination', 'date', 'cargo', 'truck', 'weight', 'target'] as const;
 export type Step = (typeof STEPS)[number];
-export const TOTAL_STEPS = STEPS.length;
+export const TOTAL_STEPS = BIDDING ? STEPS.length : STEPS.length - 1;
 
 export function stepNumber(step: Step): number {
   return STEPS.indexOf(step) + 1;

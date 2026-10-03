@@ -18,10 +18,12 @@ import {
   SALALAH,
   TRUCK,
   mockBookMutate,
+  mockPostBidMutate,
   mockBack,
   mockLocation,
   mockLocationAccess,
   mockPush,
+  mockReplace,
   mockSetAvailableMutate,
   ok,
   PENDING,
@@ -36,6 +38,7 @@ import LocationPermission from '@/app/(app)/location-permission';
 import { __resetLocationPrompt } from '@/lib/location-prompt';
 import { expiryLabel } from '@/components/driver/OfferCard';
 import { initLanguage } from '@/i18n';
+import * as features from '@/lib/features';
 import * as queries from '@/lib/queries';
 import { offerErrorMessage } from '@/lib/offer-errors';
 
@@ -70,6 +73,11 @@ beforeEach(() => {
 });
 
 describe('Review — the price is the price', () => {
+  // The fixed-price path, which is what BIDDING off falls back to.
+  beforeEach(() => {
+    jest.replaceProperty(features, 'BIDDING', false);
+  });
+
   it('shows the exact price and books at it', async () => {
     await render(<Review />);
     expect(screen.getByText('YOUR PRICE')).toBeTruthy();
@@ -147,6 +155,59 @@ describe('Review — the price is the price', () => {
     await render(<Review />);
     fireEvent.press(screen.getByLabelText('Find me a truck'));
     expect(mockBookMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Review — drivers name the price (0045)', () => {
+  beforeEach(() => {
+    jest.replaceProperty(features, 'BIDDING', true);
+  });
+
+  it('shows no rate-card price and says how the price is found', async () => {
+    await render(<Review />);
+    expect(screen.queryByText('YOUR PRICE')).toBeNull();
+    expect(screen.queryByText(/405\.698/)).toBeNull();
+    expect(screen.getByText('HOW IT IS PRICED')).toBeTruthy();
+  });
+
+  it('does not spend a rate-limited price lookup it will never show', async () => {
+    await render(<Review />);
+    expect(m('useRoutePrice')).toHaveBeenCalledWith(expect.objectContaining({ originCity: null }));
+  });
+
+  it('posts for bids with the target, and never a price of its own', async () => {
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: 120500 };
+    await render(<Review />);
+    expect(screen.getByText('120.500 OMR')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    expect(mockBookMutate).not.toHaveBeenCalled();
+    expect(mockPostBidMutate).toHaveBeenCalledTimes(1);
+    const [input] = mockPostBidMutate.mock.calls[0];
+    expect(input).toMatchObject({
+      originCity: MUSCAT.id,
+      destCity: SALALAH.id,
+      truckTypeCode: null,
+      targetTotalBaisa: 120500,
+    });
+    expect(input).not.toHaveProperty('seenPriceBaisa');
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: null };
+  });
+
+  it('says the shipper chooses when no target was given', async () => {
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: null };
+    await render(<Review />);
+    expect(screen.getByText('You choose')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    expect(mockPostBidMutate.mock.calls[0][0]).toMatchObject({ targetTotalBaisa: null });
+  });
+
+  it('opens the load once posted, where the prices arrive', async () => {
+    mockPostBidMutate.mockImplementation((_input, opts) => opts.onSuccess({ loadId: 'new-load' }));
+    await render(<Review />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    });
+    expect(mockReplace).toHaveBeenCalledWith('/load/new-load');
   });
 });
 

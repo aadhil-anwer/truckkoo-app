@@ -19,6 +19,7 @@ npm run verify        # typecheck + lint + test
 | `components/tab-bar.test.tsx` | Role-aware tab visibility. A custom `tabBar` cannot read expo-router's `href: null`, and the version that tried showed a shipper the driver's tabs. |
 | `integration/harness.tsx` | Not a suite — the shared mocks and fixtures for the two below. Import it **first**; its `jest.mock` calls run at require time. |
 | `integration/shipper-screens.test.tsx` | Home, the loads ledger, and the load detail against mocked data — including the no-dead-end promise and the price's three no-number outcomes. |
+| `integration/bidding-screens.test.tsx` | Bid loads (0045): a load taking prices never reads as "truck found", the shipper accepts one chosen total, drivers see competing prices as numbered drivers, and amounts typed on an Arabic keyboard arrive as baisa. |
 | `integration/driver-screens.test.tsx` | The trip, the offers (accept race, silent-decline regression, the pay that must never render blank) and the declared routes. |
 | `security/env-guard.test.ts` | The service-role-key-in-the-client guard. |
 | `security/schema-invariants.test.ts` | Static assertions over the migration SQL, including that the pricing formula has no client-side twin. |
@@ -29,6 +30,7 @@ under `npm run test:db`:
 | Path | What it protects |
 |---|---|
 | `supabase/tests/tenant_isolation.sql` | Actor A cannot touch actor B's row, for every owned table. |
+| `supabase/tests/bidding.sql` | Bidding (0045): the fee, target and payout stay private; invitations are paced; drivers see competing bids semi-anonymised; the sweeps and a stale tap cannot strand or end an auction; the target awards; no bids reopens. |
 | `supabase/tests/pricing.sql` | The §5 pricing edge cases, the authorization matrix for the quote RPCs, and that the rate card is unreachable from any client. |
 
 `pricing.sql` holds what would normally be unit tests. The pricing formula lives

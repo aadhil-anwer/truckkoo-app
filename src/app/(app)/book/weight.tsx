@@ -15,6 +15,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { QuestionShell } from '@/components/booking/shells';
 import { Chip, StatusPill } from '@/components/ui';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
+import { BIDDING } from '@/lib/features';
 import { align, formatNumber, t } from '@/i18n';
 import { color, elevation, font, radius, space } from '@/theme/tokens';
 
@@ -27,6 +28,8 @@ export default function Weight() {
   if (!ready) return null;
 
   const value = draft.weightKg;
+  // Bid loads ask one more, optional, question: the most the shipper will pay.
+  const next = BIDDING ? '/book/target' : '/book/review';
 
   function setFromText(text: string) {
     const digits = text.replace(/[^0-9]/g, '');
@@ -43,7 +46,11 @@ export default function Weight() {
       // With "let us choose", the weight is what picks the truck — and so what
       // makes an instant price possible (0036). Skipping stays allowed; it just
       // means a person prices it, and the shipper is told that before choosing.
-      helper={t(draft.truckPreference === 'auto' ? 'book.weight.helpInstant' : 'book.weight.help')}
+      // Under bidding there is no instant price for the weight to unlock, so
+      // the plain helper is the true one.
+      helper={t(
+        !BIDDING && draft.truckPreference === 'auto' ? 'book.weight.helpInstant' : 'book.weight.help',
+      )}
       above={
         <View style={styles.pill}>
           <StatusPill label={t('book.weight.optional')} tone="neutral" />
@@ -51,13 +58,13 @@ export default function Weight() {
       }
       onBack={() => router.back()}
       cta={t('book.weight.cta')}
-      onCta={() => router.push('/book/review')}
+      onCta={() => router.push(next)}
       tertiary={t('book.weight.skip')}
       onTertiary={() => {
         // Skipping CLEARS any typed value, so "skip" means what it says rather
         // than silently posting a half-entered number.
         update({ weightKg: null });
-        router.push('/book/review');
+        router.push(next);
       }}
     >
       <View style={styles.card}>
