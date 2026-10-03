@@ -91,6 +91,12 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+- **Bidding keeps the fee off client-readable rows** (0045,
+  `docs/bidding-v1-design.md`). `loads` and `trips` are readable by every
+  invited driver and the shipper, so the fee snapshot, the target price and the
+  awarded payout live in `private.bid_loads`, and a bid load's `price_baisa`
+  stays NULL until award. Drivers see competing bids as payouts, shippers as
+  totals — never both on one side.
 - **A position is only ever one row.** `trip_positions` (0032) has no client
   grant of any kind. `report_position` stores nothing outside an `in_transit`
   trip owned by the caller, so tracking stopping when a trip ends is a database

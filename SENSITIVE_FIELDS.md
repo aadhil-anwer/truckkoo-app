@@ -326,3 +326,32 @@ in an ops screen cannot widen what any other client sees.
 | every column | **none** | Written only by `book_load`, which derives the city from the point. |
 | `contact_name`, `contact_phone` | none | A third party's personal data (the person at the gate). Readable by the owning shipper; by a driver only through `driver_offers()` while pending and `driver_trip()` until delivery; by ops through `ops_load_places`. |
 | `lat`, `lng` | none | The shipper's premises. Same readers as above. |
+
+### Driver bidding (0045)
+
+`loads.pricing_mode`, `bid_deadline` and `selected_bid_id` have no client write
+grant (loads has none on UPDATE, and INSERT lists columns by name); they move
+only through the bid RPCs. They are readable wherever `loads` is — which is
+exactly why nothing else about an auction lives on `loads` or `trips`.
+
+`loads.price_baisa` stays **NULL until a bid is awarded**. Any driver with a
+live invitation can read the row, and a stored total next to the payouts they
+can see is the fee.
+
+| Field | Client write | Client read | Why |
+|---|---|---|---|
+| `private.bid_loads.fee_bps` | none | none | **The take rate.** Snapshotted at posting so a change mid-window cannot move a shown price. Set via `ops_set_bid_fee` (audited); `bid_fee_pct` is never seeded, so posting fails until someone sets it — 0 included. |
+| `private.bid_loads.target_total_baisa` | `post_bid_load`, `set_bid_target` (owner, window open) | the owning shipper, via `shipper_bid_status` | A driver who could read it bids to it. Applied only when the window closes. |
+| `private.bid_loads.awarded_payout_baisa` | none — `private.award_bid` | the winning driver, as `payout_baisa` in `driver_trip` | What the driver keeps. Total minus this is the fee; the shipper never reads it. |
+| `private.driver_bids.*` | `place_driver_bid` only (own live invitation) | shipper: totals via `shipper_load_bids`; invited drivers: `driver_load_bids` | See below. |
+
+**Drivers see competing bids, semi-anonymised** (founder's call, 2026-10-04,
+reversing the bidding doc's "invisible to other drivers"). `driver_load_bids`
+returns a bidder number, a truck type, the amount that driver keeps, and which
+row is yours — to a driver holding a live invitation on that load, while the
+window is open. Never a name, phone, town, rating or shipper total.
+
+Bid invitations do **not** carry the pickup/drop contact's name or phone
+(`driver_bid_invites`), unlike fixed-price offers (0041 P3): far more drivers
+are invited to an auction than to a wave. The winner gets them from
+`driver_trip`.
