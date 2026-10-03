@@ -3,6 +3,7 @@
  * and the RPC. What matters most is that a bad moment — no session, no signal —
  * never throws out of the task, and that only the newest fix is sent.
  */
+import { Linking } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
@@ -100,10 +101,57 @@ it('reads and requests permission in Android order', async () => {
   L.getBackgroundPermissionsAsync.mockResolvedValueOnce({ granted: false } as never);
   await expect(locationAccess()).resolves.toBe('foreground');
 
+  // Nothing granted yet, and the phone still willing to ask for both.
+  L.getForegroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false, canAskAgain: true } as never);
+  L.getBackgroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false, canAskAgain: true } as never);
   L.requestForegroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
   L.requestBackgroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
   await expect(requestLocationAccess()).resolves.toBe('always');
   expect(L.requestForegroundPermissionsAsync.mock.invocationCallOrder[0]).toBeLessThan(
     L.requestBackgroundPermissionsAsync.mock.invocationCallOrder[0],
   );
+});
+
+describe('when the phone will no longer ask', () => {
+  let openSettings: jest.SpyInstance;
+  beforeEach(() => {
+    // Drain once-values other tests queued and left unused.
+    L.getForegroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false } as never);
+    L.getBackgroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false } as never);
+    L.requestForegroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false } as never);
+    L.requestBackgroundPermissionsAsync.mockReset().mockResolvedValue({ granted: false } as never);
+    openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined as never);
+  });
+  afterEach(() => openSettings.mockRestore());
+
+  it('opens Settings instead of a request that would show nothing', async () => {
+    L.getForegroundPermissionsAsync.mockResolvedValueOnce({ granted: false, canAskAgain: false } as never);
+    await expect(requestLocationAccess()).resolves.toBe('none');
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(L.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('opens Settings for "all the time" once that dialog is spent too', async () => {
+    L.getForegroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
+    L.getBackgroundPermissionsAsync.mockResolvedValueOnce({ granted: false, canAskAgain: false } as never);
+    await expect(requestLocationAccess()).resolves.toBe('foreground');
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(L.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('asks normally the first time, and takes a refusal made in the dialog as an answer', async () => {
+    L.getForegroundPermissionsAsync.mockResolvedValueOnce({ granted: false, canAskAgain: true } as never);
+    L.requestForegroundPermissionsAsync.mockResolvedValueOnce({ granted: false, canAskAgain: false } as never);
+    await expect(requestLocationAccess()).resolves.toBe('none');
+    expect(L.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(openSettings).not.toHaveBeenCalled();
+  });
+
+  it('does not ask again for what is already granted', async () => {
+    L.getForegroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
+    L.getBackgroundPermissionsAsync.mockResolvedValueOnce({ granted: true } as never);
+    await expect(requestLocationAccess()).resolves.toBe('always');
+    expect(L.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(L.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+  });
 });

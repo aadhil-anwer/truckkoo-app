@@ -61,8 +61,7 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   (a native change — `eas update` cannot deliver it, and a 1.0.0 build must not
   receive 1.1.0 JS); the Google Play background-location declaration with a video
   of the disclosure screen; the device check below. Known gaps: iOS permission
-  text is English-only; after a hard "Don't allow" there is no in-app link to
-  Settings; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
+  text is English-only; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
   kill the task (ranking then falls back to the town after 45 min). Better
   options were set aside for now — Transistorsoft background-geolocation, on-demand
   location via silent push, Google road-distance APIs — the spec's §9 says when
