@@ -197,38 +197,6 @@ export function useMyLoads() {
   });
 }
 
-export type PostLoadInput = {
-  originCity: number;
-  destCity: number;
-  pickupFrom: string;
-  pickupTo: string;
-  goods: string;
-  weightKg?: number | null;
-  /** null means "Not sure — advise me". Never coerce this to a default. */
-  truckTypeCode?: string | null;
-};
-
-export function usePostLoad() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: PostLoadInput): Promise<string> => {
-      // RPC, not an insert: status is server-owned and the call is rate-limited.
-      const { data, error } = await supabase.rpc('post_load', {
-        p_origin_city: input.originCity,
-        p_dest_city: input.destCity,
-        p_pickup_from: input.pickupFrom,
-        p_pickup_to: input.pickupTo,
-        p_goods: input.goods,
-        p_weight_kg: input.weightKg ?? null,
-        p_truck_type_code: input.truckTypeCode ?? null,
-      });
-      if (error) throw error;
-      return data as string;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['loads', 'mine'] }),
-  });
-}
-
 /* ─── the quote ───────────────────────────────────────────────────────────────
  *
  * There is no pricing logic here, and there must never be. The rate card is the
@@ -278,31 +246,6 @@ export function useCurrentQuote(loadId: string | undefined) {
   });
 }
 
-/**
- * Price a route *before* committing to it — the estimate on the post-load review
- * step. Writes nothing: no load, no quote row. The binding quote is issued by
- * `quote_load` at post time, from the same rate card via the same
- * `private.price_for`, so the number reviewed is the number received.
- */
-export function useQuoteRoute() {
-  return useMutation({
-    mutationFn: async (input: {
-      originCity: number;
-      destCity: number;
-      truckTypeCode?: string | null;
-      weightKg?: number | null;
-    }): Promise<Quote | null> => {
-      const { data, error } = await supabase.rpc('quote_route', {
-        p_origin_city: input.originCity,
-        p_dest_city: input.destCity,
-        p_truck_type_code: input.truckTypeCode ?? null,
-        p_weight_kg: input.weightKg ?? null,
-      });
-      if (error) throw error;
-      return ((data ?? []) as Quote[])[0] ?? null;
-    },
-  });
-}
 
 /** The exact price for a route before booking, and the truck it is for. */
 export type RoutePrice = {

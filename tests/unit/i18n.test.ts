@@ -32,8 +32,8 @@ describe('t', () => {
   });
 
   it('never returns the key itself', () => {
-    // A screen rendering "cust.masthead" is worse than one rendering nothing.
-    expect(t('cust.masthead')).not.toContain('.');
+    // A screen rendering "tab.home" is worse than one rendering nothing.
+    expect(t('tab.home')).not.toContain('.');
   });
 
   it('falls back to English rather than rendering blank when Arabic is missing', () => {
@@ -58,7 +58,6 @@ describe('dictionary integrity', () => {
   // Pulled through the public API so the test cannot drift from what ships.
   const KEYS = [
     'app.name',
-    'cust.masthead',
     'driver.masthead',
     // The bottom tab bar. These replaced the `book.tab.*` keys when the
     // in-page tab strip was retired for a real tab bar.
@@ -77,11 +76,7 @@ describe('dictionary integrity', () => {
     'account.title',
     'account.role.shipper',
     'account.role.driver',
-    // The stepped posting flows.
-    'common.next',
-    'step.route',
-    'step.details',
-    'step.of',
+    // The driver's declared-route screens.
     'driver.routes.title',
     'driver.routes.none.title',
     'driver.routes.none.explain',
@@ -94,8 +89,6 @@ describe('dictionary integrity', () => {
     'auth.confirm.title',
     'auth.reset.title',
     'auth.forgot',
-    'date.today',
-    'date.tomorrow',
   ] as const;
 
   it('has a non-empty English string for every key the new screens use', () => {

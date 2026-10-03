@@ -7,15 +7,15 @@
  * in Arabic copy, a margin that does not flip, an arrow pointing at the wrong
  * city — cost a release to find any other way.
  *
- * Two exemptions, both named in CLAUDE.md, and they are the complete set:
+ * One exemption, named in CLAUDE.md, and it is the complete set:
  *
  *   src/map    SVG coordinates are the one place logical properties do NOT
  *              apply. A projected x is a position on the peninsula, not a
  *              reading direction — the Gulf does not move to the other side of
  *              the screen in Arabic.
- *   legacy.tsx transitional, shrinking, and nothing new may import it.
  *
- * Adding a third exemption to make a hit disappear is the failure mode this
+ * (`legacy.tsx` was the second until it was deleted, 2026-10-04.) Adding an
+ * exemption to make a hit disappear is the failure mode this
  * file exists to prevent.
  */
 
@@ -27,7 +27,7 @@ const ROOTS = ['src/app', 'src/components', 'src/map'];
 function sources(): string[] {
   return ROOTS.flatMap((r) =>
     globSync('**/*.{ts,tsx}', { cwd: r }).map((f) => join(r, f)),
-  ).filter((f) => !f.endsWith('legacy.tsx'));
+  );
 }
 
 /** Strip comments, so a rule written *about* the rule is not a hit. */

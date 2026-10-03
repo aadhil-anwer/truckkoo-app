@@ -14,11 +14,13 @@ import {
   EMPTY_DRAFT,
   TOTAL_STEPS,
   clearDraft,
+  draftFromLoad,
   isComplete,
   isValidPhone,
   loadDraft,
   normalizePhone,
   saveDraft,
+  startDraft,
   stepNumber,
   toPlacePayload,
   truckTypeForPost,
@@ -163,5 +165,50 @@ describe('places in the draft', () => {
   it('keeps places out of the empty draft', () => {
     expect(EMPTY_DRAFT.originPlace).toBeNull();
     expect(EMPTY_DRAFT.destinationPlace).toBeNull();
+  });
+});
+
+describe('send this route again', () => {
+  const sent = {
+    origin_city: 1,
+    dest_city: 7,
+    goods_description: 'Cement bags',
+    truck_type_code: null,
+    weight_kg: 8000,
+  };
+
+  it('carries the route, the cargo and the weight, and asks the date again', () => {
+    const d = draftFromLoad(sent);
+    expect(d).toMatchObject({
+      originCityId: 1,
+      destinationCityId: 7,
+      cargoDescription: 'Cement bags',
+      weightKg: 8000,
+      collectionDate: null,
+    });
+  });
+
+  it('keeps "advise me" as advise me — NULL never becomes a guessed truck', () => {
+    expect(draftFromLoad(sent).truckPreference).toBe('auto');
+    expect(truckTypeForPost(draftFromLoad(sent))).toBeNull();
+    expect(draftFromLoad({ ...sent, truck_type_code: '10t' }).truckPreference).toBe('10t');
+  });
+
+  it('does not carry last time\'s gate or price limit', () => {
+    const d = draftFromLoad(sent);
+    expect(d.originPlace).toBeNull();
+    expect(d.destinationPlace).toBeNull();
+    expect(d.targetTotalBaisa).toBeNull();
+  });
+
+  it('opens the destination step on the right country', () => {
+    expect(draftFromLoad({ ...sent, destCountry: 'AE' }).destinationCountry).toBe('AE');
+    expect(draftFromLoad({ ...sent, destCountry: 'XX' }).destinationCountry).toBe('OM');
+  });
+
+  it('is stored before the booking screens read it', async () => {
+    await saveDraft(FILLED);
+    await startDraft(draftFromLoad(sent));
+    expect((await loadDraft()).cargoDescription).toBe('Cement bags');
   });
 });

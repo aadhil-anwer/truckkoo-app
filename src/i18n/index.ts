@@ -252,13 +252,6 @@ const en = {
   'role.shipper': 'I need to move cargo',
   'role.driver': 'I drive a truck',
 
-  'load.from': 'Pickup from',
-  'load.to': 'Deliver to',
-  'load.goods': 'Type of goods',
-  'load.goods.placeholder': 'e.g. furniture, building materials',
-  'load.truckType': 'Truck type (optional)',
-  'load.truckType.unsure': 'Not sure — advise me',
-  'load.city.placeholder': 'e.g. Muscat',
   'load.submit': 'Request a quote',
 
   // ── route rail ────────────────────────────────────────────────────────────
@@ -331,11 +324,9 @@ const en = {
   'status.cancelled': 'Cancelled',
 
   'whatsapp.action': 'WhatsApp us',
-  'whatsapp.promise': 'Replies in minutes · 7 days a week',
 
   'error.generic': 'Something went wrong. Please try again.',
   'error.offline': 'No connection. We saved this and will send it when you are back online.',
-  'error.required': 'Please fill this in.',
 
   // ── auth ──────────────────────────────────────────────────────────────────
   "auth.signIn.title": "Sign in",
@@ -424,7 +415,6 @@ const en = {
   "error.oauth.unavailable": "That sign-in method is not switched on yet. Use your email for now.",
 
   // ── customer home ─────────────────────────────────────────────────────────
-  "cust.masthead": "Your loads",
   "cust.newLoad": "Move something",
   "cust.empty.title": "Nothing moving yet",
   "cust.empty.explain": "Tell us what needs to go where. We will find a truck already heading that way — or arrange a fresh one.",
@@ -514,13 +504,7 @@ const en = {
   // Both posting flows are now a sequence of one-question screens with a pinned
   // action, rather than one long scroll. Each step needs its own title, because
   // the title IS the question.
-  "common.next": "Next",
   "action.back": "Back",
-  "step.route": "Where is it going?",
-  "step.route.hint": "Pickup first, then delivery",
-  "step.details": "What are we moving?",
-  "step.details.hint": "A rough answer is fine — we will confirm it with you",
-  "step.of": "of",
 
   "driver.routes.title": "Routes you have declared",
   "driver.routes.none.title": "No routes declared",
@@ -539,11 +523,6 @@ const en = {
   // ── the review step, before the load is posted ─────────────────────────────
   // The price used to arrive after the shipper had already committed. Seeing it
   // first is the difference between booking and phoning someone to ask.
-  "review.title": "Check this before we start",
-  "review.priceLabel": "Your price",
-  "review.confirm": "Yes, book this",
-  "review.change": "Change something",
-  "review.checking": "Working out your price…",
   // The three no-price outcomes reuse the price.* sentences, so the wording a
   // shipper sees before posting matches what they see afterwards.
 
@@ -576,9 +555,6 @@ const en = {
   // a step not yet taken, not a result.
   "price.none.explain": "Ask us for a price and we will come straight back.",
   // The three server outcomes, in the shipper's language rather than the schema's.
-  "price.advise_me": "You asked us to recommend the truck, so we will price it with the recommendation. Expect an answer within minutes.",
-  "price.no_rate": "We price this route by hand. We are working it out now and will come back to you within minutes.",
-  "price.over_capacity": "This load is heavier than the truck you chose can carry. We will suggest the right truck and price it for you.",
   // Prefixes a formatted date. Not "expires": a held price is a promise Truckkoo
   // is keeping, and "expires" reads as a threat to hurry up.
   "price.heldUntil": "Price held until {when}",
@@ -608,18 +584,13 @@ const en = {
   // ── shared labels ─────────────────────────────────────────────────────────
   "label.from": "From",
   "label.to": "To",
-  "label.pickup": "Pickup",
   "label.goods": "Goods",
-  "label.truck": "Truck",
-  "label.weight": "Weight",
   "label.driver": "Driver",
   "label.dates": "Dates",
   "label.load": "Consignment note",
   "label.trip": "Current trip",
   "label.offer": "Load offer",
   "label.leg": "Your route",
-  "truck.unset": "We will advise",
-  "weight.unset": "Not given",
   "common.retry": "Try again",
   "common.loading": "Loading…",
   "common.error.title": "We could not load that",
@@ -629,8 +600,6 @@ const en = {
   // language sheet. It said "Done" until P7, which is what a screen reader
   // announced for a control that commits nothing and discards the sheet.
   "common.close": "Close",
-  "common.search": "Search",
-  "common.noMatches": "Nothing matches that. Try a shorter word.",
   "common.back": "Back",
 
   "auth.reset.title": "Set a new password",
@@ -649,19 +618,9 @@ const en = {
   "auth.forgot.needEmail": "Type your email above first, then tap this again.",
   "auth.forgot.sent": "If that email has an account, we have sent a reset link to it. Check your inbox.",
 
-  "date.today": "Today",
-  "date.tomorrow": "Tomorrow",
 
   // ── post a load ───────────────────────────────────────────────────────────
   "post.load.title": "What needs moving?",
-  "post.load.submit": "Send to Truckkoo",
-  "post.load.weight": "Rough weight (optional)",
-  "post.load.weight.placeholder": "e.g. 8000",
-  "post.load.weight.unit": "Kilograms. Leave blank if you are not sure.",
-  "post.load.date": "When should we collect it?",
-  "post.load.sameCity": "Pickup and delivery cannot be the same place.",
-  "post.load.done.title": "We have it",
-  "post.load.done.explain": "We are finding a truck already heading that way. You will see it on your loads.",
 
   // ── post a leg ────────────────────────────────────────────────────────────
   "post.leg.title": "Where are you driving?",
@@ -895,13 +854,6 @@ const ar: Partial<Record<StringKey, string>> = {
   'app.tagline': 'قيادة. توصيل. ثقة.',
   'app.positioning': 'نربط عُمان بدول الخليج.',
 
-  'load.from': 'من (موقع التحميل)',
-  'load.to': 'إلى (موقع التسليم)',
-  'load.goods': 'نوع البضاعة',
-  'load.goods.placeholder': 'مثال: أثاث، مواد بناء',
-  'load.truckType': 'نوع الشاحنة (اختياري)',
-  'load.truckType.unsure': 'غير متأكد — انصحوني',
-  'load.city.placeholder': 'مثال: مسقط',
   // ASSEMBLED from fragments already in this file — `إلى`, `حوالي`, `كجم`,
   // `مرحباً`, `شوهدت`, `آخر إرسال`, `رحلة` — moved rather than rewritten.
   // FLAG FOR PROOFING: assembling is still a translation act.
@@ -914,9 +866,7 @@ const ar: Partial<Record<StringKey, string>> = {
   'pos.lastSentAgo': 'آخر إرسال {age}',
 
   'whatsapp.action': 'واتساب',
-  'whatsapp.promise': 'نرد خلال دقائق · طوال أيام الأسبوع',
 
-  'error.required': 'يرجى تعبئة هذا الحقل.',
 
   "auth.signIn.title": "تسجيل الدخول",
   "auth.email": "البريد الإلكتروني",
@@ -927,7 +877,6 @@ const ar: Partial<Record<StringKey, string>> = {
   "label.from": "من",
   "label.to": "إلى",
   "label.goods": "نوع البضاعة",
-  "label.truck": "نوع الشاحنة",
   "action.back": "رجوع",
   // Driver-facing, and it appears at the worst possible moment.
   "driver.offer.taken": "سائق آخر أخذ هذه الحمولة.",
@@ -948,30 +897,22 @@ const ar: Partial<Record<StringKey, string>> = {
   'status.finding_truck': 'جاري البحث عن شاحنة',
   'cust.section.active': 'قيد التنفيذ',
   // X4's date blocks and its continue button.
-  'date.today': 'اليوم',
-  'date.tomorrow': 'غداً',
-  'common.next': 'متابعة',
   // The site's own public commitments. These are claims the company already
   // makes in Arabic, so they are not ours to reword (CLAUDE.md #5).
   'account.help.detail': 'نرد خلال دقائق · طوال أيام الأسبوع',
   'cust.driver.verified': 'موثّق',
-  'truck.unset': 'غير متأكد — انصحوني',
   // Assembled from words already in this file.
   'loads.title': 'شحناتك',
-  'cust.masthead': 'شحناتك',
   'account.title': 'حسابي',
   'account.language': 'اللغة',
   'account.details': 'بياناتك',
   'account.help': 'المساعدة',
   'account.role.shipper': 'أنت ترسل بضائع',
   'account.role.driver': 'أنت تقود شاحنة',
-  'label.pickup': 'الاستلام',
-  'label.weight': 'الوزن',
   'label.driver': 'السائق',
   'label.dates': 'التواريخ',
   'label.plate': 'رقم اللوحة',
   'common.back': 'رجوع',
-  'common.search': 'بحث',
   'common.close': 'إغلاق',
   'common.retry': 'حاول مرة أخرى',
   'common.loading': 'جارٍ التحميل…',
@@ -1156,21 +1097,11 @@ const ar: Partial<Record<StringKey, string>> = {
   'loads.seg.live': 'قيد التنفيذ',
   'loads.seg.past': 'المكتملة',
 
-  'step.route': 'إلى أين تذهب؟',
-  'step.route.hint': 'الاستلام أولاً، ثم التسليم',
-  'step.details': 'ماذا ننقل؟',
-  'step.details.hint': 'إجابة تقريبية تكفي — سنؤكدها معك',
-  'step.of': 'من',
 
   'leg.stamp.empty': 'فارغة',
   'leg.stamp.part': 'جزئية',
   'label.replyBy': 'الرد قبل',
 
-  'review.title': 'راجع هذا قبل أن نبدأ',
-  'review.priceLabel': 'سعرك',
-  'review.confirm': 'نعم، احجزها',
-  'review.change': 'غيّر شيئاً',
-  'review.checking': 'نحسب سعرك…',
 
   'note.title': 'بوليصة الشحن',
   'note.carrier': 'نقلها',
@@ -1187,11 +1118,6 @@ const ar: Partial<Record<StringKey, string>> = {
   'price.action': 'اطلب سعراً',
   'price.retry': 'اسأل مرة أخرى',
   'price.none.explain': 'اطلب منا سعراً وسنعود إليك مباشرة.',
-  'price.advise_me':
-    'طلبت منا أن نرشّح الشاحنة، لذا سنسعّرها بناءً على الترشيح. توقع الإجابة خلال دقائق.',
-  'price.no_rate': 'نسعّر هذا المسار يدوياً. نحسبه الآن وسنعود إليك خلال دقائق.',
-  'price.over_capacity':
-    'هذه الشحنة أثقل مما تحتمله الشاحنة التي اخترتها. سنقترح الشاحنة المناسبة ونسعّرها لك.',
   'price.heldUntil': 'السعر محفوظ حتى {when}',
   'price.settle': 'لا يُخصم شيء في التطبيق. نرتب الدفع معك مباشرة.',
 
@@ -1199,10 +1125,8 @@ const ar: Partial<Record<StringKey, string>> = {
   'event.en_route': 'على الطريق',
   'event.note': 'ملاحظة',
 
-  'weight.unset': 'غير محدد',
   'common.error.title': 'تعذّر تحميل ذلك',
   'common.error.explain': 'تحقق من اتصالك وحاول مرة أخرى. لم يُفقد شيء.',
-  'common.noMatches': 'لا يوجد ما يطابق ذلك. جرّب كلمة أقصر.',
   'account.language.hint': 'أعد تشغيل التطبيق بعد تغيير هذا',
   'app.direction.reopen': 'أغلق تركو ثم افتحه من جديد، وستظهر الشاشة بالاتجاه الصحيح.',
   'drv.home.onJob': 'مهمتك',
@@ -1220,14 +1144,6 @@ const ar: Partial<Record<StringKey, string>> = {
   'tab.past': 'الرحلات السابقة',
 
   'post.load.title': 'ما الذي تريد نقله؟',
-  'post.load.submit': 'أرسل إلى تركو',
-  'post.load.weight': 'الوزن التقريبي (اختياري)',
-  'post.load.weight.placeholder': 'مثال: ٨٠٠٠',
-  'post.load.weight.unit': 'بالكيلوغرام. اتركه فارغاً إن لم تكن متأكداً.',
-  'post.load.date': 'متى نأتي لأخذ الشحنة؟',
-  'post.load.sameCity': 'لا يمكن أن يكون الاستلام والتسليم في المكان نفسه.',
-  'post.load.done.title': 'استلمناها',
-  'post.load.done.explain': 'نبحث عن شاحنة متجهة إلى هناك. ستراها ضمن شحناتك.',
 
   'post.leg.title': 'إلى أين تقود؟',
   'post.leg.submit': 'أضف هذا المسار',

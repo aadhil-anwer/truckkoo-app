@@ -40,6 +40,7 @@ import {
 import { CityPin, Corridor, MapCanvas, Scrim, framingFor } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
 import { loadStatusKey } from '@/lib/load-status';
+import { draftFromLoad, startDraft } from '@/lib/booking';
 import { useSession } from '@/lib/session';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import { formatWeight, formatWindow } from '@/lib/format';
@@ -289,15 +290,12 @@ export default function ShipperHome() {
 
         {repeat && repeatFrom && repeatTo && (
           <PressableSurface
-            onPress={() =>
-              router.push({
-                pathname: '/post-load',
-                params: {
-                  origin: String(repeat.origin_city),
-                  dest: String(repeat.dest_city),
-                },
-              })
-            }
+            onPress={async () => {
+              // The same booking flow as a new load, answers filled in, opening
+              // on the one question that is always new: the date.
+              await startDraft(draftFromLoad({ ...repeat, destCountry: repeatTo.country }));
+              router.push('/book/date');
+            }}
             accessibilityLabel={`${t('home.again.title')}. ${t('route.aria', {
               origin: localized(repeatFrom),
               destination: localized(repeatTo),

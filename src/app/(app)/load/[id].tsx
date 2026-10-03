@@ -78,6 +78,7 @@ import { useTick } from '@/lib/use-tick';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { BidsOpen, BidsProposal, choosable } from '@/components/shipper/Bids';
+import { draftFromLoad, startDraft } from '@/lib/booking';
 import {
   cityIndex,
   useAcceptDriverBid,
@@ -439,12 +440,11 @@ export default function TrackLoad() {
           <>
             <SecondaryButton
               label={t('track.again')}
-              onPress={() =>
-                router.push({
-                  pathname: '/post-load',
-                  params: { origin: String(load.origin_city), dest: String(load.dest_city) },
-                })
-              }
+              onPress={async () => {
+                // The booking flow, answers filled in, opening on the date.
+                await startDraft(draftFromLoad({ ...load, destCountry: dest.country }));
+                router.push('/book/date');
+              }}
             />
             <TertiaryButton label={t('track.home')} onPress={() => router.replace('/customer')} />
           </>

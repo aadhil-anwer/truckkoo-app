@@ -41,8 +41,17 @@ import LoadsTab from '@/app/(app)/(tabs)/loads';
 import TrackLoad from '@/app/(app)/load/[id]';
 import * as queries from '@/lib/queries';
 
+// The draft write is mocked so these tests do not touch storage; what they
+// assert is the draft that "send again" builds and where it then goes.
+const mockStartDraft = jest.fn(async (_draft: unknown) => {});
+jest.mock('@/lib/booking', () => ({
+  ...jest.requireActual('@/lib/booking'),
+  startDraft: (d: unknown) => mockStartDraft(d),
+}));
+
 beforeEach(() => {
   resetQueries(queries as unknown as Record<string, unknown>);
+  mockStartDraft.mockClear();
 });
 
 /** Opening the detail screen means naming which load it is. */
@@ -111,11 +120,22 @@ describe('CustomerHome', () => {
     (queries.useMyLoads as jest.Mock).mockReturnValue(ok([load({ status: 'delivered' })]));
     await render(<CustomerHome />);
 
-    await fireEvent.press(screen.getByLabelText(/Muscat to Salalah/));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/post-load',
-      params: { origin: '1', dest: '2' },
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText(/Muscat to Salalah/));
     });
+    // The booking flow, not a second form: the route and cargo carried over,
+    // opening on the date, which is the one answer that is always new.
+    expect(mockStartDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originCityId: 1,
+        destinationCityId: 2,
+        cargoDescription: 'Building materials',
+        truckPreference: '10t',
+        weightKg: 8000,
+        collectionDate: null,
+      }),
+    );
+    expect(mockPush).toHaveBeenCalledWith('/book/date');
   });
 
   it('offers a retry when the query fails', async () => {
@@ -668,11 +688,13 @@ describe('TrackLoad', () => {
 
     it('offers the route again rather than leaving the shipper at a full stop', async () => {
       await render(<TrackLoad />);
-      await fireEvent.press(screen.getByLabelText('Send this route again'));
-      expect(mockPush).toHaveBeenCalledWith({
-        pathname: '/post-load',
-        params: { origin: '1', dest: '2' },
+      await act(async () => {
+        await fireEvent.press(screen.getByLabelText('Send this route again'));
       });
+      expect(mockStartDraft).toHaveBeenCalledWith(
+        expect.objectContaining({ originCityId: 1, destinationCityId: 2, collectionDate: null }),
+      );
+      expect(mockPush).toHaveBeenCalledWith('/book/date');
     });
   });
 

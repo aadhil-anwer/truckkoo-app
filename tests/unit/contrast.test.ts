@@ -16,9 +16,6 @@
  * decision and measures 3.84:1.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { color, alpha, font } from '@/theme/tokens';
 
 /** WCAG 2.1 relative luminance. */
@@ -176,51 +173,13 @@ describe('the type scale floor', () => {
 });
 
 /**
- * The gap that let an unreadable screen ship.
- *
- * Everything above computes ratios from the TOKENS, which were always correct.
- * What shipped broken was a component picking the wrong token for its ground:
- * `legacy.tsx` styled its headings with `color.inkText` — the near-black meant
- * for cream — on screens that render on ink. About 1.1:1. "Sign in" and "Create
- * your account" were invisible, in both languages, on the first screens a new
- * user sees, and every assertion in this file passed the whole time.
- *
- * So this reads the source. A token is only correct next to the ground it is
- * used on, and that pairing lives in the component, not in the palette.
+ * The gap that once let an unreadable screen ship: the tokens were always
+ * correct, but `legacy.tsx` (deleted 2026-10-04) put the cream ground's
+ * near-black on ink — about 1.1:1. That file read its own source to catch the
+ * pairing. With it gone, what remains true and worth asserting is the
+ * measurement behind the rule.
  */
-describe('legacy.tsx uses tokens that survive their own ground', () => {
-  const SRC = readFileSync(join(__dirname, '../../src/components/legacy.tsx'), 'utf8');
-
-  /** Style blocks that name a light background in the same block. */
-  const ON_LIGHT = /backgroundColor:\s*color\.(creamCard|lightText|accentTint)/;
-
-  /**
-   * Dark text whose light fill is declared on a SIBLING block, so the regex
-   * above cannot see it. Each is checked by hand, and adding to this list means
-   * doing the same:
-   *
-   *   segmentTextOn  the selected segment fills with `color.lightText` in
-   *                  `segmentOn`; this is the label sitting on that fill.
-   *   choiceTitle    `choice` fills with `color.creamCard` and `choiceOn` with
-   *                  `color.accentTint`. Both are light.
-   */
-  const FILL_ON_PARENT = ['segmentTextOn', 'choiceTitle'];
-
-  it('never puts inkText on a style block that is not on a light fill', () => {
-    // Split on style-block boundaries and check each one in isolation.
-    const blocks = SRC.split(/\n  (?=[a-zA-Z]+: \{)/);
-    const bad = blocks
-      .filter((b) => b.includes('color.inkText') && !ON_LIGHT.test(b))
-      .map((b) => b.slice(0, b.indexOf(':')).trim())
-      .filter((name) => !FILL_ON_PARENT.includes(name));
-    expect(bad).toEqual([]);
-  });
-
-  it('the hand-checked exemptions still exist, so the list cannot rot', () => {
-    // A name left here after its style is deleted is a rule quietly weakened.
-    for (const name of FILL_ON_PARENT) expect(SRC).toContain(`${name}: {`);
-  });
-
+describe('a text token belongs to its ground', () => {
   it('the ink and cream text tokens are not interchangeable', () => {
     // The measurement behind the rule: what inkText actually scores on ink.
     expect(ratio(color.inkText, color.ink)).toBeLessThan(1.5);

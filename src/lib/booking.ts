@@ -187,6 +187,50 @@ export async function clearDraft(): Promise<void> {
 }
 
 /**
+ * "Send this route again" (home, T5): a fresh draft from a load the shipper has
+ * already sent.
+ *
+ * The route, the cargo, the truck and the weight carry over — a repeat shipment
+ * is usually the same goods on the same road. The date does not: it is the one
+ * answer that is always new, which is why the flow opens on it. Places and the
+ * price limit do not carry over either; a gate or a budget from last time is a
+ * guess this time, and every step still shows its answer before review.
+ *
+ * Starts from EMPTY_DRAFT rather than merging into whatever was half-typed: the
+ * shipper asked for that load again, not a mixture of it and another.
+ */
+export function draftFromLoad(load: {
+  origin_city: number;
+  dest_city: number;
+  goods_description: string;
+  truck_type_code: string | null;
+  weight_kg: number | null;
+  /** The destination city's country, so the destination step opens on its list. */
+  destCountry?: string | null;
+}): BookingDraft {
+  const country = load.destCountry === 'AE' || load.destCountry === 'SA' ? load.destCountry : 'OM';
+  return {
+    ...EMPTY_DRAFT,
+    originCityId: load.origin_city,
+    destinationCityId: load.dest_city,
+    destinationCountry: country,
+    cargoDescription: load.goods_description,
+    // NULL stays "advise me" — never turned into a guessed code.
+    truckPreference: load.truck_type_code ?? 'auto',
+    weightKg: load.weight_kg,
+  };
+}
+
+/**
+ * Replace the draft and wait until it is stored, so the screen pushed next
+ * reads it rather than racing the write.
+ */
+export async function startDraft(draft: BookingDraft): Promise<void> {
+  if (shared != null) publish(draft);
+  await saveDraft(draft);
+}
+
+/**
  * The one in-memory draft every mounted booking screen shares.
  *
  * Each screen used to hold its own copy, loaded on mount, and every `update`

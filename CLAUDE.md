@@ -51,9 +51,9 @@ cities, and truck types.
    placeholders — `t('drv.offer.detour', { km })` — so each language owns its own
    word order, and units live *inside* the string: `${n} km` renders a Latin "km"
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
-   arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
-   and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **298 of its strings are
+   arrow and alignment rules; its only exemption is `src/map`, and adding a
+   second to silence a hit is the failure it exists to prevent.
+   The Arabic dictionary is complete as of P7, but **310 of its strings are
    unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
@@ -220,13 +220,11 @@ reference data **not** derived from the website, which has none. `npm run
 check:pins` asserts none is in the sea; `npm run preview:map` renders them for the
 only check that matters, which is whether a pin is in the right town.
 
-**`src/components/legacy.tsx` is transitional and shrinking.** P0 replaced the
-design system but built none of the 32 screens, so the old vocabulary lives there
-on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
-the list of screens still awaiting their phase; when it is empty, delete the file.
-**Nothing new may import from it.** Since the P2 interim (2026-09-26) that list is
-`post-load.tsx` alone — still reached by "Send this route again" on the shipper
-home and T5. Move that onto the booking flow and the file can go.
+**`src/components/legacy.tsx` is gone (2026-10-04)**, with `post-load.tsx` and
+`picker.tsx`, its last users. "Send this route again" on the shipper home and T5
+now fills a fresh booking draft from the old load (`draftFromLoad`) and opens the
+booking flow on the date; every other answer carries over and is still shown
+before review. There is one way to post a load from the app.
 
 **Getting in is N1–N6 on email, for now.** The handoff's N2/N3 are a phone
 number and a one-time code over WhatsApp; until Meta's side is ready the same
@@ -316,7 +314,7 @@ and dispatch nobody (it happened, 2026-09-27).
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 725 tests
+npm run verify    # typecheck + lint + 728 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
 npm run test:db   # six SQL suites (isolation, pricing, ops, dispatch, places, bidding) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits

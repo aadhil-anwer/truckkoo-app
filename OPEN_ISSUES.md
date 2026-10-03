@@ -143,10 +143,6 @@ returned columns were checked against the local database. Behind
   every 15 s). A shipper who sets no limit has to come back to choose.
 - **The limit can be set only while booking.** `set_bid_target` exists and is
   tested; the load screen has no control for it yet.
-- **"Send this route again"** still goes to the legacy `post-load` screen, which
-  posts a fixed-price load through `post_load` — and with the rate card empty
-  that lands on a person, against the no-dispatcher intent. Move it onto the
-  booking flow (it is also the last thing keeping `legacy.tsx` alive).
 - **Dispatcher actions are not bid-aware** (`ops_send_offer`, `ops_set_price`).
   Harmless while no dispatcher acts.
 - **Ops console** shows bid loads with raw statuses and knows nothing of bids.
@@ -406,7 +402,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 298 Arabic strings have never been read by someone who reads Arabic
+### 310 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -416,7 +412,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 298 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 310 of them**, counted from the block itself on 2026-10-04 (the running total kept here had drifted to 254 against a real 289 before bidding; 191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04, less 23 that left with `post-load.tsx`; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -497,14 +493,13 @@ as capable of inventing a position as a map marker is.
 **Done when:** it becomes a problem, at which point the fix is a batched
 `trip_positions_for(load_ids[])` rather than a client-side estimate.
 
-### `legacy.tsx` survives, for one screen
+### `legacy.tsx` survives, for one screen — RESOLVED 2026-10-04
 
-`grep -rl "components/legacy" src/app` returns `post-load.tsx` alone. The four
-auth screens came off it on 2026-09-26 (the P2 interim, below). `post-load.tsx` is
-still the target of "Send this route again" on the shipper home and T5.
-
-**Done when:** "send again" pre-fills the booking flow instead, and the file can
-be deleted.
+"Send this route again" now fills a fresh booking draft from the old load and
+opens the booking flow on the date (`draftFromLoad`, `startDraft`).
+`post-load.tsx`, `picker.tsx` and `legacy.tsx` are deleted, with 41 strings only
+they used, and `usePostLoad` / `useQuoteRoute`, which lost their only caller.
+`post_load` stays on the server for installed builds.
 
 ### P2 runs on email until WhatsApp codes land — INTERIM 2026-09-26
 
@@ -642,11 +637,11 @@ Tokens, fonts, primitives, icons and numerals are in and tested, but P0
 deliberately built none of the 32 designed screens. Every existing screen was
 carried over mechanically to the nearest new token, so the app currently looks
 **transitional**: right colours and type, old layouts. `src/components/legacy.tsx`
-holds the old vocabulary on new tokens until each phase replaces its screens.
+held the old vocabulary on new tokens until each phase replaced its screens; the
+last one went on 2026-10-04 and the file with it.
 
-**Done when:** P1–P7 are built. Nothing to fix here — this entry exists so a
-transitional screenshot is not mistaken for a bug, and so
-`grep -rl "components/legacy" src/app` is understood as a to-do list.
+**Done when:** every screen has been seen on a phone — the transition itself is
+complete.
 
 ### Three of the handoff's text colours were sub-AA, and the ramp had to change
 
@@ -1526,7 +1521,7 @@ the real numbers with a note. Never adjust them down to silence a regression.
 
 Not covered by the suite, and worth knowing before trusting it:
 
-- `post-load`, `post-leg`, `trip/[id]`, and all four auth screens have no tests.
+- `post-leg`, `trip/[id]`, and all four auth screens have no tests.
   Issue 18 was a driver-blocking bug in `sign-up.tsx` that no test could have
   caught; the hook underneath it is pinned now, the screen still is not.
 
