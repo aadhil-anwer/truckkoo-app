@@ -130,3 +130,113 @@ begin
 end;
 $$;
 revoke all on function private.require_owner_fresh() from public, anon, authenticated;
+
+-- ═══ 3. staff management ═════════════════════════════════════════════════════
+
+create or replace function private.assert_an_owner_remains()
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from private.ops_users o where o.level = 'owner') then
+    raise exception 'the last owner cannot be removed or demoted' using errcode = 'check_violation';
+  end if;
+end;
+$$;
+revoke all on function private.assert_an_owner_remains() from public, anon, authenticated;
+
+-- Appoint, or change the level of, a staff member. Owner, fresh 2FA, a reason.
+create or replace function public.ops_appoint_staff(p_profile_id uuid, p_level text, p_reason text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_before text;
+begin
+  perform private.require_owner_fresh();
+  if p_level is null or p_level not in ('owner', 'dispatcher') then
+    raise exception 'level must be owner or dispatcher' using errcode = 'check_violation';
+  end if;
+  if p_reason is null or char_length(btrim(p_reason)) < 3 then
+    raise exception 'a staff change needs a reason' using errcode = 'check_violation';
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = p_profile_id)
+     or not private.staff_account_ok(p_profile_id) then
+    raise exception 'this account cannot be a staff account' using errcode = 'check_violation';
+  end if;
+
+  select o.level into v_before from private.ops_users o where o.profile_id = p_profile_id;
+  insert into private.ops_users (profile_id, note, level)
+  values (p_profile_id, left(btrim(p_reason), 200), p_level)
+  on conflict (profile_id) do update set level = excluded.level;
+  perform private.assert_an_owner_remains();
+
+  perform private.log_ops('ops_appoint_staff', 'profile', p_profile_id::text,
+    jsonb_build_object('level', v_before), jsonb_build_object('level', p_level), p_reason);
+  -- Ids and levels only: the reason is staff-typed text and stays in the audit.
+  perform private.system_raise_alert('staff_change',
+    format('Staff change: account %s is now %s (was %s). See ops_audit.',
+           p_profile_id, p_level, coalesce(v_before, 'not staff')),
+    jsonb_build_object('profile_id', p_profile_id, 'level', p_level, 'before', v_before));
+end;
+$$;
+revoke all on function public.ops_appoint_staff(uuid, text, text) from public, anon;
+grant execute on function public.ops_appoint_staff(uuid, text, text) to authenticated;
+
+create or replace function public.ops_remove_staff(p_profile_id uuid, p_reason text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_before text;
+begin
+  perform private.require_owner_fresh();
+  if p_reason is null or char_length(btrim(p_reason)) < 3 then
+    raise exception 'a staff change needs a reason' using errcode = 'check_violation';
+  end if;
+  delete from private.ops_users o where o.profile_id = p_profile_id returning o.level into v_before;
+  if v_before is null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  perform private.assert_an_owner_remains();
+
+  perform private.log_ops('ops_remove_staff', 'profile', p_profile_id::text,
+    jsonb_build_object('level', v_before), null, p_reason);
+  perform private.system_raise_alert('staff_change',
+    format('Staff change: account %s was removed (was %s). See ops_audit.', p_profile_id, v_before),
+    jsonb_build_object('profile_id', p_profile_id, 'level', null, 'before', v_before));
+end;
+$$;
+revoke all on function public.ops_remove_staff(uuid, text) from public, anon;
+grant execute on function public.ops_remove_staff(uuid, text) to authenticated;
+
+create or replace function public.ops_staff()
+returns table (profile_id uuid, full_name text, email text, level text,
+               added_at timestamptz, account_ok boolean)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_ops();
+  return query
+    select o.profile_id, p.full_name, u.email::text, o.level, o.added_at,
+           private.staff_account_ok(o.profile_id)
+      from private.ops_users o
+      join public.profiles p on p.id = o.profile_id
+      join auth.users u on u.id = o.profile_id
+     order by o.level, p.full_name;
+end;
+$$;
+revoke all on function public.ops_staff() from public, anon;
+grant execute on function public.ops_staff() to authenticated;

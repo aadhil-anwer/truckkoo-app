@@ -151,5 +151,62 @@ select assert_not_found($$select private.require_owner_fresh()$$,
   'require_owner_fresh never tells a dispatcher that step-up exists');
 select act_as_reset();
 
+-- ═══ 3. staff management ═══════════════════════════════════════════════════
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1);
+select assert_not_found(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000005', 'dispatcher', 'hire')$$,
+  'a dispatcher cannot appoint staff');
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 16);
+select assert_raises(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000005', 'dispatcher', 'hire')$$,
+  'an owner with stale 2FA must step up to appoint', 'step-up required');
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 1);
+select assert_raises(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000005', 'dispatcher', '')$$,
+  'a staff change needs a reason', '%reason%');
+select assert_raises(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000004', 'dispatcher', 'hire busy')$$,
+  'a customer account cannot be appointed', '%staff account%');
+select public.ops_appoint_staff('60000000-0000-4000-8000-000000000005', 'dispatcher', 'hire plain');
+select act_as_reset();
+select assert_true(
+  (select level = 'dispatcher' from private.ops_users where profile_id = '60000000-0000-4000-8000-000000000005'),
+  'an owner with fresh 2FA appoints a dispatcher');
+select assert_true(
+  (select count(*) = 1 from private.ops_audit
+    where action = 'ops_appoint_staff' and target_id = '60000000-0000-4000-8000-000000000005'
+      and actor_id = '60000000-0000-4000-8000-000000000001' and reason = 'hire plain'),
+  'and it is audited with actor and reason');
+select assert_true(
+  (select count(*) = 1 from private.ops_alerts where kind = 'staff_change'
+     and detail ->> 'profile_id' = '60000000-0000-4000-8000-000000000005'),
+  'and the owner is alerted');
+
+-- last owner
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 1);
+select assert_raises(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000001', 'dispatcher', 'step down')$$,
+  'last owner: the only owner cannot demote themselves', '%last owner%');
+select assert_raises(
+  $$select public.ops_remove_staff('60000000-0000-4000-8000-000000000001', 'leaving')$$,
+  'last owner: the only owner cannot be removed', '%last owner%');
+select public.ops_appoint_staff('60000000-0000-4000-8000-000000000002', 'owner', 'second owner');
+select public.ops_remove_staff('60000000-0000-4000-8000-000000000005', 'trial ended');
+select act_as_reset();
+select assert_true(
+  (select count(*) = 2 from private.ops_users where level = 'owner'),
+  'with a second owner appointed there are two owners');
+select assert_true(
+  not exists (select 1 from private.ops_users where profile_id = '60000000-0000-4000-8000-000000000005'),
+  'an owner removes a dispatcher');
+
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1);
+select assert_true(
+  (select count(*) >= 2 from public.ops_staff()),
+  'staff can list staff');
+select act_as_staff('60000000-0000-4000-8000-000000000005', 'aal2', 1);
+select assert_not_found($$select * from public.ops_staff()$$, 'a non-staff account cannot list staff');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL OPS V2 ASSERTIONS HELD'; end $$;
 rollback;
