@@ -11,6 +11,8 @@
 --   * the search quota is a shipper's, and it runs out.
 
 begin;
+-- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+delete from private.app_settings where key = 'staff_email_domains';
 set local client_min_messages to notice;
 
 create or replace function assert_equals(p_actual bigint, p_expected bigint, p_what text)
@@ -46,7 +48,10 @@ end $$;
 create or replace function act_as(p_uid uuid) returns void language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', p_uid, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_uid, 'role', 'authenticated', 'aal', 'aal2',
+    'amr', json_build_array(json_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))
+  )::text, true);
 end $$;
 
 create or replace function act_as_reset() returns void language plpgsql as $$

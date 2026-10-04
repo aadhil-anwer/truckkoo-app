@@ -122,5 +122,34 @@ select assert_true(not private.staff_account_ok('60000000-0000-4000-8000-0000000
   'an unconfirmed account is not');
 update auth.users set email_confirmed_at = now() where id = '60000000-0000-4000-8000-000000000002';
 
+-- ═══ 2. the gate: 2FA, account rules, owner tier ═══════════════════════════
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal1', null);
+select assert_true(not private.is_ops(), 'a dispatcher without 2FA this session is not ops');
+select assert_not_found($$select * from public.ops_queue()$$, 'and every ops function refuses them as not found');
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1);
+select assert_true(private.is_ops(), 'with 2FA verified, a dispatcher is ops');
+select act_as_staff('60000000-0000-4000-8000-000000000003', 'aal2', 1);
+select assert_true(not private.is_ops(), 'a wrong-domain staff row is not ops, even with 2FA');
+select act_as_staff('60000000-0000-4000-8000-000000000004', 'aal2', 1);
+select assert_true(not private.is_ops(), 'a staff row on a customer account is not ops, even with 2FA');
+
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1, 'postgres');
+select assert_true(not private.is_owner(), 'a dispatcher is not an owner');
+select assert_not_found($$select private.require_owner()$$, 'require_owner refuses a dispatcher as not found');
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal1', null, 'postgres');
+select assert_not_found($$select private.require_owner()$$, 'require_owner refuses an owner without 2FA as not found');
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 5, 'postgres');
+select private.require_owner();
+select private.require_owner_fresh();
+select assert_true(true, 'an owner with 2FA 5 minutes old passes require_owner and require_owner_fresh');
+select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 16, 'postgres');
+select private.require_owner();
+select assert_raises($$select private.require_owner_fresh()$$,
+  'stale amr: an owner whose 2FA is 16 minutes old must step up', 'step-up required');
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 16, 'postgres');
+select assert_not_found($$select private.require_owner_fresh()$$,
+  'require_owner_fresh never tells a dispatcher that step-up exists');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL OPS V2 ASSERTIONS HELD'; end $$;
 rollback;

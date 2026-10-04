@@ -65,3 +65,68 @@ as $$
   end;
 $$;
 revoke all on function private.staff_account_ok(uuid) from public, anon, authenticated;
+
+-- ═══ 2. the gate ═════════════════════════════════════════════════════════════
+-- Lock 3 (2FA) and lock 5 (staff-only accounts), for every door at once.
+create or replace function private.is_ops()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.ops_level() is not null
+     and coalesce((select auth.jwt()) ->> 'aal', 'aal1') = 'aal2'
+     and private.staff_account_ok((select auth.uid()));
+$$;
+
+create or replace function private.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.is_ops() and private.ops_level() = 'owner';
+$$;
+revoke all on function private.is_owner() from public, anon, authenticated;
+
+create or replace function private.require_owner()
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.is_owner() then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+end;
+$$;
+revoke all on function private.require_owner() from public, anon, authenticated;
+
+-- Lock 4. Supabase records each TOTP verification in the JWT's `amr` with a
+-- unix timestamp; verifying again issues a token with a newer one. Only an
+-- owner ever learns that step-up exists — anyone else gets "not found".
+create or replace function private.require_owner_fresh()
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_last bigint;
+begin
+  perform private.require_owner();
+  select max((m ->> 'timestamp')::bigint) into v_last
+    from jsonb_array_elements(coalesce((select auth.jwt()) -> 'amr', '[]'::jsonb)) m
+   where m ->> 'method' = 'totp';
+  if v_last is null
+     or to_timestamp(v_last) < now() - make_interval(mins => private.setting_int('ops_stepup_minutes', 15)) then
+    raise exception 'step-up required' using errcode = 'insufficient_privilege', hint = 'stepup';
+  end if;
+end;
+$$;
+revoke all on function private.require_owner_fresh() from public, anon, authenticated;
