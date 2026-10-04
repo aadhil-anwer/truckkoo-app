@@ -96,6 +96,23 @@ describe('loadLanguage', () => {
     jest.spyOn(SecureStore, 'getItemAsync').mockRejectedValueOnce(new Error('locked'));
     await expect(loadLanguage()).resolves.toBe('en');
   });
+
+  it('starts when the keystore never answers and ignores its late answer', async () => {
+    jest.useFakeTimers();
+    let release!: (value: string) => void;
+    jest.spyOn(SecureStore, 'getItemAsync').mockImplementationOnce(() =>
+      new Promise((resolve) => { release = resolve; }));
+    try {
+      const boot = loadLanguage();
+      await jest.advanceTimersByTimeAsync(4_100);
+      expect(await boot).toBe('en');
+      release('ar');
+      await Promise.resolve();
+      expect(getLanguage()).toBe('en');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('restartPending — a launch that is already in the wrong direction', () => {

@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { TextField } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { StatusPill } from '@/components/ui';
@@ -32,7 +33,7 @@ export default function Target() {
   // The typed text is kept as typed — "120." is on its way to "120.5", not an
   // error — and only its parse goes into the draft.
   const [text, setText] = useState<string | null>(null);
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   const shown =
     text ?? (draft.targetTotalBaisa == null ? '' : (formatAmount(draft.targetTotalBaisa, 'OMR', 'en') ?? ''));

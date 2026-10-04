@@ -85,8 +85,15 @@ describe('registering', () => {
   });
 
   it('signs out cleanly when this phone never registered', async () => {
-    await expect(unregisterPush()).resolves.toBeUndefined();
+    await expect(unregisterPush()).resolves.toBe(true);
     expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('retains the token when the server cannot unregister it', async () => {
+    await AsyncStorage.setItem('truckkoo.push.token', 'ExponentPushToken[testtokenaaaaaaaa]');
+    (supabase.rpc as jest.Mock).mockResolvedValueOnce({ data: null, error: { message: 'offline' } });
+    await expect(unregisterPush()).resolves.toBe(false);
+    expect(await AsyncStorage.getItem('truckkoo.push.token')).toBe('ExponentPushToken[testtokenaaaaaaaa]');
   });
 });
 

@@ -55,13 +55,16 @@ import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { ltrIsolate, safeText } from '@/lib/safe-text';
+import { useSession } from '@/lib/session';
 import { alpha, color, font, hairline, space } from '@/theme/tokens';
 
 export default function Review() {
   const router = useRouter();
+  const { session } = useSession();
   const insets = useSafeAreaInsets();
   const { draft, ready } = useBookingDraft();
-  const { data: cities } = useCities();
+  const citiesQuery = useCities();
+  const cities = citiesQuery.data;
   const { data: truckTypes } = useTruckTypes();
   const [error, setError] = useState<string | null>(null);
 
@@ -88,7 +91,38 @@ export default function Review() {
   const postBid = usePostBidLoad();
   const posting = BIDDING ? postBid.isPending : book.isPending;
 
-  if (!ready || !origin || !dest) return null;
+  if (!ready || (citiesQuery.isPending && !cities)) {
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('book.review.title')}</Text>
+        <Card><Skeleton height={160} /></Card>
+      </View>
+    );
+  }
+
+  if (citiesQuery.isError && !cities) {
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('common.error.title')}</Text>
+        <Notice icon="info">{t('common.error.explain')}</Notice>
+        <PrimaryButton label={t('common.retry')} onPress={() => { void citiesQuery.refetch(); }} />
+        <TertiaryButton label={t('book.review.home')} onPress={() => router.replace('/customer')} />
+      </View>
+    );
+  }
+
+  if (!origin || !dest || !draft.collectionDate || !draft.cargoDescription.trim()) {
+    const repairPath = !origin ? '/book/origin' : !dest ? '/book/destination'
+      : !draft.collectionDate ? '/book/date' : '/book/cargo';
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('book.review.title')}</Text>
+        <Notice icon="info">{t('book.review.incomplete')}</Notice>
+        <PrimaryButton label={t('book.review.continue')} onPress={() => router.replace(repairPath)} />
+        <TertiaryButton label={t('book.review.home')} onPress={() => router.replace('/customer')} />
+      </View>
+    );
+  }
 
   // What the truck row says. An explicit choice by its name, never its code
   // ("10t" is a database key, not something a shipper reads). "Let us choose"
@@ -124,7 +158,7 @@ export default function Review() {
         },
         {
           onSuccess: async ({ loadId }) => {
-            await clearDraft();
+            await clearDraft(session?.user.id ?? '');
             // The load screen is where the prices arrive.
             router.replace(`/load/${loadId}`);
           },
@@ -148,7 +182,7 @@ export default function Review() {
       },
       {
         onSuccess: async ({ loadId }) => {
-          await clearDraft();
+          await clearDraft(session?.user.id ?? '');
           // Matched or not, the load screen shows the truth: a truck being
           // found, or — if the price moved — the real price to accept.
           router.replace(`/load/${loadId}`);
@@ -281,6 +315,13 @@ function Fact({ label, value, last }: { label: string; value: string; last?: boo
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.ink },
+  recovery: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+    gap: space.lg,
+    backgroundColor: color.ink,
+  },
   scroll: { padding: space.xl, paddingTop: space.huge, gap: space.lg },
   title: { ...arabicIfNeeded(font.title), color: color.lightText, textAlign: align.start },
   place: { marginTop: space.md, gap: 2 },

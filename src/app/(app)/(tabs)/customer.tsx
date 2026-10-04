@@ -71,7 +71,7 @@ const LIVE: Load['status'][] = [
 export default function ShipperHome() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile } = useSession();
+  const { profile, session } = useSession();
   const cities = useCities();
   const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
   const { data: truckTypes } = useTruckTypes();
@@ -293,7 +293,7 @@ export default function ShipperHome() {
             onPress={async () => {
               // The same booking flow as a new load, answers filled in, opening
               // on the one question that is always new: the date.
-              await startDraft(draftFromLoad({ ...repeat, destCountry: repeatTo.country }));
+              await startDraft(draftFromLoad({ ...repeat, destCountry: repeatTo.country }), session?.user.id ?? '');
               router.push('/book/date');
             }}
             accessibilityLabel={`${t('home.again.title')}. ${t('route.aria', {

@@ -35,10 +35,12 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Getting in (N1–N6) — deferred with P2, still shipped copy', prefixes: ['auth.', 'error.', 'role.'] },
   { title: 'Shipper home (S1, S2)', prefixes: ['home.', 'cust.'] },
   { title: 'Booking (S3–S9)', prefixes: ['book.', 'post.', 'step.', 'load.', 'review.'] },
+  { title: 'Bidding — shipper and driver price screens (0045)', prefixes: ['bid.', 'money.'] },
   { title: 'Price and tracking (T1–T5)', prefixes: ['price.', 'track.', 'pos.', 'trip.', 'event.', 'note.'] },
   { title: 'Driver (D1–D7)', prefixes: ['drv.', 'driver.', 'leg.', 'loc.'] },
   { title: 'Loads list (X1)', prefixes: ['loads.', 'status.'] },
   { title: 'Account (X2)', prefixes: ['account.', 'whatsapp.'] },
+  { title: 'Notifications — permission and account (0046)', prefixes: ['push.'] },
   // Search, pin and details in booking; the same place lines on review, T3/T4, D5 and D7.
   { title: 'Places — booking, review, and the driver at the gate (0041)', prefixes: ['places.'] },
   { title: 'Map labels — seas and countries, every drawn map', prefixes: ['map.'] },

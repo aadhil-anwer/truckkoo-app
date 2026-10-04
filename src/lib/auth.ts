@@ -323,12 +323,31 @@ export async function finishSetup(input: {
   return { ok: true };
 }
 
+async function within<T>(operation: PromiseLike<T>, milliseconds: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Sign-out timed out')), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function signOut(): Promise<void> {
   // Before the session goes: a shared phone must never report a position under
-  // the account that just left. A failure to stop does not block signing out.
-  await stopTracking().catch(() => {});
-  // And this phone stops receiving the account's notifications (0046).
-  await unregisterPush();
-  // Global scope revokes server-side, not just locally (SECURITY.md §2).
-  await supabase.auth.signOut({ scope: 'global' });
+  // the account that just left. Bound a stalled native stop; global auth
+  // revocation is the final guard against future server-side location writes.
+  await within(stopTracking(), 4_000).catch(() => {});
+  // The phone's push token belongs to this account. If the server has not
+  // confirmed revocation, keep the session and a retry path on the account UI.
+  const pushRevoked = await within(unregisterPush(), 4_000).catch(() => false);
+  if (!pushRevoked) throw new Error('Push token revocation failed');
+  // Global scope revokes server-side. A timeout/error must never be reported as
+  // successful logout because local-only sign-out leaves sessions valid.
+  const { error } = await within(supabase.auth.signOut({ scope: 'global' }), 12_000);
+  if (error) throw error;
 }

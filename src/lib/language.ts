@@ -51,11 +51,19 @@ export function needsReload(lang: Language, isRTL: boolean | undefined): boolean
  */
 export async function loadLanguage(): Promise<Language> {
   let stored: string | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
+    stored = await Promise.race([
+      SecureStore.getItemAsync(LANGUAGE_KEY),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), 4_000);
+      }),
+    ]);
   } catch {
     // A locked or unavailable keystore is not a reason to fail to start. Fall
     // through to the device locale.
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   const lang = initLanguage(isLanguage(stored) ? stored : undefined);

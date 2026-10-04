@@ -76,6 +76,8 @@ export default function AccountTab() {
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
 
   const name = profile?.full_name?.trim() ?? '';
   const isDriver = profile?.role === 'driver';
@@ -92,6 +94,19 @@ export default function AccountTab() {
     if (next === current) return;
     await setLanguage(next);
     setRestartNeeded(true);
+  }
+
+  async function leave() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(false);
+    try {
+      await signOut();
+    } catch {
+      setSignOutError(true);
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   return (
@@ -142,7 +157,9 @@ export default function AccountTab() {
         </DetailGroup>
 
         <View style={styles.out}>
-          <SecondaryButton label={t('auth.signOut')} onPress={signOut} />
+          {signOutError && <Text style={styles.signOutError}>{t('account.signOut.failed')}</Text>}
+          {signingOut && <Text style={styles.signOutWaiting}>{t('account.signOut.waiting')}</Text>}
+          <SecondaryButton label={t('auth.signOut')} onPress={() => { void leave(); }} disabled={signingOut} />
         </View>
       </ScrollView>
 
@@ -203,7 +220,9 @@ const styles = StyleSheet.create({
   name: { ...arabicIfNeeded(font.statement), color: color.lightText },
   role: { ...arabicIfNeeded(font.body), color: alpha.onInk.body },
 
-  out: { marginTop: space.sm },
+  out: { marginTop: space.sm, gap: space.sm },
+  signOutError: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
+  signOutWaiting: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start },
 
   scrim: { flex: 1, backgroundColor: 'rgba(11,12,15,.72)', justifyContent: 'flex-end' },
   sheet: {

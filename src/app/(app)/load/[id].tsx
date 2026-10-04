@@ -79,6 +79,7 @@ import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { BidsOpen, BidsProposal, choosable } from '@/components/shipper/Bids';
 import { draftFromLoad, startDraft } from '@/lib/booking';
+import { useSession } from '@/lib/session';
 import {
   cityIndex,
   useAcceptDriverBid,
@@ -125,6 +126,7 @@ const COMMITTED: Load['status'][] = ['assigned', 'in_transit', 'delivered', 'clo
 const MAP_HEIGHT = 420;
 
 export default function TrackLoad() {
+  const { session } = useSession();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -442,7 +444,7 @@ export default function TrackLoad() {
               label={t('track.again')}
               onPress={async () => {
                 // The booking flow, answers filled in, opening on the date.
-                await startDraft(draftFromLoad({ ...load, destCountry: dest.country }));
+                await startDraft(draftFromLoad({ ...load, destCountry: dest.country }), session?.user.id ?? '');
                 router.push('/book/date');
               }}
             />

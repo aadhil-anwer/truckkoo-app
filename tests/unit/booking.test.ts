@@ -79,37 +79,74 @@ describe('isComplete', () => {
 });
 
 describe('persistence', () => {
+  it('keeps two accounts and the old unowned key separate', async () => {
+    await AsyncStorage.setItem('truckkoo.booking.draft.v1', JSON.stringify(FILLED));
+    await saveDraft({ ...FILLED, cargoDescription: 'Account A cargo' }, 'A');
+    expect((await loadDraft('A')).cargoDescription).toBe('Account A cargo');
+    expect(await loadDraft('B')).toEqual(EMPTY_DRAFT);
+    await saveDraft({ ...FILLED, cargoDescription: 'Account B cargo' }, 'B');
+    await clearDraft('A');
+    expect((await loadDraft('B')).cargoDescription).toBe('Account B cargo');
+  });
+
+  it('ignores malformed persisted fields before they reach booking inputs', async () => {
+    await AsyncStorage.setItem('truckkoo.booking.draft.v2.A', JSON.stringify({
+      originCityId: '1', cargoDescription: ['bad'], targetTotalBaisa: '100',
+      originPlace: { lat: 'bad', lng: 58, contactPhone: {} },
+    }));
+    expect(await loadDraft('A')).toMatchObject({
+      originCityId: null, cargoDescription: '', targetTotalBaisa: null, originPlace: null,
+    });
+  });
+
+  it('persists the latest answer when writes finish out of order', async () => {
+    const storageWrite = AsyncStorage.setItem as jest.Mock;
+    const original = storageWrite.getMockImplementation()!;
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    storageWrite.mockImplementation(async (key, value) => {
+      if (value.includes('First answer')) await first;
+      return original(key, value);
+    });
+    const a = saveDraft({ ...FILLED, cargoDescription: 'First answer' }, 'A');
+    const b = saveDraft({ ...FILLED, cargoDescription: 'Final answer' }, 'A');
+    releaseFirst();
+    await Promise.all([a, b]);
+    expect((await loadDraft('A')).cargoDescription).toBe('Final answer');
+    storageWrite.mockImplementation(original);
+  });
+
   it('survives a reload — six answers are too many to lose', async () => {
-    await saveDraft(FILLED);
-    expect(await loadDraft()).toEqual(FILLED);
+    await saveDraft(FILLED, 'A');
+    expect(await loadDraft('A')).toEqual(FILLED);
   });
 
   it('returns an empty draft when nothing is stored', async () => {
-    expect(await loadDraft()).toEqual(EMPTY_DRAFT);
+    expect(await loadDraft('A')).toEqual(EMPTY_DRAFT);
   });
 
   it('fills in fields a older build did not write', async () => {
     // A draft saved before a field existed must still open, rather than throwing
     // halfway through a flow the user is standing in.
     await AsyncStorage.setItem(
-      'truckkoo.booking.draft.v1',
+      'truckkoo.booking.draft.v2.A',
       JSON.stringify({ originCityId: 3 }),
     );
-    const draft = await loadDraft();
+    const draft = await loadDraft('A');
     expect(draft.originCityId).toBe(3);
     expect(draft.truckPreference).toBe('auto');
     expect(draft.weightKg).toBeNull();
   });
 
   it('survives corrupt stored data instead of crashing the flow', async () => {
-    await AsyncStorage.setItem('truckkoo.booking.draft.v1', 'not json');
-    expect(await loadDraft()).toEqual(EMPTY_DRAFT);
+    await AsyncStorage.setItem('truckkoo.booking.draft.v2.A', 'not json');
+    expect(await loadDraft('A')).toEqual(EMPTY_DRAFT);
   });
 
   it('clears', async () => {
-    await saveDraft(FILLED);
-    await clearDraft();
-    expect(await loadDraft()).toEqual(EMPTY_DRAFT);
+    await saveDraft(FILLED, 'A');
+    await clearDraft('A');
+    expect(await loadDraft('A')).toEqual(EMPTY_DRAFT);
   });
 });
 
@@ -131,15 +168,15 @@ describe('the target price in the draft', () => {
   });
 
   it('opens a draft saved before targets existed, with no target', async () => {
-    await AsyncStorage.setItem('truckkoo.booking.draft.v1', JSON.stringify({ originCityId: 3 }));
-    expect((await loadDraft()).targetTotalBaisa).toBeNull();
+    await AsyncStorage.setItem('truckkoo.booking.draft.v2.A', JSON.stringify({ originCityId: 3 }));
+    expect((await loadDraft('A')).targetTotalBaisa).toBeNull();
   });
 });
 
 describe('places in the draft', () => {
   it('opens a draft saved before places existed, with no place', async () => {
-    await AsyncStorage.setItem('truckkoo.booking.draft.v1', JSON.stringify({ originCityId: 3 }));
-    const d = await loadDraft();
+    await AsyncStorage.setItem('truckkoo.booking.draft.v2.A', JSON.stringify({ originCityId: 3 }));
+    const d = await loadDraft('A');
     expect(d.originCityId).toBe(3);
     expect(d.originPlace).toBeNull();
     expect(d.destinationPlace).toBeNull();
@@ -207,8 +244,8 @@ describe('send this route again', () => {
   });
 
   it('is stored before the booking screens read it', async () => {
-    await saveDraft(FILLED);
-    await startDraft(draftFromLoad(sent));
-    expect((await loadDraft()).cargoDescription).toBe('Cement bags');
+    await saveDraft(FILLED, 'A');
+    await startDraft(draftFromLoad(sent), 'A');
+    expect((await loadDraft('A')).cargoDescription).toBe('Cement bags');
   });
 });

@@ -10,6 +10,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { TextField } from '@/components/primitives';
 import { SectionLabel } from '@/components/ui';
 import { align, t } from '@/i18n';
@@ -31,7 +32,7 @@ export default function PlaceDetails() {
     if (missing) router.replace(pickup ? '/book/origin' : '/book/destination');
   }, [missing, pickup, router]);
 
-  if (!ready || !place) return null;
+  if (!ready || !place) return <BookingPending />;
 
   const next = pickup ? '/book/destination' : '/book/date';
   const set = (patch: Partial<typeof place>) =>

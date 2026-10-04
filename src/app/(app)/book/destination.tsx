@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MapStepShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { CityList } from '@/components/booking/CityList';
 import { PlaceSearch } from '@/components/booking/PlaceSearch';
 import { PrimaryButton, PressableSurface } from '@/components/primitives';
@@ -36,7 +37,7 @@ export default function Destination() {
   const origin = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
   const dest = draft.destinationCityId != null ? index.get(draft.destinationCityId) : undefined;
 
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   // Pulls back the moment the destination leaves the country — that is S10 —
   // and also when a domestic route leaves the northern close-up (Salalah, Duqm,

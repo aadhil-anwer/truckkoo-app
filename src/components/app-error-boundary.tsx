@@ -12,6 +12,7 @@
 import { useEffect } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import type { ErrorBoundaryProps } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 
 import { PrimaryButton } from './primitives';
 import { arabicIfNeeded } from './text-direction';
@@ -24,6 +25,9 @@ export function AppErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   // expo-router catches this before Sentry's global handler can, so a render
   // crash would otherwise never be reported at all.
   useEffect(() => {
+    // A render failure during startup can happen before the root's normal
+    // readiness effect. Release the held splash so this recovery UI is visible.
+    SplashScreen.hideAsync().catch(() => {});
     reportError(error);
     if (__DEV__) console.error(error);
   }, [error]);

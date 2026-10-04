@@ -42,23 +42,23 @@ import * as features from '@/lib/features';
 import * as queries from '@/lib/queries';
 import { offerErrorMessage } from '@/lib/offer-errors';
 
-const mockDraft = {
-  current: {
-    originCityId: MUSCAT.id,
-    destinationCityId: SALALAH.id,
-    destinationCountry: 'OM',
-    collectionDate: '2026-09-28',
-    cargoDescription: 'Building materials',
-    truckPreference: 'auto',
-    weightKg: 8000,
-  } as Record<string, unknown>,
+const baseDraft = {
+  originCityId: MUSCAT.id,
+  destinationCityId: SALALAH.id,
+  destinationCountry: 'OM',
+  collectionDate: '2026-09-28',
+  cargoDescription: 'Building materials',
+  truckPreference: 'auto',
+  weightKg: 8000,
 };
+const mockDraft = { current: { ...baseDraft } as Record<string, unknown> };
+let mockDraftReady = true;
 
 jest.mock('@/lib/booking', () => {
   const actual = jest.requireActual('@/lib/booking');
   return {
     ...actual,
-    useBookingDraft: () => ({ draft: mockDraft.current, update: jest.fn(), ready: true }),
+    useBookingDraft: () => ({ draft: mockDraft.current, update: jest.fn(), ready: mockDraftReady }),
     clearDraft: jest.fn(async () => {}),
   };
 });
@@ -69,7 +69,38 @@ beforeEach(() => {
   initLanguage('en');
   resetQueries(queries as unknown as Record<string, unknown>);
   m('useTruckTypes').mockReturnValue(ok([TRUCK]));
-  mockDraft.current = { ...mockDraft.current, truckPreference: 'auto', weightKg: 8000 };
+  mockDraft.current = { ...baseDraft };
+  mockDraftReady = true;
+});
+
+describe('Review recovery', () => {
+  it('shows a visible loading shell while draft storage is pending', async () => {
+    mockDraftReady = false;
+    await render(<Review />);
+    expect(screen.getByText('Check this before we start')).toBeTruthy();
+  });
+
+  it('lets the shipper repair a missing route instead of settling on a blank screen', async () => {
+    mockDraft.current = { ...mockDraft.current, originCityId: null };
+    await render(<Review />);
+    await fireEvent.press(screen.getByLabelText('Continue booking'));
+    expect(mockReplace).toHaveBeenCalledWith('/book/origin');
+  });
+
+  it('offers a retry when the city list fails to load', async () => {
+    const refetch = jest.fn();
+    m('useCities').mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
+    await render(<Review />);
+    await fireEvent.press(screen.getByLabelText('Try again'));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('keeps a usable review visible when a background city refresh fails', async () => {
+    m('useCities').mockReturnValue({ ...ok([MUSCAT, SALALAH]), isError: true });
+    await render(<Review />);
+    expect(screen.getByLabelText('Muscat to Salalah')).toBeTruthy();
+    expect(screen.queryByLabelText('Try again')).toBeNull();
+  });
 });
 
 describe('Review — the price is the price', () => {

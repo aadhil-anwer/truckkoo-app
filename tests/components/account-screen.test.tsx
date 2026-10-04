@@ -8,7 +8,7 @@
  * so most of what follows asserts an absence.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { initLanguage } from '@/i18n';
 import * as language from '@/lib/language';
@@ -38,6 +38,7 @@ import AccountTab from '@/app/(app)/(tabs)/account';
 import * as pushContext from '@/lib/push-context';
 
 const { useSession } = jest.requireMock('@/lib/session');
+const { signOut: mockSignOut } = jest.requireMock('@/lib/auth');
 
 const session = (role: 'shipper' | 'driver') => ({
   profile: {
@@ -52,6 +53,16 @@ const session = (role: 'shipper' | 'driver') => ({
 beforeEach(() => initLanguage('en'));
 
 describe('X2 · account', () => {
+  it('shows a retryable error when global sign-out fails', async () => {
+    useSession.mockReturnValue(session('driver'));
+    mockSignOut.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
+    await render(<AccountTab />);
+    await fireEvent.press(screen.getByLabelText('Sign out'));
+    await waitFor(() => expect(screen.getByText('Could not sign out. Check your connection and try again.')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('Sign out'));
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
+  });
+
   it('names the role in the second person', async () => {
     useSession.mockReturnValue(session('driver'));
     await render(<AccountTab />);

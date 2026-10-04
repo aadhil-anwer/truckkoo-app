@@ -88,15 +88,17 @@ export async function registerPush(): Promise<string | null> {
   }
 }
 
-/** Before sign-out: this account stops buzzing this phone. Never throws. */
-export async function unregisterPush(): Promise<void> {
+/** Revoke the token before sign-out. Keep it locally if revocation is uncertain. */
+export async function unregisterPush(): Promise<boolean> {
   try {
     const token = await AsyncStorage.getItem(TOKEN_KEY);
-    if (!token) return;
-    await supabase.rpc('unregister_push_token', { p_token: token });
+    if (!token) return true;
+    const { error } = await supabase.rpc('unregister_push_token', { p_token: token });
+    if (error) return false;
     await AsyncStorage.removeItem(TOKEN_KEY);
+    return true;
   } catch {
-    // Signing out must not wait on this.
+    return false;
   }
 }
 

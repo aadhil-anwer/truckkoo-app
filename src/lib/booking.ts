@@ -24,8 +24,9 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { BIDDING } from './features';
+import { useSession } from './session';
 
-const KEY = 'truckkoo.booking.draft.v1';
+const KEY_PREFIX = 'truckkoo.booking.draft.v2.';
 
 /** ISO `YYYY-MM-DD`. Dates are days, not instants — a pickup has no timezone. */
 export type IsoDate = string;
@@ -155,35 +156,86 @@ export function isComplete(draft: BookingDraft): boolean {
   );
 }
 
-export async function loadDraft(): Promise<BookingDraft> {
+function keyFor(ownerId: string): string {
+  return `${KEY_PREFIX}${encodeURIComponent(ownerId)}`;
+}
+
+const pendingWrites = new Map<string, Promise<void>>();
+
+function queueWrite(ownerId: string, write: () => Promise<void>): Promise<void> {
+  const previous = pendingWrites.get(ownerId) ?? Promise.resolve();
+  const pending = previous.catch(() => {}).then(write).catch(() => {});
+  pendingWrites.set(ownerId, pending);
+  void pending.then(() => {
+    if (pendingWrites.get(ownerId) === pending) pendingWrites.delete(ownerId);
+  });
+  return pending;
+}
+
+function placeFromStorage(value: unknown): DraftPlace | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.lat !== 'number' || !Number.isFinite(p.lat) || Math.abs(p.lat) > 90 ||
+      typeof p.lng !== 'number' || !Number.isFinite(p.lng) || Math.abs(p.lng) > 180) return null;
+  return {
+    lat: p.lat,
+    lng: p.lng,
+    placeName: typeof p.placeName === 'string' ? p.placeName : null,
+    note: typeof p.note === 'string' ? p.note : '',
+    contactName: typeof p.contactName === 'string' ? p.contactName : '',
+    contactPhone: typeof p.contactPhone === 'string' ? p.contactPhone : '',
+  };
+}
+
+function draftFromStorage(value: unknown): BookingDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return EMPTY_DRAFT;
+  const d = value as Record<string, unknown>;
+  const city = (x: unknown) => typeof x === 'number' && Number.isSafeInteger(x) && x > 0 ? x : null;
+  return {
+    originCityId: city(d.originCityId),
+    destinationCityId: city(d.destinationCityId),
+    destinationCountry: d.destinationCountry === 'AE' || d.destinationCountry === 'SA'
+      ? d.destinationCountry : 'OM',
+    collectionDate: typeof d.collectionDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.collectionDate)
+      ? d.collectionDate : null,
+    cargoDescription: typeof d.cargoDescription === 'string' ? d.cargoDescription : '',
+    truckPreference: typeof d.truckPreference === 'string' && d.truckPreference.length > 0
+      ? d.truckPreference : 'auto',
+    weightKg: typeof d.weightKg === 'number' && Number.isFinite(d.weightKg) && d.weightKg > 0
+      ? d.weightKg : null,
+    originPlace: placeFromStorage(d.originPlace),
+    destinationPlace: placeFromStorage(d.destinationPlace),
+    targetTotalBaisa: typeof d.targetTotalBaisa === 'number' && Number.isSafeInteger(d.targetTotalBaisa) &&
+      d.targetTotalBaisa >= 0 ? d.targetTotalBaisa : null,
+  };
+}
+
+export async function loadDraft(ownerId: string): Promise<BookingDraft> {
+  if (!ownerId) return EMPTY_DRAFT;
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    await pendingWrites.get(ownerId);
+    const raw = await AsyncStorage.getItem(keyFor(ownerId));
     if (!raw) return EMPTY_DRAFT;
-    // Spread over EMPTY_DRAFT so a draft written by an older build, missing a
-    // field added since, still opens instead of throwing halfway through a flow.
-    return { ...EMPTY_DRAFT, ...(JSON.parse(raw) as Partial<BookingDraft>) };
+    return draftFromStorage(JSON.parse(raw));
   } catch {
     return EMPTY_DRAFT;
   }
 }
 
-export async function saveDraft(draft: BookingDraft): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(draft));
-  } catch {
-    // A failed write costs the user their answers on a kill, which is bad but
-    // survivable. Throwing here would cost them the answer they just gave, which
-    // is worse — so this stays silent by design.
-  }
+export function saveDraft(draft: BookingDraft, ownerId: string): Promise<void> {
+  if (!ownerId) return Promise.resolve();
+  // Serialise writes: a slower earlier keystroke must not overwrite the last
+  // answer after navigation. Failure remains best effort for the live screen.
+  return queueWrite(ownerId, () => AsyncStorage.setItem(keyFor(ownerId), JSON.stringify(draft)));
 }
 
-export async function clearDraft(): Promise<void> {
-  if (shared != null) publish(EMPTY_DRAFT);
-  try {
-    await AsyncStorage.removeItem(KEY);
-  } catch {
-    // Nothing useful to do. The next post overwrites it.
+export function clearDraft(ownerId: string): Promise<void> {
+  if (!ownerId) return Promise.resolve();
+  if (sharedOwner === ownerId) {
+    generation += 1;
+    publish(EMPTY_DRAFT);
   }
+  return queueWrite(ownerId, () => AsyncStorage.removeItem(keyFor(ownerId)));
 }
 
 /**
@@ -225,9 +277,12 @@ export function draftFromLoad(load: {
  * Replace the draft and wait until it is stored, so the screen pushed next
  * reads it rather than racing the write.
  */
-export async function startDraft(draft: BookingDraft): Promise<void> {
-  if (shared != null) publish(draft);
-  await saveDraft(draft);
+export async function startDraft(draft: BookingDraft, ownerId: string): Promise<void> {
+  if (sharedOwner === ownerId) {
+    generation += 1;
+    publish(draft);
+  }
+  await saveDraft(draft, ownerId);
 }
 
 /**
@@ -244,6 +299,8 @@ export async function startDraft(draft: BookingDraft): Promise<void> {
  * it is dropped, and the next reads storage again.
  */
 let shared: BookingDraft | null = null;
+let sharedOwner: string | null = null;
+let generation = 0;
 let mounted = 0;
 const listeners = new Set<() => void>();
 
@@ -259,8 +316,6 @@ function subscribe(listener: () => void) {
   };
 }
 
-const snapshot = () => shared;
-
 /**
  * Read/write the draft with persistence handled.
  *
@@ -269,32 +324,48 @@ const snapshot = () => shared;
  * blank fields at a user who has answers.
  */
 export function useBookingDraft() {
+  const { session } = useSession();
+  const ownerId = session?.user.id ?? null;
+  const snapshot = () => sharedOwner === ownerId ? shared : null;
   const current = useSyncExternalStore(subscribe, snapshot, snapshot);
 
   useEffect(() => {
+    if (!ownerId) return;
     mounted += 1;
+    if (sharedOwner !== ownerId) {
+      sharedOwner = ownerId;
+      publish(null);
+    }
     if (shared == null) {
-      loadDraft().then((d) => {
+      const ticket = ++generation;
+      loadDraft(ownerId).then((d) => {
         // A screen may have written while storage was being read; its answer wins.
-        if (shared == null && mounted > 0) publish(d);
+        if (sharedOwner === ownerId && generation === ticket && shared == null && mounted > 0) publish(d);
       });
     }
     return () => {
       mounted -= 1;
-      if (mounted === 0) shared = null;
+      if (mounted === 0) {
+        shared = null;
+        sharedOwner = null;
+        generation += 1;
+      }
     };
-  }, []);
+  }, [ownerId]);
 
   const update = useCallback((patch: Partial<BookingDraft>) => {
-    const next = { ...(shared ?? EMPTY_DRAFT), ...patch };
-    void saveDraft(next);
-    publish(next);
-  }, []);
+    if (!ownerId) return;
+    const next = { ...((sharedOwner === ownerId ? shared : null) ?? EMPTY_DRAFT), ...patch };
+    void saveDraft(next, ownerId);
+    if (sharedOwner === ownerId) {
+      generation += 1;
+      publish(next);
+    }
+  }, [ownerId]);
 
   const reset = useCallback(() => {
-    void clearDraft();
-    publish(EMPTY_DRAFT);
-  }, []);
+    if (ownerId) void clearDraft(ownerId);
+  }, [ownerId]);
 
   return { draft: current ?? EMPTY_DRAFT, update, reset, ready: current != null };
 }

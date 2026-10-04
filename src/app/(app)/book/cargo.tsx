@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { Chip, SectionLabel } from '@/components/ui';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { align, t } from '@/i18n';
@@ -30,7 +31,7 @@ const PRESETS = [
 export default function Cargo() {
   const router = useRouter();
   const { draft, update, ready } = useBookingDraft();
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   const value = draft.cargoDescription;
 

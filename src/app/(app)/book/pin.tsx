@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinAdjustMap } from '@/components/booking/PinAdjustMap';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { BackButton, PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { Notice, QuestionHeading } from '@/components/ui';
@@ -84,7 +85,7 @@ export default function Pin() {
     if (missing) router.replace(pickup ? '/book/origin' : '/book/destination');
   }, [missing, pickup, router]);
 
-  if (!ready || !place) return null;
+  if (!ready || !place) return <BookingPending />;
 
   const city = cityId != null ? index.get(cityId) : undefined;
   const sameCity = cityId != null && cityId === otherCityId;

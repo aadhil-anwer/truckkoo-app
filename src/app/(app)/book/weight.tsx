@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { Chip, StatusPill } from '@/components/ui';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { BIDDING } from '@/lib/features';
@@ -25,7 +26,7 @@ const QUICK = [1000, 3000, 8000, 15000, 20000];
 export default function Weight() {
   const router = useRouter();
   const { draft, update, ready } = useBookingDraft();
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   const value = draft.weightKg;
   // Bid loads ask one more, optional, question: the most the shipper will pay.
