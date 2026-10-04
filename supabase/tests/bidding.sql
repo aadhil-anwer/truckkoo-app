@@ -388,6 +388,19 @@ select assert_true(not private.bid_driver_eligible(:'l2', 'd0000000-0000-4000-80
   'with it on, an unverified driver is not');
 update private.app_settings set value = 'false'::jsonb where key = 'require_verified_driver';
 
+-- ═══ 15. one tap posts one bid load (0047) ═══════════════════════════════════
+
+select act_as('a0000000-0000-4000-8000-0000000000b1');
+select public.post_bid_load(city('Muscat'), city('Sur'), tomorrow(), tomorrow(), 'Retried bid cargo', 5000,
+                            null, null, null, null, 'f0000000-0000-4000-8000-000000000047') as r1 \gset
+select public.post_bid_load(city('Muscat'), city('Sur'), tomorrow(), tomorrow(), 'Retried bid cargo', 5000,
+                            null, null, null, null, 'f0000000-0000-4000-8000-000000000047') as r2 \gset
+select act_as_reset();
+select assert_true(:'r1'::uuid = :'r2'::uuid, 'a retried bid post returns the first load');
+select assert_equals((select count(*) from public.loads where goods_description = 'Retried bid cargo'), 1,
+  'and posts nothing new');
+select assert_equals(bid_offers(:'r1'), 3, 'and invites only once');
+
 do $$ begin raise notice 'ALL BIDDING ASSERTIONS HELD'; end $$;
 
 rollback;

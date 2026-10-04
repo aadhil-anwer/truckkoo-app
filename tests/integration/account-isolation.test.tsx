@@ -194,3 +194,49 @@ it('does not restore A booking answers after B draft has loaded', async () => {
     read.mockImplementation(original);
   }
 });
+
+it('refreshes the profile without raising loading, so the Gate keeps the asking screen mounted', async () => {
+  let reads = 0;
+  const second = deferred<{ data: ReturnType<typeof profile> | null; error: Error | null }>();
+  (supabase.from as jest.Mock).mockImplementation(() => ({
+    select: () => ({ eq: (_column: string, id: string) => ({
+      maybeSingle: () => (++reads === 1 ? Promise.resolve({ data: null, error: null }) : second.promise),
+    }) }),
+  }));
+  const seen: boolean[] = [];
+  function Identity() {
+    const { profile: current, loading, error, refreshProfile } = useSession();
+    seen.push(loading);
+    return <><Text>{`${current?.id ?? 'none'}:${loading ? 'loading' : 'idle'}:${error ? 'error' : 'ok'}`}</Text>
+      <Pressable onPress={() => { void refreshProfile(); }}><Text>Refresh</Text></Pressable></>;
+  }
+  await render(<SessionProvider><Identity /></SessionProvider>);
+  await act(async () => { authEvent('SIGNED_IN', sessionFor('A')); });
+  await waitFor(() => expect(screen.getByText('none:idle:ok')).toBeTruthy());
+  seen.length = 0;
+  await fireEvent.press(screen.getByText('Refresh'));
+  expect(screen.getByText('none:idle:ok')).toBeTruthy();
+  await act(async () => { second.resolve({ data: profile('A'), error: null }); });
+  await waitFor(() => expect(screen.getByText('A:idle:ok')).toBeTruthy());
+  expect(seen).not.toContain(true);
+});
+
+it('keeps a brand-new user on their screen when the refresh read fails', async () => {
+  let reads = 0;
+  (supabase.from as jest.Mock).mockImplementation(() => ({
+    select: () => ({ eq: () => ({
+      maybeSingle: async () => (++reads === 1 ? { data: null, error: null } : { data: null, error: new Error('offline') }),
+    }) }),
+  }));
+  function Identity() {
+    const { profile: current, error, refreshProfile } = useSession();
+    return <><Text>{`${current?.id ?? 'none'}:${error ? 'error' : 'ok'}`}</Text>
+      <Pressable onPress={() => { void refreshProfile(); }}><Text>Refresh</Text></Pressable></>;
+  }
+  await render(<SessionProvider><Identity /></SessionProvider>);
+  await act(async () => { authEvent('SIGNED_IN', sessionFor('A')); });
+  await waitFor(() => expect(screen.getByText('none:ok')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Refresh'));
+  await waitFor(() => expect(reads).toBe(2));
+  expect(screen.getByText('none:ok')).toBeTruthy();
+});

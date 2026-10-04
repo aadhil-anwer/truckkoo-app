@@ -6,14 +6,17 @@ const mockStop = jest.fn(async () => undefined);
 const mockAccess = jest.fn(async () => 'always');
 const mockReportOnce = jest.fn(async () => null);
 const mockUnregister = jest.fn(async () => true);
+const mockRegister = jest.fn(async () => null);
+const mockTrackingNow = jest.fn((): string | null => null);
 jest.mock('@/lib/background-location', () => ({
+  trackingNow: () => mockTrackingNow(),
   startTracking: (mode: unknown) => mockStart(mode),
   stopTracking: () => mockStop(),
   locationAccess: () => mockAccess(),
   requestLocationAccess: jest.fn(),
   reportOnce: () => mockReportOnce(),
 }));
-jest.mock('@/lib/push', () => ({ unregisterPush: () => mockUnregister() }));
+jest.mock('@/lib/push', () => ({ unregisterPush: () => mockUnregister(), registerPush: () => mockRegister() }));
 
 // auth.ts calls this at module scope; the global mock does not provide it.
 jest.mock('expo-web-browser', () => ({ maybeCompleteAuthSession: jest.fn(), openAuthSessionAsync: jest.fn() }));
@@ -146,6 +149,34 @@ describe('signOut', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('resumes tracking and push when sign-out fails, so a driver mid-trip keeps reporting', async () => {
+    mockTrackingNow.mockReturnValueOnce('trip');
+    const { supabase } = jest.requireMock('@/lib/supabase') as { supabase: { auth: { signOut: jest.Mock } } };
+    supabase.auth.signOut.mockResolvedValue({ error: new Error('offline') });
+    const { signOut } = jest.requireActual('@/lib/auth') as typeof import('@/lib/auth');
+    await expect(signOut()).rejects.toThrow('offline');
+    expect(mockStop).toHaveBeenCalled();
+    expect(mockStart).toHaveBeenCalledWith('trip');
+    expect(mockRegister).toHaveBeenCalled();
+  });
+
+  it('does not resume tracking that was not running', async () => {
+    mockUnregister.mockResolvedValueOnce(false);
+    const { signOut } = jest.requireActual('@/lib/auth') as typeof import('@/lib/auth');
+    await expect(signOut()).rejects.toThrow();
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('resumes nothing after a successful sign-out', async () => {
+    mockTrackingNow.mockReturnValueOnce('online');
+    const { supabase } = jest.requireMock('@/lib/supabase') as { supabase: { auth: { signOut: jest.Mock } } };
+    supabase.auth.signOut.mockResolvedValue({ error: null });
+    const { signOut } = jest.requireActual('@/lib/auth') as typeof import('@/lib/auth');
+    await signOut();
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockRegister).not.toHaveBeenCalled();
   });
 
   it('reports a failed global revocation', async () => {

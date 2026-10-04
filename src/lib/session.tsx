@@ -68,7 +68,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const generation = useRef(0);
   const authRevision = useRef(0);
 
-  const loadProfile = useCallback(async (userId: string, ticket: number) => {
+  // `quiet`: a background refresh. It never raises `loading` (the Gate would
+  // unmount the screen that asked) and a failure keeps what is already shown.
+  const loadProfile = useCallback(async (userId: string, ticket: number, quiet = false) => {
     try {
       // Explicit columns only: adding a field must not expose it automatically.
       const { data, error } = await bounded(supabase.from('profiles')
@@ -80,6 +82,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setState((previous) => ({ ...previous, profile: (data as Profile) ?? null, loading: false, error: false }));
       }
     } catch {
+      if (quiet) return;
       if (mounted.current && owner.current === userId && generation.current === ticket) {
         // A failed read is not evidence that a profile is missing. Gate shows
         // recovery instead of sending an existing user through signup.
@@ -146,19 +149,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const userId = owner.current;
     if (!userId) return;
-    const ticket = ++generation.current;
-    setState((previous) => ({ ...previous, loading: true, error: false }));
-    await loadProfile(userId, ticket);
+    await loadProfile(userId, ++generation.current, true);
   }, [loadProfile]);
 
   const retry = useCallback(() => {
-    if (owner.current) {
-      void refreshProfile();
+    setState((previous) => ({ ...previous, loading: true, error: false }));
+    const userId = owner.current;
+    if (userId) {
+      void loadProfile(userId, ++generation.current);
       return;
     }
-    setState((previous) => ({ ...previous, loading: true, error: false }));
     void bootstrap();
-  }, [bootstrap, refreshProfile]);
+  }, [bootstrap, loadProfile]);
 
   const value = useMemo<SessionState>(() => ({ ...state, retry, refreshProfile }), [state, retry, refreshProfile]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

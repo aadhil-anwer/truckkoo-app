@@ -130,6 +130,15 @@ export type Trip = {
  * picker rendered zero options while validation still demanded a truck size — an
  * unsatisfiable form at the last step of creating an account.
  */
+/**
+ * While a reference-data fetch is failing, try again every 30 s. Focus and
+ * pull-to-refresh recover only if the user does something; a driver who opened
+ * the app in a dead zone and keeps it open would otherwise read "—" for every
+ * city until they did. Stops the moment a fetch succeeds.
+ */
+const RETRY_WHILE_FAILED = (query: { state: { status: string } }) =>
+  query.state.status === 'error' ? 30_000 : false;
+
 export function useCities() {
   const { session } = useSession();
   return useQuery({
@@ -144,6 +153,7 @@ export function useCities() {
     // `focusManager` wired to `AppState` (done once, in _layout.tsx) — RN has
     // no window-focus event for react-query's default listener to hear.
     refetchOnWindowFocus: true,
+    refetchInterval: RETRY_WHILE_FAILED,
     queryFn: async (): Promise<City[]> => {
       const { data, error } = await supabase
         .from('cities')
@@ -165,6 +175,7 @@ export function useTruckTypes() {
     staleTime: Infinity,
     // See useCities just above — same failure mode, same fix.
     refetchOnWindowFocus: true,
+    refetchInterval: RETRY_WHILE_FAILED,
     queryFn: async (): Promise<TruckType[]> => {
       const { data, error } = await supabase
         .from('truck_types')
@@ -307,6 +318,12 @@ export type BookInput = {
   /** Exact places (0041); null when the shipper chose a city only. */
   originPlace: PlacePayload | null;
   destPlace: PlacePayload | null;
+  /**
+   * One per booking attempt, the same on every retry of it (0047). A call that
+   * timed out on the phone may have booked on the server; the retry then gets
+   * that load back instead of posting a second one.
+   */
+  requestId: string;
 };
 
 /**
@@ -330,6 +347,7 @@ export function useBookLoad() {
         p_seen_price_baisa: input.seenPriceBaisa,
         p_origin_place: input.originPlace,
         p_dest_place: input.destPlace,
+        p_request_id: input.requestId,
       });
       if (error) throw error;
       const row = ((data ?? []) as Record<string, unknown>[])[0];
@@ -406,6 +424,8 @@ export type PostBidLoadInput = {
   destPlace: PlacePayload | null;
   /** The most the shipper will pay in total; null is "I will choose myself". */
   targetTotalBaisa: number | null;
+  /** As on BookInput: one per attempt, so a retry cannot post twice (0047). */
+  requestId: string;
 };
 
 /**
@@ -428,6 +448,7 @@ export function usePostBidLoad() {
         p_origin_place: input.originPlace,
         p_dest_place: input.destPlace,
         p_target_total_baisa: input.targetTotalBaisa,
+        p_request_id: input.requestId,
       });
       if (error) throw error;
       if (!data) throw new Error('post_bid_load returned no load');

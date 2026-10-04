@@ -52,3 +52,18 @@ it('also releases the splash when font loading never settles', async () => {
     jest.useRealTimers();
   }
 });
+
+it('starts normally when fonts arrive after the timeout', async () => {
+  mockFontError = null;
+  jest.useFakeTimers();
+  try {
+    const view = await render(<RootLayout />);
+    await act(async () => { await jest.advanceTimersByTimeAsync(6_100); });
+    expect(screen.getByLabelText('Try again')).toBeTruthy();
+    mockFontsLoaded = true;
+    await act(async () => { view.rerender(<RootLayout />); });
+    expect(screen.queryByLabelText('Try again')).toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
+});

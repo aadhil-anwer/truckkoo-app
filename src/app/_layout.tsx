@@ -110,7 +110,8 @@ function Startup({ retry }: { retry: () => void }) {
     return () => clearTimeout(timer);
   }, [fontsLoaded, fontError]);
 
-  const fontFailed = !!fontError || fontTimedOut;
+  // A timeout is a guess, not a verdict: fonts that arrive late still win.
+  const fontFailed = !!fontError || (fontTimedOut && !fontsLoaded);
 
   useEffect(() => {
     if (!fontFailed || reportedFontFailure.current) return;

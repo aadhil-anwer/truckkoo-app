@@ -25,6 +25,7 @@
  * The rate-card lookup is not made — it would spend a rate-limited call on a
  * number this flow never shows.
  */
+import { randomUUID } from 'expo-crypto';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,6 +68,13 @@ export default function Review() {
   const cities = citiesQuery.data;
   const { data: truckTypes } = useTruckTypes();
   const [error, setError] = useState<string | null>(null);
+  // One per visit to this screen, sent on every tap of Book. A tap that timed
+  // out may still have booked; the next tap gets that load back (0047).
+  const [requestId] = useState(randomUUID);
+  // Set the moment a booking lands. Clearing the draft empties it at once, and
+  // without this the screen would flash "Finish these answers" — with a live
+  // button — while the navigation to the load is still under way.
+  const [booked, setBooked] = useState(false);
 
   const index = cityIndex(cities);
   const origin = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
@@ -91,7 +99,7 @@ export default function Review() {
   const postBid = usePostBidLoad();
   const posting = BIDDING ? postBid.isPending : book.isPending;
 
-  if (!ready || (citiesQuery.isPending && !cities)) {
+  if (booked || !ready || (citiesQuery.isPending && !cities)) {
     return (
       <View style={styles.recovery}>
         <Text style={styles.title}>{t('book.review.title')}</Text>
@@ -155,12 +163,14 @@ export default function Review() {
           originPlace: toPlacePayload(draft.originPlace),
           destPlace: toPlacePayload(draft.destinationPlace),
           targetTotalBaisa: draft.targetTotalBaisa,
+          requestId,
         },
         {
-          onSuccess: async ({ loadId }) => {
-            await clearDraft(session?.user.id ?? '');
+          onSuccess: ({ loadId }) => {
+            setBooked(true);
             // The load screen is where the prices arrive.
             router.replace(`/load/${loadId}`);
+            clearDraft(session?.user.id ?? '').catch(() => {});
           },
           onError: () => setError(t('book.failed')),
         },
@@ -179,13 +189,15 @@ export default function Review() {
         seenPriceBaisa: priced ? quote!.price_baisa : null,
         originPlace: toPlacePayload(draft.originPlace),
         destPlace: toPlacePayload(draft.destinationPlace),
+        requestId,
       },
       {
-        onSuccess: async ({ loadId }) => {
-          await clearDraft(session?.user.id ?? '');
+        onSuccess: ({ loadId }) => {
+          setBooked(true);
           // Matched or not, the load screen shows the truth: a truck being
           // found, or — if the price moved — the real price to accept.
           router.replace(`/load/${loadId}`);
+          clearDraft(session?.user.id ?? '').catch(() => {});
         },
         onError: () => setError(t('book.failed')),
       },

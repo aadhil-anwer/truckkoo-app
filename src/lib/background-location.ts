@@ -88,6 +88,11 @@ export async function startTracking(mode: TrackingMode): Promise<boolean> {
   return true;
 }
 
+/** The mode the OS task is running in, or null — so a failed sign-out can resume it. */
+export function trackingNow(): TrackingMode | null {
+  return runningMode;
+}
+
 export async function stopTracking(): Promise<void> {
   runningMode = null;
   if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)) {

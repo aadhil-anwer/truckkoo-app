@@ -14,8 +14,8 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
 import { t } from '@/i18n';
-import { stopTracking } from './background-location';
-import { unregisterPush } from '@/lib/push';
+import { startTracking, stopTracking, trackingNow } from './background-location';
+import { registerPush, unregisterPush } from '@/lib/push';
 import { OMAN_DIAL } from './auth-draft';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
@@ -341,13 +341,23 @@ export async function signOut(): Promise<void> {
   // Before the session goes: a shared phone must never report a position under
   // the account that just left. Bound a stalled native stop; global auth
   // revocation is the final guard against future server-side location writes.
+  const resumeMode = trackingNow();
   await within(stopTracking(), 4_000).catch(() => {});
-  // The phone's push token belongs to this account. If the server has not
-  // confirmed revocation, keep the session and a retry path on the account UI.
-  const pushRevoked = await within(unregisterPush(), 4_000).catch(() => false);
-  if (!pushRevoked) throw new Error('Push token revocation failed');
-  // Global scope revokes server-side. A timeout/error must never be reported as
-  // successful logout because local-only sign-out leaves sessions valid.
-  const { error } = await within(supabase.auth.signOut({ scope: 'global' }), 12_000);
-  if (error) throw error;
+  try {
+    // The phone's push token belongs to this account. If the server has not
+    // confirmed revocation, keep the session and a retry path on the account UI.
+    const pushRevoked = await within(unregisterPush(), 4_000).catch(() => false);
+    if (!pushRevoked) throw new Error('Push token revocation failed');
+    // Global scope revokes server-side. A timeout/error must never be reported as
+    // successful logout because local-only sign-out leaves sessions valid.
+    const { error } = await within(supabase.auth.signOut({ scope: 'global' }), 12_000);
+    if (error) throw error;
+  } catch (e) {
+    // Still signed in, so put back what was taken away above: a driver on a trip
+    // must keep reporting, and must keep receiving offers. The tracking provider
+    // will not do it — nothing it watches changed. Neither call throws here.
+    if (resumeMode) startTracking(resumeMode).catch(() => {});
+    registerPush().catch(() => {});
+    throw e;
+  }
 }

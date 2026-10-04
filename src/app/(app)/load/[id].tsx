@@ -131,7 +131,7 @@ export default function TrackLoad() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { data: cities } = useCities();
+  const { data: cities, refetch: refetchCities } = useCities();
   const { data: truckTypes } = useTruckTypes();
   const loads = useMyLoads();
   const { data: trips } = useMyTrips();
@@ -290,7 +290,11 @@ export default function TrackLoad() {
         refreshControl={
           <RefreshControl
             refreshing={loads.isRefetching}
-            onRefresh={loads.refetch}
+            onRefresh={() => {
+              loads.refetch();
+              // A failed city list renders "—" for both ends; this is a way back.
+              refetchCities();
+            }}
             tintColor={color.lightText}
           />
         }

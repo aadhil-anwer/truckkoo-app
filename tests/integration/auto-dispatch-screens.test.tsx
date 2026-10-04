@@ -126,6 +126,32 @@ describe('Review — the price is the price', () => {
     });
   });
 
+  it('sends the same request id on a retry, so a timed-out tap cannot book twice', async () => {
+    await render(<Review />);
+    const book = screen.getByLabelText(/^Book for 405\.698 OMR$/);
+    await fireEvent.press(book);
+    await fireEvent.press(book);
+    const [first, second] = mockBookMutate.mock.calls.map(([input]) => input.requestId);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second).toBe(first);
+  });
+
+  it('goes to the load without flashing "incomplete" as the draft is cleared', async () => {
+    const { clearDraft } = jest.requireMock('@/lib/booking') as { clearDraft: jest.Mock };
+    clearDraft.mockImplementationOnce(async () => {
+      // What the real clearDraft does: publish an empty draft at once.
+      mockDraft.current = { ...baseDraft, originCityId: null, destinationCityId: null, collectionDate: null, cargoDescription: '' };
+    });
+    mockBookMutate.mockImplementationOnce((_input, opts) => opts.onSuccess({ loadId: 'new-load' }));
+    await render(<Review />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText(/^Book for 405\.698 OMR$/));
+    });
+    expect(mockReplace).toHaveBeenCalledWith('/load/new-load');
+    expect(mockReplace.mock.invocationCallOrder[0]).toBeLessThan(clearDraft.mock.invocationCallOrder[0]);
+    expect(screen.queryByLabelText('Continue booking')).toBeNull();
+  });
+
   it('names the truck let-us-choose was priced for, never its code', async () => {
     await render(<Review />);
     expect(screen.getByText('10-ton truck, for 8,000 kg')).toBeTruthy();

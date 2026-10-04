@@ -836,4 +836,56 @@ select assert_text(
       and p.prosrc ~* '(check_rate_limit|log_ops|log_system|raise_alert|\minsert\s+into\M|\mupdate\s+(public|private)\.|\mdelete\s+from\M)'),
   '', 'no STABLE or IMMUTABLE function writes (PostgREST would run it read-only)');
 
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. One tap books one load (0047)
+-- ════════════════════════════════════════════════════════════════════════════
+-- A retry after a timeout carries the same request id. A stale price keeps
+-- these loads at `quoted`, so nothing here dispatches.
+
+select act_as('a0000000-0000-4000-8000-000000000001');
+create temp table once_a on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+create temp table once_b on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+select act_as_reset();
+
+select assert_true((select load_id from once_a) = (select load_id from once_b),
+  'a retry with the same request id returns the first load');
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'Retried cargo'), 1,
+  'and posts nothing new');
+select assert_true((select price_matched from once_a) is not distinct from (select price_matched from once_b),
+  'the retry answers as the first call did');
+
+-- Another shipper sending the same id books their own load.
+select act_as('a0000000-0000-4000-8000-000000000002');
+create temp table once_other on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+select act_as_reset();
+select assert_true((select load_id from once_other) <> (select load_id from once_a),
+  'a request id never reaches another shipper''s load');
+
+-- No id is the old behaviour: two calls, two loads.
+select act_as('a0000000-0000-4000-8000-000000000001');
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 9, current_date + 9,
+                               'Unkeyed cargo', 8000, null, :p8000_stale) \gset unkeyed1_
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 9, current_date + 9,
+                               'Unkeyed cargo', 8000, null, :p8000_stale) \gset unkeyed2_
+select act_as_reset();
+select assert_equals((select count(*) from public.loads where goods_description = 'Unkeyed cargo'), 2,
+  'without a request id, every call books, as installed binaries expect');
+
+select assert_true(not has_table_privilege('authenticated', 'private.load_requests', 'select')
+                   and not has_table_privilege('anon', 'private.load_requests', 'select'),
+  'no client can read the request ledger');
+select assert_true(not has_function_privilege('authenticated',
+  'private.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)', 'execute'),
+  'the unkeyed original is not callable by a client');
+
 rollback;

@@ -46,6 +46,9 @@ jest.mock('expo-image-picker', () => ({
   launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
 
+// jest-expo's automock returns undefined; the booking request id (0047) needs a real one.
+jest.mock('expo-crypto', () => ({ randomUUID: () => require('node:crypto').randomUUID() }));
+
 jest.mock('expo-font', () => ({ useFonts: () => [true, null], isLoaded: () => true }));
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(async () => {}),
