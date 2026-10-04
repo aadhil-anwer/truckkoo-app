@@ -401,6 +401,18 @@ select assert_equals((select count(*) from public.loads where goods_description 
   'and posts nothing new');
 select assert_equals(bid_offers(:'r1'), 3, 'and invites only once');
 
+-- ═══ 16. a truck with no stated capacity fits, as in matching (0049) ══════════
+-- The app's truck step asks for a type, never a number, so in production most
+-- trucks have capacity_kg NULL. 0045 read NULL as "does not fit" and a 5,000 kg
+-- bid load could reach none of them.
+
+update public.trucks set capacity_kg = null where owner_id = 'd0000000-0000-4000-8000-000000000112';
+select assert_true(private.bid_driver_eligible(:'r1', 'd0000000-0000-4000-8000-000000000112'),
+  'a truck with no stated capacity is eligible for a load with a weight');
+update public.trucks set capacity_kg = 1000 where owner_id = 'd0000000-0000-4000-8000-000000000112';
+select assert_true(not private.bid_driver_eligible(:'r1', 'd0000000-0000-4000-8000-000000000112'),
+  'a truck stated too small for the weight is still not');
+
 do $$ begin raise notice 'ALL BIDDING ASSERTIONS HELD'; end $$;
 
 rollback;
