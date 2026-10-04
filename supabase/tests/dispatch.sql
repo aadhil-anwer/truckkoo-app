@@ -629,27 +629,32 @@ select private.system_rescue_stranded();
 select assert_text(asked((select load_id from lonely), 'pending'), '',
   'a decline is final — the machine never asks again');
 
--- A dispatcher who has taken the load in hand is never second-guessed.
-update public.driver_availability set available = true, updated_at = now() + interval '3 hours'
- where driver_id = 'd0000000-0000-4000-8000-000000000001';  -- A Muscat, asked in section 6
-select act_as('a0000000-0000-4000-8000-000000000002');
-select public.ops_mark_finding_truck((select load_id from lonely));
-select act_as_reset();
-select private.system_rescue_stranded();
-select assert_text(asked((select load_id from lonely), 'pending'), '',
-  'once a dispatcher has marked it theirs, the machine leaves it alone');
-
--- The switches.
-delete from private.ops_audit
- where target_id = (select load_id::text from lonely) and action = 'ops_mark_finding_truck';
+-- The switches — before a dispatcher takes the load in hand: ops_audit is
+-- append-only (0060), so that cannot be undone afterwards.
 update private.app_settings set value = 'false'::jsonb where key = 'dispatch_rescue_enabled';
 select assert_equals(private.system_rescue_stranded(), 0, 'dispatch_rescue_enabled off: nothing');
 update private.app_settings set value = 'true'::jsonb where key = 'dispatch_rescue_enabled';
 update private.app_settings set value = 'false'::jsonb where key = 'auto_dispatch_enabled';
 select assert_equals(private.system_rescue_stranded(), 0, 'the auto-dispatch kill switch stops it too');
 update private.app_settings set value = 'true'::jsonb where key = 'auto_dispatch_enabled';
+-- A (asked in section 6, lapsed — not a no) switches on again.
+update public.driver_availability set available = true, updated_at = now() + interval '3 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';
 select assert_true(private.system_rescue_stranded() > 0,
   'and with both on, it resumes');
+
+-- A dispatcher who has taken the load in hand is never second-guessed.
+-- A lets that offer lapse and switches on again: the machine would ask again…
+update public.offers set expires_at = now() - interval '1 second'
+ where load_id = (select load_id from lonely) and status = 'pending';
+update public.driver_availability set available = true, updated_at = now() + interval '4 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';  -- A Muscat
+select act_as('a0000000-0000-4000-8000-000000000002');
+select public.ops_mark_finding_truck((select load_id from lonely));
+select act_as_reset();
+select private.system_rescue_stranded();
+select assert_text(asked((select load_id from lonely), 'pending'), '',
+  'once a dispatcher has marked it theirs, the machine leaves it alone');
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 12. Background location — the latest point, and only while it is wanted (0039)

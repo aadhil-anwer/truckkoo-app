@@ -208,5 +208,58 @@ select act_as_staff('60000000-0000-4000-8000-000000000005', 'aal2', 1);
 select assert_not_found($$select * from public.ops_staff()$$, 'a non-staff account cannot list staff');
 select act_as_reset();
 
+-- ═══ 4. witnessed ══════════════════════════════════════════════════════════
+select assert_raises($$update private.ops_audit set reason = 'edited'$$,
+  'the audit log cannot be edited, even by the database owner', '%append-only%');
+select assert_raises($$delete from private.ops_audit$$,
+  'the audit log cannot be deleted from, even by the database owner', '%append-only%');
+select assert_raises($$truncate private.ops_audit$$,
+  'the audit log cannot be truncated', '%append-only%');
+
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal1', null);
+select assert_true(
+  (select public.my_ops_level() = '{"level":"owner","aal":"aal1","account_ok":true}'::jsonb),
+  'my_ops_level tells staff their level (002 was made owner in §3) and that 2FA is still needed');
+select act_as_staff('60000000-0000-4000-8000-000000000003', 'aal2', 1);
+select assert_true(
+  (select (public.my_ops_level() ->> 'account_ok')::boolean = false),
+  'and tells a wrong-domain staff row why it is refused');
+select act_as_reset();
+
+delete from private.security_events;
+select act_as_staff('60000000-0000-4000-8000-000000000005', 'aal1', null);
+select assert_true((select public.my_ops_level() ->> 'level' is null), 'a non-staff account has no level');
+select public.my_ops_level();
+select public.my_ops_level();
+select act_as_reset();
+select assert_true(
+  (select count(*) = 3 from private.security_events
+    where kind = 'ops_console_door' and actor_id = '60000000-0000-4000-8000-000000000005'),
+  'every non-staff knock on the console door is recorded');
+select assert_true(
+  (select count(*) = 1 from private.security_events
+    where kind = 'ops_console_door' and alerted),
+  'door alert is capped: one alert per account per hour');
+
+-- Static: every function this migration defines in public/private pins its
+-- search path, and every writer is volatile.
+select assert_true(
+  (select bool_and(coalesce(p.proconfig, '{}') @> array['search_path=""'])
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private')
+      and p.proname in ('ops_level','staff_account_ok','is_ops','is_owner','require_owner',
+                        'require_owner_fresh','assert_an_owner_remains','ops_appoint_staff',
+                        'ops_remove_staff','ops_staff','my_ops_level')),
+  'every 0060 function pins search_path');
+select assert_true(
+  (select bool_and(p.provolatile = 'v')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('ops_appoint_staff','ops_remove_staff','my_ops_level')),
+  'every 0060 function that writes is volatile');
+select assert_true(
+  not has_function_privilege('anon', 'public.my_ops_level()', 'execute')
+  and not has_function_privilege('anon', 'public.ops_appoint_staff(uuid,text,text)', 'execute'),
+  'nothing in 0060 is callable anonymously');
+
 do $$ begin raise notice 'ALL OPS V2 ASSERTIONS HELD'; end $$;
 rollback;

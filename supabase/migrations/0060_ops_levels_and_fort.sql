@@ -240,3 +240,59 @@ end;
 $$;
 revoke all on function public.ops_staff() from public, anon;
 grant execute on function public.ops_staff() to authenticated;
+
+-- ═══ 4. witnessed ═════════════════════════════════════════════════════════════
+
+-- Lock 6: the record of what staff did cannot be rewritten by anyone — not a
+-- dispatcher, not an owner, not a definer function, not the table owner.
+-- (A superuser can still drop the trigger; that act is itself a migration.)
+create or replace function private.ops_audit_append_only()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'ops_audit is append-only' using errcode = 'insufficient_privilege';
+end;
+$$;
+revoke all on function private.ops_audit_append_only() from public, anon, authenticated;
+
+drop trigger if exists ops_audit_no_change on private.ops_audit;
+create trigger ops_audit_no_change
+  before update or delete on private.ops_audit
+  for each row execute function private.ops_audit_append_only();
+drop trigger if exists ops_audit_no_truncate on private.ops_audit;
+create trigger ops_audit_no_truncate
+  before truncate on private.ops_audit
+  for each statement execute function private.ops_audit_append_only();
+
+-- The console's door. Navigation only — the console asks this to decide which
+-- screen to show; authorization stays in is_ops(). It does not raise, so a
+-- non-staff sign-in can be recorded and alerted (0044's trip(): once per
+-- account per hour, global cap). It takes no argument: it cannot be asked
+-- about anyone else.
+create or replace function public.my_ops_level()
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid   uuid := (select auth.uid());
+  v_level text := private.ops_level();
+begin
+  if v_uid is null then
+    return null;
+  end if;
+  if v_level is null then
+    perform private.trip('ops_console_door');
+  end if;
+  return jsonb_build_object(
+    'level',      v_level,
+    'aal',        coalesce((select auth.jwt()) ->> 'aal', 'aal1'),
+    'account_ok', case when v_level is null then false else private.staff_account_ok(v_uid) end);
+end;
+$$;
+revoke all on function public.my_ops_level() from public, anon;
+grant execute on function public.my_ops_level() to authenticated;
