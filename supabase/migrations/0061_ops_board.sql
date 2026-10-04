@@ -169,3 +169,65 @@ end;
 $$;
 revoke all on function public.ops_board() from public, anon;
 grant execute on function public.ops_board() to authenticated;
+
+-- ═══ 3. the live map ═════════════════════════════════════════════════════════
+-- The only reader of driver_availability.lat/lng (0039): latest point only,
+-- only when fresh and accurate enough to stand for a position. A trip is drawn
+-- at its latest reported fix or not at all — nothing here computes one.
+create or replace function public.ops_live_map()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_fresh integer := private.setting_int('dispatch_location_fresh_minutes', 45);
+  v_today date    := (now() at time zone 'Asia/Muscat')::date;
+begin
+  perform private.require_ops();
+
+  return jsonb_build_object(
+    'drivers', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', a.driver_id, 'name', p.full_name, 'lat', a.lat, 'lng', a.lng,
+               'at', a.located_at, 'accuracy_m', a.accuracy_m) order by a.located_at desc)
+        from public.driver_availability a
+        join public.profiles p on p.id = a.driver_id
+       where a.available
+         and a.lat is not null and a.lng is not null
+         and a.located_at > now() - make_interval(mins => v_fresh)
+         and coalesce(a.accuracy_m, 0) <= 1000), '[]'::jsonb),
+
+    'trips', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', t.id, 'load_id', t.load_id, 'driver_name', p.full_name,
+               'lat', f.lat, 'lng', f.lng, 'at', f.seen_at,
+               'origin', jsonb_build_object('lat', o.lat, 'lng', o.lng, 'name', o.name_en),
+               'dest',   jsonb_build_object('lat', d.lat, 'lng', d.lng, 'name', d.name_en)))
+        from public.trips t
+        join public.loads l on l.id = t.load_id
+        join public.cities o on o.id = l.origin_city
+        join public.cities d on d.id = l.dest_city
+        join public.profiles p on p.id = t.driver_id
+        left join lateral (
+          select tp.lat, tp.lng, tp.seen_at from public.trip_positions tp
+           where tp.trip_id = t.id order by tp.seen_at desc limit 1) f on true
+       where t.status = 'in_transit'::public.trip_status), '[]'::jsonb),
+
+    'loads', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', l.id, 'status', l.status, 'pricing_mode', l.pricing_mode,
+               'origin', jsonb_build_object('lat', o.lat, 'lng', o.lng, 'name', o.name_en),
+               'dest',   jsonb_build_object('lat', d.lat, 'lng', d.lng, 'name', d.name_en)))
+        from public.loads l
+        join public.cities o on o.id = l.origin_city
+        join public.cities d on d.id = l.dest_city
+       where l.status in ('posted'::public.load_status, 'finding_truck'::public.load_status,
+                          'quoted'::public.load_status, 'accepted'::public.load_status,
+                          'matched'::public.load_status)
+         and l.pickup_to >= v_today), '[]'::jsonb));
+end;
+$$;
+revoke all on function public.ops_live_map() from public, anon;
+grant execute on function public.ops_live_map() to authenticated;

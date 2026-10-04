@@ -166,11 +166,53 @@ select assert_true((select count(*) = 1 from private.ops_audit where action = 'o
 select assert_true((select acknowledged_by = '61000000-0000-4000-8000-0000000000e1' from private.ops_alerts where kind = 'test_kind'),
   'and it records who acknowledged it');
 
+
+-- ═══ 2. the live map ═══════════════════════════════════════════════════════
+insert into public.driver_availability (driver_id, available, city_id, source, lat, lng, accuracy_m, located_at, updated_at)
+values ('61000000-0000-4000-8000-0000000000d1', true, city('Muscat'), 'gps', 23.588, 58.408, 20, now() - interval '5 minutes', now())
+on conflict (driver_id) do update set available = true, lat = 23.588, lng = 58.408, accuracy_m = 20,
+  located_at = now() - interval '5 minutes';
+insert into public.driver_availability (driver_id, available, city_id, source, lat, lng, accuracy_m, located_at, updated_at)
+values ('61000000-0000-4000-8000-0000000000d2', true, city('Sohar'), 'gps', 24.34, 56.73, 20, now() - interval '2 hours', now())
+on conflict (driver_id) do update set available = true, lat = 24.34, lng = 56.73, accuracy_m = 20,
+  located_at = now() - interval '2 hours';
+
+select act_as_staff('61000000-0000-4000-8000-0000000000e1', 'aal1', null);
+select assert_not_found($$select public.ops_live_map()$$, 'a dispatcher without 2FA cannot see the map');
+select act_as_staff('61000000-0000-4000-8000-0000000000e1', 'aal2', 1);
+select public.ops_live_map() as m \gset
+select act_as_reset();
+select assert_true(jsonb_typeof(:'m'::jsonb -> 'drivers') = 'array' and jsonb_typeof(:'m'::jsonb -> 'trips') = 'array'
+  and jsonb_typeof(:'m'::jsonb -> 'loads') = 'array', 'drivers, trips and loads are always arrays');
+select assert_true(exists (select 1 from jsonb_array_elements(:'m'::jsonb -> 'drivers') d
+  where d ->> 'id' = '61000000-0000-4000-8000-0000000000d1' and (d ->> 'lat')::numeric = 23.588),
+  'an online driver with a fresh, accurate point is on the map');
+select assert_true(not exists (select 1 from jsonb_array_elements(:'m'::jsonb -> 'drivers') d
+  where d ->> 'id' = '61000000-0000-4000-8000-0000000000d2'),
+  'stale: a driver whose point is 2 hours old is not on the map');
+select assert_true(exists (select 1 from jsonb_array_elements(:'m'::jsonb -> 'trips') t
+  where t ->> 'id' = '61000000-0000-4000-8000-000000000204' and t -> 'lat' = 'null'::jsonb and t -> 'origin' ->> 'name' = 'Muscat'),
+  'a trip with no reported fix has its route but no position — nothing computes one');
+select assert_true(exists (select 1 from jsonb_array_elements(:'m'::jsonb -> 'trips') t
+  where t ->> 'id' = '61000000-0000-4000-8000-000000000205' and (t ->> 'lat')::numeric = 23.2),
+  'a trip with a fix is drawn at its latest fix');
+select assert_true(exists (select 1 from jsonb_array_elements(:'m'::jsonb -> 'loads') l
+  where l ->> 'id' = '61000000-0000-4000-8000-000000000101'),
+  'a waiting load is on the map');
+
+update public.driver_availability set located_at = now(), accuracy_m = 5000
+ where driver_id = '61000000-0000-4000-8000-0000000000d2';
+select act_as_staff('61000000-0000-4000-8000-0000000000e1', 'aal2', 1);
+select assert_true(not exists (select 1 from jsonb_array_elements(public.ops_live_map() -> 'drivers') d
+  where d ->> 'id' = '61000000-0000-4000-8000-0000000000d2'),
+  'a point 5 km uncertain is not drawn as a position');
+select act_as_reset();
+
 -- ═══ static ════════════════════════════════════════════════════════════════
 select assert_true(
   (select bool_and(coalesce(p.proconfig, '{}') @> array['search_path=""'])
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('ops_board', 'ops_ack_alert')),
+    where n.nspname = 'public' and p.proname in ('ops_board', 'ops_ack_alert', 'ops_live_map')),
   'every 0061 function pins search_path');
 select assert_true(
   (select provolatile = 'v' from pg_proc where proname = 'ops_ack_alert')
