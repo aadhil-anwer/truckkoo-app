@@ -1633,6 +1633,48 @@ select assert_true(
     where kind = 'test' order by id desc limit 1),
   'with a webhook set, the alert is queued to pg_net');
 
+-- ─── 10c. alerts by email (0048) ────────────────────────────────────────────
+
+delete from private.app_settings where key = 'alert_webhook_url';
+insert into private.app_settings (key, value)
+values ('alert_email_to', '"founder@example.com, ops@example.com"'::jsonb)
+on conflict (key) do update set value = excluded.value;
+select private.system_raise_alert('test_email', 'no key yet', '{}'::jsonb);
+select assert_true(
+  (select email_request_id is null from private.ops_alerts
+    where kind = 'test_email' order by id desc limit 1),
+  'an address without the Vault key sends nothing — and does not fail');
+
+select vault.create_secret('re_test_key', 'resend_api_key');
+select private.system_raise_alert('test_email',
+  E'2 loads waiting over 30 min\nf3f3f3f3 9a8b7c6d', '{}'::jsonb);
+select assert_true(
+  (select q.url = 'https://api.resend.com/emails'
+      and q.headers->>'Authorization' = 'Bearer re_test_key'
+      and b->'to' = '["founder@example.com", "ops@example.com"]'::jsonb
+      and b->>'subject' = '[Truckkoo] 2 loads waiting over 30 min'
+      and b->>'text' like '%f3f3f3f3%'
+      and b->>'from' like '%onboarding@resend.dev%'
+     from private.ops_alerts a
+     join net.http_request_queue q on q.id = a.email_request_id,
+          lateral (select convert_from(q.body, 'utf8')::jsonb as b) x
+    where a.kind = 'test_email' order by a.id desc limit 1),
+  'with an address and a key, the alert is emailed: every recipient, first line as subject');
+
+select assert_true(
+  not has_table_privilege('authenticated', 'vault.secrets', 'select')
+  and not has_table_privilege('anon', 'vault.secrets', 'select')
+  and not exists (select 1 from private.app_settings where value::text like '%re_test_key%'),
+  'the key lives only in Vault, which no client role reads');
+
+select assert_true(
+  (select not (h->'problems' ? 'no alert destination is set — alerts are recorded but not sent')
+     from (select private.system_health() as h) x),
+  'health counts email as somewhere for alerts to go');
+
+delete from private.app_settings where key = 'alert_email_to';
+delete from vault.secrets where name = 'resend_api_key';
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- 11. Migration 0035 — client errors, app config, outside health check
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1742,7 +1784,7 @@ select act_as_reset();
 
 select assert_true(
   (select (h->>'ok')::boolean = false
-      and h->'problems' ? 'alert_webhook_url is not set — alerts are recorded but not sent'
+      and h->'problems' ? 'no alert destination is set — alerts are recorded but not sent'
      from (select private.system_health() as h) x),
   'health is not ok while alerts have nowhere to go');
 

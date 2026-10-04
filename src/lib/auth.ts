@@ -17,6 +17,7 @@ import { t } from '@/i18n';
 import { startTracking, stopTracking, trackingNow } from './background-location';
 import { registerPush, unregisterPush } from '@/lib/push';
 import { OMAN_DIAL } from './auth-draft';
+import { reportFailure } from './monitoring';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
 
@@ -65,7 +66,14 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   // Deliberately one message for wrong-password AND unknown-email: telling the
   // caller which one it was confirms whether an account exists (SECURITY.md §3).
-  if (error) return { ok: false, message: t('error.signIn.failed') };
+  if (error) {
+    // A wrong password is the user's, not a problem; anything without a 4xx
+    // (no signal, auth down) is one, and is the kind nobody calls to report.
+    if (!(typeof error.status === 'number' && error.status >= 400 && error.status < 500)) {
+      reportFailure('sign_in', error);
+    }
+    return { ok: false, message: t('error.signIn.failed') };
+  }
   return { ok: true };
 }
 
@@ -89,6 +97,7 @@ export async function signUpWithEmail(
     if (raw.includes('password')) {
       return { ok: false, message: t('error.password.short') };
     }
+    reportFailure('sign_up', error);
     return { ok: false, message: t('error.generic') };
   }
 
@@ -271,7 +280,10 @@ export async function createProfile(input: {
     phone: input.phone ? safeText(input.phone) : null,
   });
 
-  if (error) return { ok: false, message: t('error.generic') };
+  if (error) {
+    reportFailure('create_profile', error);
+    return { ok: false, message: t('error.generic') };
+  }
   return { ok: true };
 }
 
@@ -290,7 +302,10 @@ export async function createTruck(input: {
     plate: input.plate ? safeText(input.plate) : null,
   });
 
-  if (error) return { ok: false, message: t('error.generic') };
+  if (error) {
+    reportFailure('create_truck', error);
+    return { ok: false, message: t('error.generic') };
+  }
   return { ok: true };
 }
 

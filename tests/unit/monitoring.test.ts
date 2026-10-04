@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/react-native';
 
-import { initMonitoring, scrub } from '@/lib/monitoring';
+import { initMonitoring, reportFailure, scrub } from '@/lib/monitoring';
 
 type Options = Parameters<typeof Sentry.init>[0] & {
   beforeSend: (e: Record<string, any>) => Record<string, any> | null;
@@ -52,5 +52,40 @@ describe('monitoring', () => {
     const { beforeBreadcrumb } = options();
     expect(beforeBreadcrumb({ category: 'console', message: 'Salim, 91234567' })).toBeNull();
     expect(beforeBreadcrumb({ category: 'navigation' })).not.toBeNull();
+  });
+
+  describe('reportFailure', () => {
+    const last = () => (Sentry.captureException as jest.Mock).mock.calls.at(-1);
+
+    it('groups by flow and code, so a kind of failure emails once, not once per tap', () => {
+      reportFailure('book_load', { message: 'price changed', code: 'P0001' });
+      const [error, context] = last();
+      expect(error.message).toBe('book_load: price changed');
+      expect(context).toMatchObject({
+        level: 'warning',
+        tags: { flow: 'book_load', code: 'P0001', handled: 'yes' },
+        fingerprint: ['handled', 'book_load', 'P0001'],
+      });
+    });
+
+    it('never sends a Postgres error\'s details, which echo the failing row', () => {
+      reportFailure('create_profile', {
+        message: 'new row violates check constraint',
+        code: '23514',
+        details: 'Failing row contains (Ahmed, +968 9123 4567, cement)',
+      });
+      const [error, context] = last();
+      expect(JSON.stringify([error.message, error.name, context])).not.toMatch(/Ahmed|cement|9123/);
+    });
+
+    it('scrubs a phone number from the message itself', () => {
+      reportFailure('sign_up', new Error('duplicate key (phone)=(+968 9123 4567)'));
+      expect(last()[0].message).not.toMatch(/9123/);
+    });
+
+    it('names an auth error by its HTTP status when it has no code', () => {
+      reportFailure('sign_in', { message: 'upstream', status: 503 });
+      expect(last()[1].tags.code).toBe('http_503');
+    });
   });
 });

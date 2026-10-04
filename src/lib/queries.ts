@@ -335,6 +335,7 @@ export type BookInput = {
 export function useBookLoad() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'book_load' },
     mutationFn: async (input: BookInput) => {
       const { data, error } = await supabase.rpc('book_load', {
         p_origin_city: input.originCity,
@@ -364,6 +365,7 @@ export function useBookLoad() {
 export function useQuoteLoad() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'quote_load' },
     mutationFn: async (loadId: string): Promise<Quote | null> => {
       const { data, error } = await supabase.rpc('quote_load', { p_load_id: loadId });
       if (error) throw error;
@@ -393,6 +395,7 @@ export function useQuoteLoad() {
 export function useAcceptQuote() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'accept_quote' },
     mutationFn: async (loadId: string): Promise<LoadStatus> => {
       const { data, error } = await supabase.rpc('accept_quote', { p_load_id: loadId });
       if (error) throw error;
@@ -436,6 +439,7 @@ export type PostBidLoadInput = {
 export function usePostBidLoad() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'post_bid_load' },
     mutationFn: async (input: PostBidLoadInput): Promise<{ loadId: string }> => {
       const { data, error } = await supabase.rpc('post_bid_load', {
         p_origin_city: input.originCity,
@@ -543,6 +547,7 @@ function invalidateBidding(qc: ReturnType<typeof useQueryClient>, loadId: string
 export function useAcceptDriverBid() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'accept_driver_bid' },
     mutationFn: async ({ loadId, bidId }: { loadId: string; bidId: string }) => {
       const { data, error } = await supabase.rpc('accept_driver_bid', {
         p_load_id: loadId,
@@ -559,6 +564,7 @@ export function useAcceptDriverBid() {
 export function useCloseBidding() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'close_bidding' },
     mutationFn: async (loadId: string) => {
       const { error } = await supabase.rpc('close_bidding', { p_load_id: loadId });
       if (error) throw error;
@@ -571,6 +577,7 @@ export function useCloseBidding() {
 export function useSetBidTarget() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'set_bid_target' },
     mutationFn: async ({ loadId, targetBaisa }: { loadId: string; targetBaisa: number | null }) => {
       const { error } = await supabase.rpc('set_bid_target', {
         p_load_id: loadId,
@@ -793,6 +800,7 @@ export function useDriverLoadBids(offerId: string | undefined, { live = true } =
 export function usePlaceDriverBid() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'place_driver_bid' },
     mutationFn: async ({ offerId, payoutBaisa }: { offerId: string; payoutBaisa: number }) => {
       const { error } = await supabase.rpc('place_driver_bid', {
         p_offer_id: offerId,
@@ -841,6 +849,7 @@ export function useMyAvailability() {
 export function useSetAvailable() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'set_available' },
     mutationFn: async (input: { available: boolean; lat?: number; lng?: number }) => {
       const { error } = await supabase.rpc('set_available', {
         p_available: input.available,
@@ -1117,6 +1126,7 @@ export function useMyTrips() {
 export function useRespondToOffer() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'respond_to_offer' },
     mutationFn: async ({ offerId, accept }: { offerId: string; accept: boolean }) => {
       const { data, error } = await supabase.rpc('respond_to_offer', {
         p_offer_id: offerId,
@@ -1156,6 +1166,7 @@ export type PostLegInput = {
 export function usePostLeg() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'post_leg' },
     mutationFn: async (input: PostLegInput): Promise<string> => {
       const { data, error } = await supabase.rpc('post_leg', {
         p_origin_city: input.originCity,
@@ -1176,6 +1187,7 @@ export function usePostLeg() {
 export function useAdvanceTrip() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'advance_trip' },
     mutationFn: async ({
       tripId,
       to,
@@ -1283,6 +1295,7 @@ export function useDriverSummary(driverId: string | null | undefined) {
 export function useRateTrip() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'rate_trip' },
     mutationFn: async ({ tripId, stars }: { tripId: string; stars: number }) => {
       const { error } = await supabase.rpc('rate_trip', { p_trip_id: tripId, p_stars: stars });
       if (error) throw error;

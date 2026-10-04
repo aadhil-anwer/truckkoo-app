@@ -48,6 +48,7 @@ import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
 import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
 import { directionsLink, safeText } from '@/lib/safe-text';
+import { reportFailure } from '@/lib/monitoring';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
@@ -134,6 +135,9 @@ export default function TripScreen() {
     }
 
     setUploading(true);
+    // Which half failed: the upload is reported here, advance_trip by the
+    // mutation cache — never both.
+    let uploaded = false;
     try {
       // The path's first segment is the trip id — the storage policies authorise
       // on exactly that, so it is not a naming convention, it is the check.
@@ -145,10 +149,12 @@ export default function TripScreen() {
         .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
 
       if (uploadError) throw uploadError;
+      uploaded = true;
 
       await advance.mutateAsync({ tripId: id, to: 'delivered', photoPath: path });
       router.replace('/driver');
-    } catch {
+    } catch (e) {
+      if (!uploaded) reportFailure('upload_pod', e);
       setError(t('error.generic'));
     } finally {
       setUploading(false);

@@ -42,6 +42,7 @@ import { align, getLanguage, t, type Language } from '@/i18n';
 import { signOut } from '@/lib/auth';
 import { usePush } from '@/lib/push-context';
 import { setLanguage } from '@/lib/language';
+import { reportFailure } from '@/lib/monitoring';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { useSession } from '@/lib/session';
 import {
@@ -102,7 +103,8 @@ export default function AccountTab() {
     setSignOutError(false);
     try {
       await signOut();
-    } catch {
+    } catch (e) {
+      reportFailure('sign_out', e);
       setSignOutError(true);
     } finally {
       setSigningOut(false);
