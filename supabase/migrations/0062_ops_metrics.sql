@@ -162,3 +162,35 @@ end;
 $$;
 revoke all on function public.ops_metrics(text) from public, anon;
 grant execute on function public.ops_metrics(text) to authenticated;
+
+-- ═══ health ═════════════════════════════════════════════════════════════════
+-- One read for the owner's health strip. App versions come from client error
+-- reports (0035) until something better exists, so the list is "versions that
+-- have reported a problem", not "versions installed" — the console says so.
+create or replace function public.ops_health()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_owner();
+  return jsonb_build_object(
+    'system', private.system_health(),
+    'alerts_24h', (select count(*) from private.ops_alerts a where a.created_at > now() - interval '24 hours'),
+    'alerts_unacknowledged', (select count(*) from private.ops_alerts a
+                               where a.created_at > now() - interval '24 hours' and a.acknowledged_at is null),
+    'new_error_groups_24h', (select count(*) from private.error_groups g where g.first_seen_at > now() - interval '24 hours'),
+    'app_versions', coalesce((
+      select jsonb_agg(jsonb_build_object('version', v.app_version, 'platform', v.platform,
+                                          'reports', v.reports, 'last_seen', v.last_seen)
+                       order by v.last_seen desc)
+        from (select e.app_version, e.platform, count(*) as reports, max(e.created_at) as last_seen
+                from private.client_errors e
+               where e.created_at > now() - interval '7 days' and e.app_version is not null
+               group by e.app_version, e.platform) v), '[]'::jsonb));
+end;
+$$;
+revoke all on function public.ops_health() from public, anon;
+grant execute on function public.ops_health() to authenticated;

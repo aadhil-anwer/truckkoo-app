@@ -181,5 +181,29 @@ select assert_true(
   and not has_function_privilege('authenticated', 'private.ops_metrics_window(timestamptz, timestamptz)', 'execute'),
   'ops_metrics is stable, pinned, not anonymous; its window helper is ungranted');
 
+
+-- ═══ health ════════════════════════════════════════════════════════════════
+select act_as_staff('62000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_not_found($$select public.ops_health()$$, 'a dispatcher cannot read system health');
+select act_as_staff('62000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+select public.ops_health() as h0 \gset
+select act_as_reset();
+select private.system_raise_alert('health_test', 'Health test', '{}'::jsonb);
+select id as hid from private.ops_alerts where kind = 'health_test' \gset
+select act_as_staff('62000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+select public.ops_health() as h1 \gset
+select public.ops_ack_alert(:hid);
+select public.ops_health() as h2 \gset
+select act_as_reset();
+select assert_true((:'h1'::jsonb -> 'system') = private.system_health(),
+  'health carries the system check as system_health() reports it');
+select assert_true(n(:'h1'::jsonb, 'alerts_24h') - n(:'h0'::jsonb, 'alerts_24h') = 1
+  and n(:'h1'::jsonb, 'alerts_unacknowledged') - n(:'h0'::jsonb, 'alerts_unacknowledged') = 1,
+  'a new alert counts in the day''s alerts and the unacknowledged ones');
+select assert_true(n(:'h2'::jsonb, 'alerts_unacknowledged') = n(:'h0'::jsonb, 'alerts_unacknowledged')
+  and n(:'h2'::jsonb, 'alerts_24h') = n(:'h1'::jsonb, 'alerts_24h'),
+  'acknowledging it clears it from unacknowledged, not from the day''s count');
+select assert_true(jsonb_typeof(:'h1'::jsonb -> 'app_versions') = 'array', 'app versions is always a list');
+
 do $$ begin raise notice 'ALL OPS METRICS ASSERTIONS HELD'; end $$;
 rollback;
