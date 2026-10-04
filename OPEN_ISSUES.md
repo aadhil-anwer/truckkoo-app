@@ -9,6 +9,86 @@ an entry only when it is actually closed.
 
 ---
 
+## From the Load 24 teardown (2026-10-04)
+
+Load 24 (Nafith) runs two Oman apps: a trucker app and a cargo-owner app. Both
+were walked on a phone and the shipper APK was read offline. The screenshots
+and notes are in `~/load24-teardown/` (outside the repo). The test account was
+deleted afterwards.
+
+Their model is a two-sided load board. Shippers post "deals" or browse trucks,
+drivers browse deals, and the two sides bid and phone each other. Their
+markets are Oman and Egypt, with locations at governorate level. Each entry
+below is something they do that we lack, or a weakness of theirs that we only
+beat on paper so far.
+
+### Drivers wait with nothing to do after sign-up
+
+Their drivers upload documents and then find Deals, Offers and Availability
+locked behind "Your account is under review", with no time estimate. Our
+verification is built but not surfaced (issue 6 below), so a new driver here
+has the same experience.
+
+**Done when:** an unverified driver sees their status ("checking your papers —
+usually within a day"), what an offer will look like, and Available stays on so
+the first offer arrives the moment they are verified.
+
+### No Urdu
+
+Load 24 ships Arabic, English and Urdu, with the switch on the login screen.
+A large share of GCC drivers read Urdu (or Hindi/Malayalam) before Arabic.
+
+**Done when:** the founder decides which third language comes first. Then it
+needs a dictionary through `t()`, an RTL check through `preview:rtl` (Urdu is
+RTL), and a native reader's proof.
+
+### "No commission" is their headline, and we say nothing
+
+Their first screen for drivers is "No commission – earn more!". Their own Terms
+say fees "are subject to change". Our bid fee is meant to be 0 at launch
+(`ops_set_bid_fee(0, …)`), but no screen or page says so.
+
+**Done when:** the fee rule is written in the app and on the website. It must
+not be a slogan that can be taken back, and it must match the configured fee.
+
+### Nothing to report a driver or shipper
+
+They have Report abuse on a truck (`TRUCK_ALREADY_REPORTED` guards repeats). We
+have no way for either side to flag bad behaviour.
+
+**Done when:** both sides can flag the other from a trip, and the flag reaches
+a dispatcher through an `ops_*` read.
+
+### Our edges over them exist in code but not in what we say
+
+Load 24 tracks only by request: the shipper sends a tracking request (even by
+typing any trucker's phone number) and the driver must accept it. Their shipper
+app shows drivers' full names, prices and a Call button to anyone, without
+logging in. Support is Sun–Thu 9–6. They price nothing until drivers bid.
+Ours:
+- tracking is on for every in-transit trip (0032);
+- drivers are invisible to shippers until assigned;
+- support is "7 days a week";
+- the price is instant, but only once the rate card is loaded (issue 13).
+
+**Done when:** onboarding, the website and the driver pitch say these four
+things in plain words, and the rate card makes the instant price real.
+
+### Their mistakes, written down so we don't repeat them
+
+- **A 60-minute resend wait on the sign-up code**, with no "change number". When
+  WhatsApp codes land, keep the resend under a minute and offer an edit link.
+- **Blank document photos accepted.** Five solid-black images passed as a
+  licence, a mulkiya and a truck photo. Any upload we add needs a blank/blur check.
+- **Permissions asked before any value is shown.** Notifications came on first
+  launch, location immediately after sign-up, both with generic wording. Theirs
+  is good in one place: nearby deals are blurred behind "Allow Location".
+- **Guests see an empty screen.** Neither of our apps has a guest view yet. If
+  we add one, it must show something real, such as a route price, never "come
+  back later".
+
+---
+
 ## Automatic dispatch (0036, 2026-09-27)
 
 Uber/Porter-style dispatch replaced the dispatcher as the first step: instant
@@ -107,10 +187,15 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
 - **Ops console not updated (Phase F).** It shows new `dispatch_log` modes
   (`nearby`, `mixed`) and the `exhausted` ending raw, and still has the stale
   "In phase 2 you will be able to send one" copy.
-- **A double tap can book twice.** `book_load`, like `post_load` before it, has
-  no idempotency key; the button disables while pending, but a retry after a
-  timeout on bad signal posts a second load. Fix: a client request id, unique
-  per shipper.
+- **A double tap can book twice — FIXED IN SOURCE 2026-10-04 (0047), not yet in
+  production.** `book_load` and `post_bid_load` take an optional request id; the
+  review screen makes one per visit and sends it on every tap, so a retry after a
+  timeout gets the first load back (dispatch.sql §12, bidding.sql §15). Order
+  matters: `npx supabase db push` **before** the JS ships — the new parameter
+  does not exist on 0046's functions, so the app would fail every booking. A
+  binary without the change sends no id and books as before. Still open: leaving
+  the review screen and coming back makes a new id, so a timeout followed by
+  Back → Book again can still post twice.
 - **The shipper is not told when a price changed under them.** `book_load` posts
   unaccepted and the load screen shows the new price to accept, but says nothing
   about it having moved.
@@ -294,7 +379,13 @@ trips against a database without 0033 shows the history's retry state, not a
 crash. Push with `npx supabase db push` before handing out a build. The daily
 `drift.yml` check fails while this (or any migration) is unapplied.
 
-### The city list never retries after one failure
+### The city list never retries after one failure — FIXED IN SOURCE 2026-10-04
+
+Now: `useCities`/`useTruckTypes` refetch on foreground (`focusManager`), on
+pull-to-refresh on every tab and the load screen, and every 30 s while failed
+(`RETRY_WHILE_FAILED`, `tests/unit/reference-queries.test.tsx`). Still open: a
+screen shows "—" rather than a skeleton until the list arrives. Unverified on a
+device. The original report:
 
 `useCities` is `staleTime: Infinity`. If its one fetch fails — bad signal, or a
 database that was missing `lat`/`lng` as production was on 2026-09-26 — every
