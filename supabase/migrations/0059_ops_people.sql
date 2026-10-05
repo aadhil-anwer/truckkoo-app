@@ -76,14 +76,20 @@ begin
   )
   select pg.id, pg.role::text, pg.full_name, pg.phone, pg.created_at, pg.verified_at,
          pg.suspended_at, pg.online, pg.staff_level,
+         -- Things the PERSON did. Not offers.created_at (automatic dispatch
+         -- writes those to every online driver each wave) and not
+         -- driver_availability.updated_at (the 0038 sweep bumps it when it
+         -- switches a driver off). located_at is the phone itself reporting.
          greatest(
            (select max(l.created_at) from public.loads l where l.shipper_id = pg.id),
            (select max(l.accepted_at) from public.loads l where l.shipper_id = pg.id),
-           (select max(o.created_at) from public.offers o where o.driver_id = pg.id),
            (select max(b.updated_at) from private.driver_bids b where b.driver_id = pg.id),
+           -- Events on their own trips, except notes staff added to them.
            (select max(e.occurred_at) from public.trip_events e join public.trips t on t.id = e.trip_id
-             where t.driver_id = pg.id),
-           (select da.updated_at from public.driver_availability da where da.driver_id = pg.id)
+             where t.driver_id = pg.id and (e.created_by is null or e.created_by = pg.id)),
+           (select max(lg.created_at) from public.legs lg where lg.driver_id = pg.id),
+           (select max(dd.created_at) from public.driver_documents dd where dd.driver_id = pg.id),
+           (select da.located_at from public.driver_availability da where da.driver_id = pg.id)
          ),
          (select count(*) from public.trips t where t.driver_id = pg.id),
          (select count(*) from public.loads l where l.shipper_id = pg.id),
@@ -137,7 +143,7 @@ as $$
            when 'pending'::public.offer_status then 'Offered a load: '
            when 'accepted'::public.offer_status then 'Accepted a load: '
            when 'declined'::public.offer_status then 'Declined a load: '
-           else 'Let an offer lapse: ' end || r.route,
+           else 'Offer closed: ' end || r.route,
          case o.source when 'bid' then 'invited to bid' when 'auto' then 'automatic dispatch' else 'sent by a dispatcher' end,
          'load', o.load_id::text, null
     from public.offers o join routes r on r.id = o.load_id
@@ -149,7 +155,7 @@ as $$
    where b.driver_id = p_id
   -- both: trips and what happened on them
   union all
-  select t.created_at, 'trip_started:' || t.id, 'trip_started', 'Trip started: ' || t.route,
+  select t.created_at, 'trip_started:' || t.id, 'trip_started', 'Took the job: ' || t.route,
          null, 'trip', t.id::text, null
     from my_trips t
   union all
@@ -158,7 +164,7 @@ as $$
     from public.trip_events e join my_trips t on t.id = e.trip_id
   union all
   select ra.created_at, 'rating:' || ra.trip_id, 'rating',
-         case when ra.driver_id = p_id then 'Rated ' else 'Gave ' end || ra.stars || ' stars',
+         case when ra.driver_id = p_id then 'Was rated ' else 'Gave ' end || ra.stars || ' stars',
          null, 'trip', ra.trip_id::text, null
     from public.ratings ra where ra.driver_id = p_id or ra.shipper_id = p_id
   -- account
@@ -193,7 +199,15 @@ as $$
       or (a.target_kind = 'driver_document'
           and a.target_id in (select dd.id::text from public.driver_documents dd where dd.driver_id = p_id))
       or (a.target_kind = 'truck'
-          and a.target_id in (select tr.id::text from public.trucks tr where tr.owner_id = p_id));
+          and a.target_id in (select tr.id::text from public.trucks tr where tr.owner_id = p_id))
+      or (a.target_kind = 'offer'
+          and a.target_id in (select o.id::text from public.offers o where o.driver_id = p_id))
+      or (a.target_kind = 'leg'
+          and a.target_id in (select lg.id::text from public.legs lg where lg.driver_id = p_id))
+      -- A trip reassigned away from them no longer names them; its audit row's
+      -- before-state still does, and that is the trace of why.
+      or (a.target_kind in ('trip', 'load')
+          and p_id::text in (a.before ->> 'driver_id', a.after ->> 'driver_id'));
 $$;
 revoke all on function private.person_history(uuid) from public, anon, authenticated;
 
@@ -372,8 +386,9 @@ begin
   perform private.log_ops('ops_view_as', 'account', v_p.id::text, null,
                           jsonb_build_object('role', v_p.role), v_reason);
   perform private.system_raise_alert('owner_view_as',
-    format('Owner viewed the app as %s (%s). See ops_audit.', coalesce(v_p.full_name, 'a user'),
-           upper(left(v_p.id::text, 8))),
+    -- Short id only: this text leaves by email and webhook, and no alert
+    -- carries a name, phone or cargo (0048).
+    format('Owner viewed the app as user %s. See ops_audit.', upper(left(v_p.id::text, 8))),
     jsonb_build_object('action', 'ops_view_as', 'owner_id', v_owner, 'profile_id', v_p.id));
 
   begin

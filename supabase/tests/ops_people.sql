@@ -342,6 +342,53 @@ begin
 end $$;
 rollback to savepoint broken;
 
+-- ═══ 9. review fixes ═══════════════════════════════════════════════════════
+-- Staff actions on a driver's offer, leg, and a trip taken off them all reach
+-- the driver's page.
+insert into public.legs (id, driver_id, origin_city, dest_city, depart_from, depart_to) values
+  ('65000000-0000-4000-8000-000000000601', '65000000-0000-4000-8000-0000000000d1', city('Sohar'), city('Muscat'), current_date + 3, current_date + 4);
+insert into private.ops_audit (actor_id, action, target_kind, target_id, before, after, reason, created_at) values
+  ('65000000-0000-4000-8000-0000000000f2', 'ops_expire_offer', 'offer', '65000000-0000-4000-8000-000000000304', null, null, 'driver unreachable', now() - interval '30 minutes'),
+  ('65000000-0000-4000-8000-0000000000f2', 'ops_set_leg_status', 'leg', '65000000-0000-4000-8000-000000000601', null, null, 'driver cancelled the run', now() - interval '29 minutes'),
+  ('65000000-0000-4000-8000-0000000000f2', 'ops_reassign_trip', 'trip', '65000000-0000-4000-8000-0000000009ff',
+   jsonb_build_object('driver_id', '65000000-0000-4000-8000-0000000000d1'), jsonb_build_object('driver_id', '65000000-0000-4000-8000-0000000000aa'),
+   'truck broke down at Barka', now() - interval '28 minutes');
+-- A driver whose only trace is an automatic offer has done nothing.
+insert into auth.users (id, email, email_confirmed_at) values ('65000000-0000-4000-8000-0000000000d2', 'd2@people.test', now());
+insert into public.profiles (id, role, full_name) values ('65000000-0000-4000-8000-0000000000d2', 'driver', 'People Idle Driver');
+insert into public.offers (load_id, driver_id, status, source, expires_at) values
+  ('65000000-0000-4000-8000-000000000103', '65000000-0000-4000-8000-0000000000d2', 'pending', 'auto', now() + interval '5 minutes');
+update public.driver_availability set updated_at = now() where driver_id = '65000000-0000-4000-8000-0000000000d2';
+
+select act_as_staff('65000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+create temp table fix_d on commit drop as select public.ops_person('65000000-0000-4000-8000-0000000000d1') j;
+create temp table fix_idle on commit drop as select * from public.ops_people(p_search => 'People Idle');
+select act_as_reset();
+select assert_true((select count(*) = 3 from fix_d, jsonb_array_elements(fix_d.j->'history') h
+                     where h->>'kind' = 'staff_action'
+                       and h->>'detail' in ('driver unreachable', 'driver cancelled the run', 'truck broke down at Barka')),
+  'staff actions on the driver''s offer, leg, and a trip taken off them are on their page');
+select assert_true((select last_active_at is null from fix_idle),
+  'an automatic offer or a system availability change is not the driver being active');
+select assert_true(not exists (select 1 from fix_d, jsonb_array_elements(fix_d.j->'history') h
+                                where h->>'title' like 'Let an offer lapse%' or h->>'title' like 'Rated %'),
+  'history titles do not blame a driver for a lapsed offer or call a received rating theirs');
+select assert_true(exists (select 1 from fix_d, jsonb_array_elements(fix_d.j->'history') h where h->>'title' like 'Was rated 4 stars%'),
+  'a driver''s rating reads as received');
+-- The alert goes to email and a webhook: no customer name (0048).
+delete from private.app_settings where key = 'alert_webhook_url';
+insert into private.app_settings (key, value) values ('alert_webhook_url', '"http://127.0.0.1:9/alert"'::jsonb);
+select act_as_staff('65000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+select public.ops_view_as('65000000-0000-4000-8000-0000000000d1', 'checking the alert text') is not null;
+select act_as_reset();
+select assert_true((select count(*) >= 1 from net.http_request_queue q
+                     where q.url = 'http://127.0.0.1:9/alert' and convert_from(q.body, 'utf8') like '%viewed the app%'),
+  'the see-as alert went to the webhook');
+select assert_true(not exists (select 1 from net.http_request_queue q
+                                where q.url = 'http://127.0.0.1:9/alert' and convert_from(q.body, 'utf8') like '%People Driver%'),
+  'the see-as alert carries no customer name');
+delete from private.app_settings where key = 'alert_webhook_url';
+
 -- ═══ 8. static ═════════════════════════════════════════════════════════════
 select assert_true((select bool_and(p.provolatile <> 'v')
                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
