@@ -21,6 +21,7 @@ import { t } from '@/i18n';
 import { finishSetup } from '@/lib/auth';
 import { OMAN_DIAL, getAuthDraft, isOmaniMobile, stepPosition, updateAuthDraft } from '@/lib/auth-draft';
 import { font } from '@/theme/tokens';
+import { asciiDigits } from '@/lib/numerals';
 
 export default function Phone() {
   const router = useRouter();
@@ -68,14 +69,14 @@ export default function Phone() {
       ctaDisabled={digits.length === 0}
       ctaLoading={busy}
       onCta={() => go(digits)}
-      tertiary={t('auth.phone.skip')}
-      onTertiary={() => go(null)}
+      tertiary={draft.role === 'driver' ? undefined : t('auth.phone.skip')}
+      onTertiary={draft.role === 'driver' ? undefined : () => go(null)}
     >
       <TextField
         value={digits}
         onChangeText={(v) => {
           // Digits only: a pasted "+968 9123 4567" keeps its last eight.
-          setDigits(v.replace(/\D/g, '').replace(/^968(?=\d{8}$)/, '').slice(0, 8));
+          setDigits(asciiDigits(v).replace(/\D/g, '').replace(/^968(?=\d{8}$)/, '').slice(0, 8));
           setError(null);
         }}
         error={error}

@@ -100,6 +100,7 @@ jest.mock('@/lib/queries', () => {
   return {
     ...actual,
     useCities: jest.fn(),
+    useDriverVerification: jest.fn(),
     useTruckTypes: jest.fn(),
     useMyLoads: jest.fn(),
     useMyLegs: jest.fn(),
@@ -148,6 +149,7 @@ jest.mock('@/lib/queries', () => {
     useShipperBidStatus: jest.fn(),
     useAcceptDriverBid: jest.fn(),
     useCloseBidding: jest.fn(),
+    useExtendBidding: jest.fn(),
     useSetBidTarget: jest.fn(),
     useDriverBidInvites: jest.fn(),
     useDriverBidInvite: jest.fn(),
@@ -433,6 +435,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   // actually starts in, so it is the default here — a fixture that hands every
   // test "4.9 · 212 trips" would let the absent-rating rule rot untested.
   m('useDriverSummary').mockReturnValue(ok(null));
+  m('useDriverVerification').mockReturnValue(ok(null));
 
   // 0045. DEFAULT: NO AUCTION ANYWHERE — no prices on any load, no invitation
   // for any driver. A test about bidding sets the one it is about.
@@ -444,6 +447,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useShipperBidStatus').mockReturnValue(ok(null));
   m('useAcceptDriverBid').mockReturnValue({ mutate: mockAcceptBidMutate, isPending: false });
   m('useCloseBidding').mockReturnValue({ mutate: jest.fn(), isPending: false });
+  m('useExtendBidding').mockReturnValue({ mutate: jest.fn(), isPending: false });
   m('useSetBidTarget').mockReturnValue({ mutate: jest.fn(), isPending: false });
   m('useDriverBidInvites').mockReturnValue(ok([]));
   m('useDriverBidInvite').mockReturnValue(ok(null));

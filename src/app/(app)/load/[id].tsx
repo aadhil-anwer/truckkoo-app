@@ -47,8 +47,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Alert, Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -83,6 +83,8 @@ import { useSession } from '@/lib/session';
 import {
   cityIndex,
   useAcceptDriverBid,
+  useCloseBidding,
+  useExtendBidding,
   useShipperBidStatus,
   useShipperLoadBids,
   useAcceptQuote,
@@ -168,6 +170,8 @@ export default function TrackLoad() {
   const bids = useShipperLoadBids(bidLoadId);
   const bidStatus = useShipperBidStatus(bidLoadId);
   const acceptBid = useAcceptDriverBid();
+  const closeBidding = useCloseBidding();
+  const extendBidding = useExtendBidding();
   const [pickedBid, setPickedBid] = useState<string | null>(null);
   const [bidError, setBidError] = useState<string | null>(null);
   // Keep the price on screen while it ticks down.
@@ -326,6 +330,32 @@ export default function TrackLoad() {
             names={truckName}
           />
         )}
+        {biddingOpen && (
+          <View style={styles.block}>
+            <SectionLabel>{t('bid.manage.title')}</SectionLabel>
+            <SecondaryButton
+              label={t('bid.manage.limit')}
+              onPress={() => router.push(`/bid/limit?loadId=${encodeURIComponent(load.id)}` as Href)}
+            />
+            <TertiaryButton
+              label={t('bid.manage.extend')}
+              onPress={() => {
+                if (!extendBidding.isPending) extendBidding.mutate(load.id, {
+                  onError: () => setBidError(t('bid.manage.unavailable')),
+                });
+              }}
+            />
+            <TertiaryButton
+              label={t('bid.manage.close')}
+              onPress={() => !closeBidding.isPending && Alert.alert(t('bid.manage.close'), t('bid.manage.closeExplain'), [
+                { text: t('common.back'), style: 'cancel' },
+                { text: t('bid.manage.closeConfirm'), onPress: () => closeBidding.mutate(load.id, {
+                  onError: () => setBidError(t('bid.manage.unavailable')),
+                }) },
+              ])}
+            />
+          </View>
+        )}
         {proposing && (
           <BidsProposal
             bids={live}
@@ -388,6 +418,15 @@ export default function TrackLoad() {
             </Text>
           )}
         </View>
+
+        {status !== 'cancelled' && (
+          <View style={styles.block}>
+            <SecondaryButton label={t('case.report')}
+              onPress={() => router.push(`/case?loadId=${encodeURIComponent(load.id)}` as Href)} />
+            {!delivered && <TertiaryButton label={t('case.cancel.action')}
+              onPress={() => router.push(`/case?loadId=${encodeURIComponent(load.id)}&cancel=1` as Href)} />}
+          </View>
+        )}
 
         {delivered && <Rating trip={trip} />}
         {delivered && <Proof events={events.data} />}

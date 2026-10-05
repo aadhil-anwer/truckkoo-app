@@ -116,6 +116,17 @@ describe('dictionary integrity', () => {
     expect(missing).toEqual([]);
   });
 
+  it('every English key has a non-empty Urdu value with the same placeholders', () => {
+    const placeholders = (value: string) => [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    for (const [key, english] of Object.entries(dictionaries.en)) {
+      const urdu = dictionaries.ur[key as keyof typeof dictionaries.en];
+      expect(urdu?.trim()).toBeTruthy();
+      expect(placeholders(urdu ?? '')).toEqual(placeholders(english));
+    }
+    initLanguage('ur');
+    expect(t('book.origin.q')).toBe('سامان ابھی کہاں ہے؟');
+  });
+
   it('never renders a raw key for a missing Arabic value', () => {
     initLanguage('ar');
     for (const key of KEYS) {

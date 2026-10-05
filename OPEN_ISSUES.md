@@ -26,21 +26,24 @@ beat on paper so far.
 
 Their drivers upload documents and then find Deals, Offers and Availability
 locked behind "Your account is under review", with no time estimate. Our
-verification is built but not surfaced (issue 6 below), so a new driver here
-has the same experience.
+verification now collects ID front/back, mulkiya, truck photo, plate and maximum
+capacity during signup (0050). Driver home has a document/review card, and the
+account screen reopens the upload flow. Ops reviews documents before verifying
+the truck and driver. The migration enables the verified-driver dispatch gate.
 
-**Done when:** an unverified driver sees their status ("checking your papers —
-usually within a day"), what an offer will look like, and Available stays on so
-the first offer arrives the moment they are verified.
+**Remaining:** physical-device upload/retry proof, human review of the copy,
+and deployment. No review-time promise has been invented. Blank or blurred
+photos require human rejection; automatic image-quality detection is deferred.
 
-### No Urdu
+### Urdu — complete draft copy, device proof pending, 2026-10-05
 
-Load 24 ships Arabic, English and Urdu, with the switch on the login screen.
-A large share of GCC drivers read Urdu (or Hindi/Malayalam) before Arabic.
+The founder chose Urdu. Every English dictionary key now has Urdu draft copy,
+with persistence, profile storage, native first-launch RTL, font handling and
+an account selector. Placeholder coverage is checked and `preview:rtl` writes
+an Urdu proof sheet alongside Arabic.
 
-**Done when:** the founder decides which third language comes first. Then it
-needs a dictionary through `t()`, an RTL check through `preview:rtl` (Urdu is
-RTL), and a native reader's proof.
+**Remaining:** native-reader proofreading and a fresh-install device check.
+City/truck proper names use English until an approved Urdu reference source exists.
 
 ### "No commission" is their headline, and we say nothing
 
@@ -51,13 +54,42 @@ say fees "are subject to change". Our bid fee is meant to be 0 at launch
 **Done when:** the fee rule is written in the app and on the website. It must
 not be a slogan that can be taken back, and it must match the configured fee.
 
-### Nothing to report a driver or shipper
+### Shipment problem reports — implemented, deployment pending
 
 They have Report abuse on a truck (`TRUCK_ALREADY_REPORTED` guards repeats). We
-have no way for either side to flag bad behaviour.
+now have participant-scoped reports from load/trip screens (0052), with a guarded,
+audited ops queue in `~/truckkoo-ops`. Unassigned loads cancel immediately;
+assigned/in-transit cancellation requests go to dispatch without abandoning cargo.
 
-**Done when:** both sides can flag the other from a trip, and the flag reaches
-a dispatcher through an `ops_*` read.
+**Remaining:** clean database-suite validation and physical-device/ops workflow
+proof. Case resolution records what dispatch did; any trip/load state change uses
+the existing guarded ops action on the linked load.
+
+### WhatsApp OTP — dormant integration and screens
+
+The signed Supabase Auth hook, client transport and phone/code screens are
+implemented behind `WHATSAPP_AUTH = false`. Meta's number, credentials and
+approved authentication template are not available. Email/OAuth remains active.
+Account linking, the approved template shape and real delivery/device tests remain
+activation gates; see `docs/whatsapp-otp-activation.md`.
+
+### Validation of 0050–0053
+
+Mobile typecheck/lint pass, with two existing duplicate-import warnings. All 814 mobile
+assertions pass across 60 suites; Jest still retains an unidentified handle, including under
+`--detectOpenHandles`, so the final test command uses `--forceExit`. Ops typecheck,
+lint and 73 tests pass using Vitest's runner config loader with caching disabled.
+Arabic/Urdu proof generation and migration numbering pass. The final focused,
+rollback-only SQL suite passes verification, storage isolation, signup, reports,
+cancellation and bidding ops guards. Bidding visibility stays out of ops by the
+founder's decision; fixed-price actions are rejected server-side for bid loads.
+
+The full database command stops in the existing tenant test: `match_load` expects
+one matching leg but finds three in the shared demo database. That instance also
+contains newer staff-security changes from another checkout. No production
+deployment or device proof has occurred. Local schema was applied manually;
+migration history remains at 0049. Validate every suite on a clean isolated
+instance before deploying; do not reset the shared database or fake its history.
 
 ### Our edges over them exist in code but not in what we say
 
@@ -98,12 +130,11 @@ before a person is alerted. Proven by `supabase/tests/dispatch.sql` (56
 assertions), the other three suites (updated), concurrency runs against two
 live sessions, and `tests/integration/auto-dispatch-screens.test.tsx`.
 
-**Before launch — `require_verified_driver` is still OFF.** Left off on the
+**Production status must be checked — `require_verified_driver` was OFF.** Left off on the
 founder's call (2026-09-27) so the app could be shared before drivers were
 vetted. While off, unverified drivers are offered loads — which contradicts the
-website's "100% verified drivers". Near launch: verify the real drivers in the
-ops console, then
-`update private.app_settings set value = 'true' where key = 'require_verified_driver';`
+website's "100% verified drivers". Migration 0050 now enables the flag. Before
+applying it, review the real driver/truck records in the ops console;
 (`nearby_drivers` and `accept_offer` both honour it; dispatch.sql tests both ways).
 
 **When 0036 reaches production:**
@@ -1607,13 +1638,13 @@ the screen is not — see 8c.
 
 ## Deferred by decision
 
-### 6. Driver verification is built but not surfaced
+### 6. Driver verification — implemented locally, validation pending
 
-`profiles.verified_at` exists and `private.is_verified_driver()` gates on it,
-but there is no verification UI and the gate sits behind a flag. Deferred
-deliberately — the MVP proves matching first. Public copy already claims "100%
-verified drivers", so this cannot ship to real users unverified without either
-the flow or a change to the claim.
+Migration 0050 and the signup/upload/ops review surfaces implement this flow.
+Verification lives on `drivers.verified_at`; all four documents and a reviewed
+truck with plate/capacity are required for new verification. Existing verified
+records are grandfathered. See the Load 24 entries above for remaining validation
+and deployment gates.
 
 ### 7. Arabic copy is partial — HALF CLOSED 2026-08-01
 

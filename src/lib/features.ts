@@ -39,3 +39,8 @@ export const DECLARED_TRIPS: boolean = false;
  * shippers; until then posting fails with "bid fee is not configured".
  */
 export const BIDDING: boolean = true;
+
+/** Supabase phone auth through Meta's signed Send SMS hook. Keep disabled until
+ * the approved template, server secrets, identity linking and device tests pass
+ * the activation gates in docs/whatsapp-otp-activation.md. */
+export const WHATSAPP_AUTH: boolean = false;

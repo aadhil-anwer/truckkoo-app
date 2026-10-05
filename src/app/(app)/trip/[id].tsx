@@ -33,7 +33,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -335,6 +335,9 @@ export default function TripScreen() {
               {error}
             </Text>
           )}
+
+          <SecondaryButton label={t('drv.job.problem')}
+            onPress={() => router.push(`/case?tripId=${encodeURIComponent(id)}` as Href)} />
 
           {/* Stated while it is happening, and gone when it stops — which is
               also when the database stops accepting fixes. There is no toggle:

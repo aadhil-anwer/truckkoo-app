@@ -13,6 +13,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { initLanguage } from '@/i18n';
 import * as language from '@/lib/language';
 
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   const { View } = require('react-native');

@@ -1853,6 +1853,47 @@ select assert_equals((select count(*) from public.load_places), 0,
   'a driver reads no place from the table — only through the driver functions');
 select act_as_reset();
 
+-- ─── verification documents and shipment cases (0050, 0052) ───────────────
+-- Both owned tables have no client table grant. Actor-scoped RPCs are the only
+-- path; another driver's ID or another shipper's case must return nothing.
+insert into public.driver_documents(driver_id, kind, object_path)
+values ('33333333-3333-4333-8333-333333333333', 'id_front',
+  '33333333-3333-4333-8333-333333333333/id_front/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg');
+insert into public.shipment_cases(load_id, reporter_id, kind, details)
+values ('aaaaaaaa-0000-4000-8000-000000000001',
+  '11111111-1111-4111-8111-111111111111', 'delay', 'The truck is late at the gate');
+
+select act_as('44444444-4444-4444-8444-444444444444');
+select assert_raises($$select * from public.driver_documents$$,
+  'another driver cannot read document metadata table');
+select assert_equals((select count(*) from public.driver_document_status()), 0,
+  'another driver sees no verification documents');
+select assert_raises($$select * from public.ops_driver_documents('33333333-3333-4333-8333-333333333333')$$,
+  'a driver cannot invoke the ops document review read');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_equals((select count(*) from public.driver_document_status()), 1,
+  'driver sees only their own verification status');
+select assert_raises($$select * from public.shipment_cases$$,
+  'driver cannot read shipment case table');
+select act_as_reset();
+
+select act_as('22222222-2222-4222-8222-222222222222');
+select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-0000-4000-8000-000000000001')),
+  0, 'another shipper sees no case for the load');
+select assert_raises($$select public.request_load_cancellation(
+  'aaaaaaaa-0000-4000-8000-000000000001', 'Please cancel this load now')$$,
+  'another shipper cannot cancel the load');
+select assert_raises($$select * from public.ops_shipment_cases()$$,
+  'a shipper cannot read the ops case queue');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-0000-4000-8000-000000000001')),
+  1, 'reporting shipper sees their own case');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;

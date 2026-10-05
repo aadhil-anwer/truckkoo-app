@@ -29,6 +29,7 @@ Layer 1 is the one that survives a careless refactor, which is why it exists.
 | `suspended_reason` | Shown to the suspended user by `private.require_active`, so a user who could edit it could rewrite the record of their own suspension. | Ops only |
 
 Client may write: `full_name`, `phone`, `language`.
+`language` now accepts `en`, `ar`, or `ur` (0051); it is still only a display preference.
 Client may read (own row only): everything above **except `suspended_by`**.
 
 > A column-level `revoke` does **not** cut a hole in a table-level `grant` —
@@ -60,6 +61,25 @@ Client may write: nothing. The row is created by ops.
 | `owner_id` | Ownership transfer = theft primitive | Nobody |
 
 Client may write: `truck_type`, `plate`, `capacity_kg` (on own rows).
+After ops verification, a trigger rejects edits and deletion until verification
+is removed. The declared capacity must fit the selected truck class (0050).
+
+## `driver_documents` (0050)
+
+Client table access: **none**. The driver submits a private Storage path through
+`submit_driver_document`; the definer derives `driver_id` from `auth.uid()` and
+checks that the object already exists under that driver's path. Drivers can read
+only their own review status through `driver_document_status`. `status`,
+`review_note`, `reviewed_by`, and `reviewed_at` are ops-only. Ops reviews are
+audited; signed URLs are short-lived and the bucket is private.
+
+## `shipment_cases` (0052)
+
+Client table access: **none**. `reporter_id`, `status`, `resolution`,
+`resolved_by`, and `resolved_at` are never accepted as client authority. The
+reporting RPC checks load or trip participation internally. `my_shipment_cases`
+returns only the reporter's own rows; `ops_shipment_cases` is the approved,
+guarded cross-tenant queue. Resolution is an audited ops write.
 
 ## `loads`
 

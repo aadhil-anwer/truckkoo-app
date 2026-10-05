@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, AppState, I18nManager, Platform, StyleSheet, Text, View } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -227,8 +227,16 @@ function Gate() {
     // Once on the setup questions themselves, the screens walk forward alone.
     if (!profile) {
       const atEntry =
-        segments.includes('welcome') || segments.includes('email') || segments.includes('password');
+        segments.includes('welcome') || segments.includes('email') || segments.includes('password') ||
+        segments.includes('otp-phone') || segments.includes('otp-code');
       if (!inAuth || atEntry) router.replace('/role');
+      return;
+    }
+
+    if (inAuth && profile.role === 'driver' && segments.includes('plate')) {
+      // Profile refresh and the last signup step can complete in either order.
+      // Both paths must open documents rather than racing to the home screen.
+      router.replace('/verification' as Href);
       return;
     }
 

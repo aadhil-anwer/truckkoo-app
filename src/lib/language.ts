@@ -31,14 +31,14 @@ import { supabase } from '@/lib/supabase';
 export const LANGUAGE_KEY = 'truckkoo.language';
 
 function isLanguage(v: string | null): v is Language {
-  return v === 'en' || v === 'ar';
+  return v === 'en' || v === 'ar' || v === 'ur';
 }
 
 /** Whether the native layout direction disagrees with the chosen language. */
 export function needsReload(lang: Language, isRTL: boolean | undefined): boolean {
   // `!!` because react-native-web does not report a boolean here, and
   // `false !== undefined` read every English launch in a browser as a mismatch.
-  return (lang === 'ar') !== !!isRTL;
+  return (lang !== 'en') !== !!isRTL;
 }
 
 /**
@@ -72,7 +72,7 @@ export async function loadLanguage(): Promise<Language> {
   // would rewrite the native flag on every single launch; applying it only on a
   // mismatch means the next launch is quiet.
   bootMismatch = needsReload(lang, I18nManager.isRTL);
-  if (bootMismatch) I18nManager.forceRTL(lang === 'ar');
+  if (bootMismatch) I18nManager.forceRTL(lang !== 'en');
   return lang;
 }
 

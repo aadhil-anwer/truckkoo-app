@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { AppState } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { PushCtx } from '@/lib/push-context';
 import { useSession } from '@/lib/session';
@@ -37,10 +38,19 @@ export function __resetPushLaunch(): void {
 
 export function PushProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const queries = useQueryClient();
   const { session, profile } = useSession();
   const [access, setAccess] = useState<PushAccess | null>(null);
   const [settled, setSettled] = useState(false);
   const signedIn = !!session && !!profile;
+
+  // Push is only a hint. Refresh the actor-scoped data before showing a state
+  // that may have changed while the app was asleep or on another phone.
+  const refreshWork = useCallback(() => {
+    for (const key of ['loads', 'load', 'trips', 'trip', 'legs', 'offers', 'driver', 'bids', 'quote']) {
+      void queries.invalidateQueries({ queryKey: [key] });
+    }
+  }, [queries]);
 
   // Once per launch, once signed in: register, or decide whether to ask.
   useEffect(() => {
@@ -74,6 +84,7 @@ export function PushProvider({ children }: { children: ReactNode }) {
     if (!signedIn) return;
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
+      refreshWork();
       pushStatus()
         .then((now) => {
           setAccess(now.access);
@@ -82,15 +93,17 @@ export function PushProvider({ children }: { children: ReactNode }) {
         .catch(() => {});
     });
     return () => sub.remove();
-  }, [signedIn]);
+  }, [signedIn, refreshWork]);
 
   // A tap opens the thing it is about — while running, and from a cold start.
   useEffect(() => {
     if (!signedIn) return;
     const open = (data: unknown) => {
+      refreshWork();
       const href = hrefFor(data);
       if (href) router.push(href as Href);
     };
+    const received = Notifications.addNotificationReceivedListener(() => refreshWork());
     const sub = Notifications.addNotificationResponseReceivedListener((r) =>
       open(r.notification.request.content.data),
     );
@@ -102,8 +115,8 @@ export function PushProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {});
     }
-    return () => sub.remove();
-  }, [signedIn, router]);
+    return () => { sub.remove(); received.remove(); };
+  }, [signedIn, router, refreshWork]);
 
   const request = useCallback(async () => {
     const next = await requestPush().catch(() => 'denied' as PushAccess);

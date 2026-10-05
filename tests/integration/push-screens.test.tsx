@@ -18,6 +18,7 @@ import { Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import DriverHome from '@/app/(app)/(tabs)/driver';
 import NotificationsPermission from '@/app/(app)/notifications-permission';
@@ -55,9 +56,11 @@ beforeEach(async () => {
 
 describe('PushProvider', () => {
   const app = (
-    <PushProvider>
-      <Text>app</Text>
-    </PushProvider>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } })}>
+      <PushProvider>
+        <Text>app</Text>
+      </PushProvider>
+    </QueryClientProvider>
   );
 
   it('asks a new account right after sign-up, once per launch', async () => {

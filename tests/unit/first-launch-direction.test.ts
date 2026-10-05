@@ -35,10 +35,8 @@ describe('with-first-launch-direction', () => {
     expect(out.indexOf('forceRTL(this, true)')).toBeLessThan(out.indexOf('loadReactNative(this)'));
   });
 
-  it('keys on Arabic, matching initLanguage — not on any RTL language', () => {
-    // An Urdu phone gets English from initLanguage; seeding RTL for it would
-    // trade this bug for a permanent mismatch.
-    expect(out).toContain('.language == "ar"');
+  it('keys on Arabic and Urdu, matching initLanguage', () => {
+    expect(out).toContain('.language in listOf("ar", "ur")');
     expect(out).not.toMatch(/LAYOUT_DIRECTION_RTL|getLayoutDirectionFromLocale/);
   });
 

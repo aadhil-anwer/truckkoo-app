@@ -25,7 +25,7 @@ npm run verify        # typecheck + lint + test
 | `security/env-guard.test.ts` | The service-role-key-in-the-client guard. |
 | `security/schema-invariants.test.ts` | Static assertions over the migration SQL, including that the pricing formula has no client-side twin. |
 
-The two SQL suites need the local stack (`npx supabase start`) and run together
+The eight SQL suites need the local stack (`npx supabase start`) and run together
 under `npm run test:db`:
 
 | Path | What it protects |
@@ -69,8 +69,10 @@ to make a build pass.
   `OPEN_ISSUES.md` items 9 and 10.
 - **RTL layout.** `align` and `directionArrow` are tested; whether the horizontal
   pager lays out correctly in Arabic is not, and cannot be without a device.
-- **Storage policies.** The `pod` bucket's append-only behaviour is asserted
-  statically against the SQL, not exercised against real Storage.
+- **Storage service integration.** The `pod` bucket's append-only behaviour is
+  asserted statically against SQL. The verification suite exercises row access
+  to private `storage.objects`, but signed URL expiry and image upload still need
+  a device and the Storage service.
 - **Real rates.** `pricing.sql` loads one throwaway band inside a transaction it
   rolls back. Every assertion about a *computed* price is therefore against a rate
   this suite invented — which proves the arithmetic, and proves nothing about

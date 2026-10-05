@@ -32,6 +32,7 @@
 
 import { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -56,7 +57,7 @@ import {
 } from '@/theme/tokens';
 
 /** Each language names itself, in itself. Nobody looks for "Arabic" in English. */
-const LANGUAGE_NAME: Record<Language, string> = { en: 'English', ar: 'العربية' };
+const LANGUAGE_NAME: Record<Language, string> = { en: 'English', ar: 'العربية', ur: 'اردو' };
 
 /** Two words at most. A third initial is noise at 64px. */
 function initialsOf(name: string): string {
@@ -72,6 +73,7 @@ function initialsOf(name: string): string {
 }
 
 export default function AccountTab() {
+  const router = useRouter();
   const { profile } = useSession();
   const push = usePush();
   const insets = useSafeAreaInsets();
@@ -135,6 +137,8 @@ export default function AccountTab() {
         {restartNeeded && <Notice icon="info">{t('account.language.hint')}</Notice>}
 
         <DetailGroup label={t('account.details')}>
+          {isDriver && <DetailRow label={t('account.verification')} value={t('account.verification.open')}
+            onPress={() => router.push('/verification' as Href)} />}
           <DetailRow label={t('auth.phone')} value={safeText(profile?.phone ?? '—')} />
           <DetailRow
             label={t('push.row')}
@@ -185,7 +189,7 @@ export default function AccountTab() {
             </View>
 
             <View accessibilityRole="radiogroup" accessibilityLabel={t('account.language')}>
-              {(['en', 'ar'] as const).map((lang) => (
+              {(['en', 'ar', 'ur'] as const).map((lang) => (
                 <SelectRow
                   key={lang}
                   title={LANGUAGE_NAME[lang]}

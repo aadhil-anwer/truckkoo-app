@@ -1005,6 +1005,26 @@ select act_as_reset();
 select act_as('33333333-0000-4000-8000-00000000cccc');
 
 select assert_raises(
+  $$select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', true)$$,
+  'verification now requires reviewed documents and truck');
+select act_as_reset();
+
+insert into public.driver_documents(driver_id, kind, object_path, status) values
+  ('22222222-0000-4000-8000-00000000bbbb', 'id_front',
+   '22222222-0000-4000-8000-00000000bbbb/id_front/11111111-1111-4111-8111-111111111111.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'id_back',
+   '22222222-0000-4000-8000-00000000bbbb/id_back/22222222-2222-4222-8222-222222222222.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'mulkiya',
+   '22222222-0000-4000-8000-00000000bbbb/mulkiya/33333333-3333-4333-8333-333333333333.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'truck_photo',
+   '22222222-0000-4000-8000-00000000bbbb/truck_photo/44444444-4444-4444-8444-444444444444.jpg', 'approved')
+on conflict (driver_id, kind) do update set status = 'approved';
+update public.trucks set verified_at = now()
+where id = 'c0c0c0c0-0000-4000-8000-000000000001';
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_raises(
   $$select public.ops_verify_driver('11111111-0000-4000-8000-00000000aaaa', true)$$,
   'a shipper cannot be verified as a driver');
 -- Losing why someone was verified is not a thing a checkbox should do.

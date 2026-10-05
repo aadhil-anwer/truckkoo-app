@@ -96,6 +96,21 @@ const withDriverOffer = () => {
 /* ─── D1 / D3 · the driver's home ────────────────────────────────────────── */
 
 describe('DriverHome', () => {
+  it('keeps unfinished verification reachable after signup is interrupted', async () => {
+    (queries.useDriverVerification as jest.Mock).mockReturnValue(ok({ verified: false, documents: [] }));
+    await render(<DriverHome />);
+    expect(screen.getByText('Finish your documents')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Open driver verification'));
+    expect(mockPush).toHaveBeenCalledWith('/verification');
+  });
+
+  it('shows review state after all documents are submitted', async () => {
+    (queries.useDriverVerification as jest.Mock).mockReturnValue(ok({ verified: false,
+      documents: ['id_front', 'id_back', 'mulkiya', 'truck_photo'].map((kind) => ({ kind, status: 'pending' })) }));
+    await render(<DriverHome />);
+    expect(screen.getByText('Checking your papers')).toBeTruthy();
+  });
+
   it('names the consequence, not the empty state — once declared trips ship', async () => {
     // "No offers yet" tells a driver nothing they can act on. The matching
     // engine is worth nothing until drivers declare legs, so the emptiest screen

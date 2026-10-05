@@ -14,6 +14,34 @@ import type { PlacePayload } from './booking';
 const LOAD_COLUMNS =
   "id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description, status, price_baisa, currency, created_at, pricing_mode, bid_deadline";
 
+export type DriverDocumentStatus = {
+  kind: 'id_front' | 'id_back' | 'mulkiya' | 'truck_photo';
+  status: 'pending' | 'approved' | 'rejected';
+  review_note: string | null;
+};
+
+/** A driver's own review state. The query key includes the account because the
+ * root QueryClient survives sign-out and another driver may use this phone. */
+export function useDriverVerification() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['driver', 'verification', profile?.id],
+    enabled: profile?.role === 'driver',
+    queryFn: async () => {
+      const [driver, documents] = await Promise.all([
+        supabase.from('drivers').select('verified_at').eq('profile_id', profile!.id).maybeSingle(),
+        supabase.rpc('driver_document_status'),
+      ]);
+      if (driver.error) throw driver.error;
+      if (documents.error) throw documents.error;
+      return {
+        verified: !!driver.data?.verified_at,
+        documents: (documents.data ?? []) as DriverDocumentStatus[],
+      };
+    },
+  });
+}
+
 /* ─── types ──────────────────────────────────────────────────────────────── */
 
 export type City = {
@@ -586,6 +614,22 @@ export function useSetBidTarget() {
       if (error) throw error;
     },
     onSettled: (_d, _e, { loadId }) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** Give invited drivers another 30 minutes, within the server's hard deadline. */
+export function useExtendBidding() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'extend_bidding' },
+    mutationFn: async (loadId: string) => {
+      const { error } = await supabase.rpc('extend_bidding', {
+        p_load_id: loadId,
+        p_minutes: 30,
+      });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, loadId) => invalidateBidding(qc, loadId),
   });
 }
 

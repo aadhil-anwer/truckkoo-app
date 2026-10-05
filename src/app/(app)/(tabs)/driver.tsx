@@ -34,7 +34,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,6 +62,7 @@ import {
   useCities,
   useDriverEarnings,
   useDriverBidInvites,
+  useDriverVerification,
   useDriverOffers,
   useDriverTrip,
   useMyAvailability,
@@ -88,6 +89,7 @@ export default function DriverHome() {
   // Loads waiting for this driver to name a price (0045).
   const invites = useDriverBidInvites();
   const earnings = useDriverEarnings();
+  const verification = useDriverVerification();
   const trips = useMyTrips();
   const respond = useRespondToOffer();
   const availability = useMyAvailability();
@@ -169,6 +171,7 @@ export default function DriverHome() {
     offers.refetch();
     invites.refetch();
     earnings.refetch();
+    verification.refetch();
     trips.refetch();
     cities.refetch();
     // The job card has its own query. Leaving it out made pull-to-refresh
@@ -225,6 +228,23 @@ export default function DriverHome() {
         <Text style={styles.greeting} numberOfLines={2}>
           {greeting}
         </Text>
+
+        {verification.data && !verification.data.verified && (
+          <PressableSurface
+            onPress={() => router.push('/verification' as Href)}
+            accessibilityLabel={t('drv.verify.open')}
+            style={styles.review}
+          >
+            <Icon name="info" size={22} tint={color.lightText} />
+            <View style={styles.reviewCopy}>
+              <Text style={styles.retryText}>{t(verification.data.documents.length < 4 ||
+                verification.data.documents.some((d) => d.status === 'rejected')
+                  ? 'drv.verify.finish' : 'drv.verify.pending')}</Text>
+              <Text style={styles.body}>{t('drv.verify.open')}</Text>
+            </View>
+            <Icon name="chevron" size={18} tint={alpha.onInk.tertiary} />
+          </PressableSurface>
+        )}
 
         {/* Only once it is real, and only once it formats. `formatMoney` returns
             null for a currency it does not know, and a week's earnings rendered
@@ -403,6 +423,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: hairline.card,
   },
+  review: {
+    flexDirection: 'row', alignItems: 'center', gap: space.md,
+    minHeight: 76, padding: space.lg, borderRadius: radius.row,
+    backgroundColor: color.surface,
+  },
+  reviewCopy: { flex: 1, gap: space.xs },
   jobText: { flex: 1, alignItems: 'flex-start' },
 
   empty: { gap: space.sm, marginTop: space.xl, maxWidth: 320 },

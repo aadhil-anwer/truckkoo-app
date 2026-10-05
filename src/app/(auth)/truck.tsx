@@ -9,14 +9,13 @@
  */
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import { QuestionShell } from '@/components/booking/shells';
 import { SecondaryButton, SelectRow } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { Skeleton } from '@/components/ui';
 import { align, getLanguage, localized, t } from '@/i18n';
-import { finishSetup } from '@/lib/auth';
 import { getAuthDraft, stepPosition, updateAuthDraft } from '@/lib/auth-draft';
 import { useTruckTypes } from '@/lib/queries';
 import { safeText } from '@/lib/safe-text';
@@ -32,26 +31,12 @@ export default function TruckClass() {
   const draft = getAuthDraft();
   const { data: types, isPending, isFetching, refetch } = useTruckTypes();
   const [truck, setTruck] = useState<string | null>(draft.truckType);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { step, total } = stepPosition(draft, 'truck');
 
-  async function finish() {
+  function finish() {
     if (!truck) return;
-    setError(null);
-    setBusy(true);
-    const result = await finishSetup({
-      role: 'driver',
-      fullName: draft.name,
-      omaniMobile: draft.phone || null,
-      truckType: truck,
-    });
-    setBusy(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
-    }
-    router.replace('/done');
+    updateAuthDraft({ truckType: truck });
+    router.push('/capacity' as Href);
   }
 
   return (
@@ -61,9 +46,8 @@ export default function TruckClass() {
       question={t('auth.truck.q', { name: safeText(draft.name) })}
       helper={t('auth.truck.help.fit')}
       onBack={() => router.back()}
-      cta={t('auth.truck.finish')}
+      cta={t('action.continue')}
       ctaDisabled={!truck}
-      ctaLoading={busy}
       onCta={finish}
     >
       {isPending ? (
@@ -102,11 +86,6 @@ export default function TruckClass() {
           ))}
         </View>
       )}
-      {!!error && (
-        <Text style={[arabicIfNeeded(font.bodySmall), styles.error]} accessibilityLiveRegion="polite">
-          {error}
-        </Text>
-      )}
     </QuestionShell>
   );
 }
@@ -114,5 +93,4 @@ export default function TruckClass() {
 const styles = StyleSheet.create({
   list: { gap: space.sm },
   muted: { color: color.mutedText, textAlign: align.start },
-  error: { color: color.danger, textAlign: align.start },
 });

@@ -301,7 +301,18 @@ enable_confirmations = false
 # Template for sending OTP to users
 template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
-max_frequency = "5s"
+max_frequency = "1m0s"
+
+# WhatsApp OTP activation gate: leave phone signup and this hook disabled until
+# the Meta Business number, approved authentication template and server secrets
+# are present and a physical-device round trip has passed.
+# [auth.hook.send_sms]
+# enabled = true
+# uri = "https://<project>.supabase.co/functions/v1/send-whatsapp-otp"
+# secrets = "env(SEND_SMS_HOOK_SECRET)"
+
+# [functions.send-whatsapp-otp]
+# verify_jwt = false  # Supabase Auth signs the hook with Standard Webhooks.
 
 # Use pre-defined map of phone number to OTP for testing.
 # [auth.sms.test_otp]
