@@ -303,3 +303,134 @@ end;
 $$;
 revoke all on function public.ops_person(uuid, timestamptz, text, integer) from public, anon;
 grant execute on function public.ops_person(uuid, timestamptz, text, integer) to authenticated;
+
+-- ═══ 4. a trip's recorded route ══════════════════════════════════════════════
+-- One trip's trip_positions, oldest first, for the trip page's map. Only
+-- in-transit fixes were ever stored (0032) and the sweep keeps 30 days
+-- (position_retention_days), so an empty result is an answer, not an error.
+create or replace function public.ops_trip_route(p_trip_id uuid)
+returns table (seen_at timestamptz, lat double precision, lng double precision, accuracy_m numeric)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_ops();
+  if not exists (select 1 from public.trips t where t.id = p_trip_id) then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  return query
+  select tp.seen_at, tp.lat::double precision, tp.lng::double precision, tp.accuracy_m
+    from public.trip_positions tp
+   where tp.trip_id = p_trip_id
+   order by tp.seen_at, tp.id;
+end;
+$$;
+revoke all on function public.ops_trip_route(uuid) from public, anon;
+grant execute on function public.ops_trip_route(uuid) to authenticated;
+
+-- ═══ 5. see as user ══════════════════════════════════════════════════════════
+-- An owner's read-only look at what a shipper's or driver's app shows now.
+-- It runs the APP'S OWN composing functions as that user, so the view cannot
+-- drift from the phone. The identity swap is transaction-local and undone
+-- before returning; on an error the swap rolls back with the transaction (or
+-- the caller's subtransaction) and is restored explicitly too.
+--
+-- auth.uid() reads request.jwt.claim.sub FIRST and only then the claims JSON,
+-- so both settings are swapped and both restored. Read-only by construction:
+-- every function called here is non-volatile (asserted in ops_people.sql §8).
+-- Volatile itself only because it writes the audit row. Owner, fresh 2FA, a
+-- reason, and an emailed alert (spec §9b locks 4 and 6).
+create or replace function public.ops_view_as(p_profile_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner      uuid := auth.uid();
+  v_p          public.profiles;
+  v_reason     text := btrim(coalesce(p_reason, ''));
+  v_claims     text := current_setting('request.jwt.claims', true);
+  v_claim_sub  text := current_setting('request.jwt.claim.sub', true);
+  v_view       jsonb;
+begin
+  perform private.require_owner_fresh();
+
+  select * into v_p from public.profiles p
+   where p.id = p_profile_id
+     and not exists (select 1 from private.ops_users ou where ou.profile_id = p.id);
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if char_length(v_reason) < 3 then
+    raise exception 'A reason is required' using errcode = 'check_violation';
+  end if;
+
+  perform private.log_ops('ops_view_as', 'account', v_p.id::text, null,
+                          jsonb_build_object('role', v_p.role), v_reason);
+  perform private.system_raise_alert('owner_view_as',
+    format('Owner viewed the app as %s (%s). See ops_audit.', coalesce(v_p.full_name, 'a user'),
+           upper(left(v_p.id::text, 8))),
+    jsonb_build_object('action', 'ops_view_as', 'owner_id', v_owner, 'profile_id', v_p.id));
+
+  begin
+    perform set_config('request.jwt.claims',
+      jsonb_build_object('sub', v_p.id, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    perform set_config('request.jwt.claim.sub', v_p.id::text, true);
+
+    if v_p.role = 'driver'::public.user_role then
+      v_view := jsonb_build_object(
+        'role', 'driver',
+        'offers', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.driver_offers() x),
+        'bid_invites', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.driver_bid_invites() x),
+        'active_trips', (select coalesce(jsonb_agg(to_jsonb(x) order by t.created_at desc), '[]'::jsonb)
+                           from public.trips t, lateral public.driver_trip(t.id) x
+                          where t.driver_id = v_p.id
+                            and t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)),
+        'past_trips', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.driver_trips() x),
+        'earnings', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.driver_earnings() x),
+        'documents', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from public.driver_document_status() x));
+    else
+      -- The shipper app reads its loads straight from public.loads under RLS,
+      -- not through a function: the same columns (src/lib/queries.ts
+      -- LOAD_COLUMNS), scoped explicitly to this shipper.
+      v_view := jsonb_build_object(
+        'role', 'shipper',
+        'loads', (select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb)
+                    from (select l.id, l.origin_city, l.dest_city, l.pickup_from, l.pickup_to, l.weight_kg,
+                                 l.truck_type_code, l.goods_description, l.status, l.price_baisa, l.currency,
+                                 l.created_at, l.pricing_mode, l.bid_deadline
+                            from public.loads l where l.shipper_id = v_p.id) x),
+        'bids', (select coalesce(jsonb_object_agg(l.id::text, jsonb_build_object(
+                    'status', (select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) from public.shipper_bid_status(l.id) s),
+                    'bids', (select coalesce(jsonb_agg(to_jsonb(b)), '[]'::jsonb) from public.shipper_load_bids(l.id) b))),
+                    '{}'::jsonb)
+                   from public.loads l
+                  where l.shipper_id = v_p.id and l.pricing_mode = 'bid'
+                    and l.status not in ('delivered'::public.load_status, 'closed'::public.load_status,
+                                         'cancelled'::public.load_status)));
+    end if;
+
+    perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);
+    perform set_config('request.jwt.claim.sub', coalesce(v_claim_sub, ''), true);
+  exception when others then
+    perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);
+    perform set_config('request.jwt.claim.sub', coalesce(v_claim_sub, ''), true);
+    raise;
+  end;
+
+  if auth.uid() is distinct from v_owner then
+    raise exception 'identity was not restored' using errcode = 'internal_error';
+  end if;
+
+  return jsonb_build_object(
+    'viewed_at', now(),
+    'account', jsonb_build_object('id', v_p.id, 'full_name', v_p.full_name, 'role', v_p.role),
+    'view', v_view);
+end;
+$$;
+revoke all on function public.ops_view_as(uuid, text) from public, anon;
+grant execute on function public.ops_view_as(uuid, text) to authenticated;

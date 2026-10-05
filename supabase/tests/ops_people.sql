@@ -232,4 +232,136 @@ select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search
 select assert_true(not has_function_privilege('authenticated', 'private.person_history(uuid)', 'execute'),
   'the history helper is not callable by clients');
 
+-- ═══ 6. a trip's recorded route ════════════════════════════════════════════
+insert into public.trip_positions (trip_id, driver_id, lat, lng, accuracy_m, seen_at) values
+  ('65000000-0000-4000-8000-000000000201', '65000000-0000-4000-8000-0000000000d1', 23.9, 57.4, 20, now() - interval '5 days' + interval '2 hours'),
+  ('65000000-0000-4000-8000-000000000201', '65000000-0000-4000-8000-0000000000d1', 23.6, 58.4, 15, now() - interval '5 days'),
+  ('65000000-0000-4000-8000-000000000201', '65000000-0000-4000-8000-0000000000d1', 24.3, 56.7, 30, now() - interval '5 days' + interval '4 hours');
+-- L4 + T2: a second trip with no positions, and a pending offer for the driver's view.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, weight_kg, status, price_baisa, pricing_mode) values
+  ('65000000-0000-4000-8000-000000000104', '65000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date + 1, current_date + 1, 'pipes', 4000, 'assigned', 50000, 'fixed'),
+  ('65000000-0000-4000-8000-000000000105', '65000000-0000-4000-8000-0000000000a1', city('Nizwa'), city('Muscat'), current_date + 1, current_date + 1, 'dates', 2000, 'posted', 40000, 'fixed');
+insert into public.trips (id, load_id, driver_id, truck_id, status) values
+  ('65000000-0000-4000-8000-000000000202', '65000000-0000-4000-8000-000000000104', '65000000-0000-4000-8000-0000000000d1', '65000000-0000-4000-8000-0000000000c1', 'assigned');
+insert into public.offers (id, load_id, driver_id, status, source, expires_at) values
+  ('65000000-0000-4000-8000-000000000304', '65000000-0000-4000-8000-000000000105', '65000000-0000-4000-8000-0000000000d1', 'pending', 'auto', now() + interval '5 minutes');
+
+select act_as_staff('65000000-0000-4000-8000-0000000000a1', 'aal2', 1);
+select assert_not_found($$select * from public.ops_trip_route('65000000-0000-4000-8000-000000000201')$$, 'a shipper cannot read a trip route');
+select act_as_staff('65000000-0000-4000-8000-0000000000d1', 'aal2', 1);
+select assert_not_found($$select * from public.ops_trip_route('65000000-0000-4000-8000-000000000201')$$, 'a driver cannot read a trip route');
+select act_as_staff('65000000-0000-4000-8000-0000000000f2', 'aal1', null);
+select assert_not_found($$select * from public.ops_trip_route('65000000-0000-4000-8000-000000000201')$$, 'a dispatcher without 2FA cannot read a trip route');
+select act_as_staff('65000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+create temp table rt on commit drop as select * from public.ops_trip_route('65000000-0000-4000-8000-000000000201');
+create temp table rt0 on commit drop as select * from public.ops_trip_route('65000000-0000-4000-8000-000000000202');
+select assert_not_found($$select * from public.ops_trip_route('65000000-0000-4000-8000-00000000ffff')$$, 'an unknown trip is not found');
+select act_as_reset();
+select assert_true((select array_agg(lat::numeric order by ord) = array[23.6, 23.9, 24.3]::numeric[]
+                      from (select lat, row_number() over () ord from rt) z),
+  'positions come back in the order the phone saw them');
+select assert_true((select count(*) = 0 from rt0), 'a trip with no positions is zero rows, not an error');
+
+-- ═══ 7. see as user ════════════════════════════════════════════════════════
+select act_as_staff('65000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_not_found($$select public.ops_view_as('65000000-0000-4000-8000-0000000000d1', 'checking a complaint')$$,
+  'a dispatcher cannot see as a user');
+select act_as_staff('65000000-0000-4000-8000-0000000000f1', 'aal2', 16);
+select assert_raises($$select public.ops_view_as('65000000-0000-4000-8000-0000000000d1', 'checking a complaint')$$,
+  'an owner with stale 2FA must step up', 'step-up required');
+select act_as_staff('65000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+select assert_not_found($$select public.ops_view_as('65000000-0000-4000-8000-0000000000f2', 'checking a complaint')$$,
+  'a staff account has no app to see as');
+select assert_not_found($$select public.ops_view_as('65000000-0000-4000-8000-00000000ffff', 'checking a complaint')$$,
+  'an unknown account is not found');
+select assert_raises($$select public.ops_view_as('65000000-0000-4000-8000-0000000000d1', '  ')$$,
+  'seeing as a user needs a reason', '%reason%');
+
+-- What the driver and shipper read as themselves …
+select act_as_staff('65000000-0000-4000-8000-0000000000d1', 'aal1', null);
+create temp table own_d on commit drop as select
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.driver_offers() x) offers,
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.driver_bid_invites() x) bid_invites,
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.driver_trips() x) past_trips,
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.driver_earnings() x) earnings,
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.driver_trip('65000000-0000-4000-8000-000000000202') x) active_trip;
+select act_as_staff('65000000-0000-4000-8000-0000000000a1', 'aal1', null);
+create temp table own_s on commit drop as select
+  (select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]')
+     from (select id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description,
+                  status, price_baisa, currency, created_at, pricing_mode, bid_deadline from public.loads) x) loads,
+  (select coalesce(jsonb_agg(to_jsonb(x)), '[]') from public.shipper_bid_status('65000000-0000-4000-8000-000000000102') x) bid_status;
+-- … and what the owner sees through their eyes, in one transaction.
+select act_as_staff('65000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+create temp table va_d on commit drop as select public.ops_view_as('65000000-0000-4000-8000-0000000000d1', 'checking a complaint') j;
+select assert_true(auth.uid() = '65000000-0000-4000-8000-0000000000f1', 'after seeing as a driver, the caller is the owner again');
+select assert_true((select count(*) >= 0 from public.ops_board()), 'and an ops read still works');
+create temp table va_s on commit drop as select public.ops_view_as('65000000-0000-4000-8000-0000000000a1', 'shipper asked why no truck') j;
+select assert_true(auth.uid() = '65000000-0000-4000-8000-0000000000f1', 'after seeing as a shipper, the caller is the owner again');
+select assert_true(current_setting('request.jwt.claims', true)::jsonb ->> 'aal' = 'aal2', 'with the owner''s own claims, 2FA included');
+select act_as_reset();
+
+select assert_true((select va.j->'view'->'offers' = o.offers and jsonb_array_length(o.offers) = 1 from va_d va, own_d o),
+  'the driver''s offers are exactly what their app reads');
+select assert_true((select va.j->'view'->'bid_invites' = o.bid_invites and jsonb_array_length(o.bid_invites) = 1 from va_d va, own_d o),
+  'their bid invitations too');
+select assert_true((select va.j->'view'->'past_trips' = o.past_trips and va.j->'view'->'earnings' = o.earnings from va_d va, own_d o),
+  'their past trips and earnings too');
+select assert_true((select va.j->'view'->'active_trips' = o.active_trip from va_d va, own_d o),
+  'their active job too');
+select assert_true((select va.j->'view'->'loads' = o.loads and jsonb_array_length(o.loads) = 5 from va_s va, own_s o),
+  'the shipper''s loads are exactly what their app reads under RLS');
+select assert_true((select va.j->'view'->'bids'->'65000000-0000-4000-8000-000000000102'->'status' = o.bid_status from va_s va, own_s o),
+  'and their bid load''s status');
+select assert_true((select count(*) = 2 from private.ops_audit where action = 'ops_view_as'
+                      and actor_id = '65000000-0000-4000-8000-0000000000f1'
+                      and reason in ('checking a complaint', 'shipper asked why no truck')),
+  'each look is in the audit log with its reason');
+select assert_true((select count(*) = 2 from private.ops_alerts where kind = 'owner_view_as'), 'each look raises an alert');
+
+-- An error midway leaves the owner as the owner.
+savepoint broken;
+create or replace function public.driver_document_status()
+returns table(kind text, status text, review_note text, created_at timestamptz)
+language plpgsql stable security definer set search_path = '' as $$
+begin raise exception 'boom'; end $$;
+do $$
+begin
+  perform act_as_staff('65000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+  begin
+    perform public.ops_view_as('65000000-0000-4000-8000-0000000000d1', 'checking a complaint');
+    raise exception 'FAIL: the broken view should have raised';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  if auth.uid() is distinct from '65000000-0000-4000-8000-0000000000f1'::uuid then
+    raise exception 'FAIL: identity not restored after an error';
+  end if;
+  raise notice 'pass: an error inside see-as-user leaves the owner as the owner';
+  perform act_as_reset();
+end $$;
+rollback to savepoint broken;
+
+-- ═══ 8. static ═════════════════════════════════════════════════════════════
+select assert_true((select bool_and(p.provolatile <> 'v')
+                      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'public'
+                       and p.proname in ('driver_offers', 'driver_bid_invites', 'driver_trip', 'driver_trips',
+                                         'driver_earnings', 'driver_document_status',
+                                         'shipper_bid_status', 'shipper_load_bids')),
+  'everything see-as-user calls is a reader');
+select assert_true((select count(*) = 8 from (select distinct p.proname
+                      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'public'
+                       and p.proname in ('driver_offers', 'driver_bid_invites', 'driver_trip', 'driver_trips',
+                                         'driver_earnings', 'driver_document_status',
+                                         'shipper_bid_status', 'shipper_load_bids')) z),
+  'and every one of them exists');
+select assert_true((select p.provolatile = 's' and p.prosecdef and p.proconfig @> array['search_path=""']
+                      from pg_proc p where p.oid = 'public.ops_trip_route(uuid)'::regprocedure),
+  'ops_trip_route is a pinned, stable definer');
+select assert_true((select p.provolatile = 'v' and p.prosecdef and p.proconfig @> array['search_path=""']
+                      from pg_proc p where p.oid = 'public.ops_view_as(uuid, text)'::regprocedure),
+  'ops_view_as is a pinned, volatile definer (it writes the audit row)');
+
 rollback;
