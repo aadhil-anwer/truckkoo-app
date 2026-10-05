@@ -142,9 +142,25 @@ select assert_raises($$select public.ops_set_setting('push_enabled', '3'::jsonb,
 select assert_not_found($$select public.ops_set_setting('ops_stepup_minutes', '600'::jsonb, 'convenience')$$, 'the step-up window is not writable from the console');
 select assert_not_found($$select public.ops_set_setting('staff_email_domains', '["gmail.com"]'::jsonb, 'convenience')$$, 'nor the staff domains');
 select assert_raises($$select public.ops_set_setting('bid_window_minutes', '60'::jsonb, ' ')$$, 'a setting change needs a reason', '%reason%');
+-- Review fixes: dispatch reads radius_km_<wave> and only three exist, so more
+-- than three waves would search the 1500 km default; and the radii widen.
+select assert_raises($$select public.ops_set_setting('dispatch_max_waves', '4'::jsonb, 'more waves')$$,
+  'there are only three wave radii, so at most three waves', '%between 1 and 3%');
+select assert_raises($$select public.ops_set_setting('dispatch_radius_km_1', '2000'::jsonb, 'wider first')$$,
+  'a first wave wider than the second is refused', '%at least as far%');
+create temp table rc on commit drop as select * from public.ops_rate_cards();
 create temp table sets on commit drop as select * from public.ops_settings();
 select act_as_reset();
 select assert_true((select value = '90'::jsonb from private.app_settings where key = 'bid_window_minutes'), 'the setting changed');
+select assert_true((select value = '150'::jsonb from private.app_settings where key = 'dispatch_radius_km_1'),
+  'and the refused radius left the old one in place');
+select assert_true((select label = 'Drivers asked per wave' from sets where key = 'auto_dispatch_max_offers'),
+  'max offers is described as what it is since 0036: the wave size');
+select assert_true(exists (select 1 from information_schema.routines r
+                            join information_schema.parameters pa on pa.specific_name = r.specific_name
+                           where r.routine_schema = 'public' and r.routine_name = 'ops_rate_cards'
+                             and pa.parameter_mode = 'OUT' and pa.parameter_name = 'per_km_baisa'),
+  'the rate card read includes the per-km rate, so replacing a band can keep it');
 select assert_true((select reason = 'Longer auctions at launch' from private.ops_audit where action = 'ops_set_setting'), 'audited with its reason');
 select assert_true((select count(*) = 1 from private.ops_alerts where kind = 'owner_rules_change'), 'and alerted');
 select assert_true(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace

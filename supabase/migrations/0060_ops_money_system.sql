@@ -131,8 +131,9 @@ as $$
     ('auto_dispatch_enabled', 'boolean', 'Automatic dispatch',
      'When on, a posted load is offered to nearby drivers with no human involved. When off, every load waits for a dispatcher. Nothing is lost — loads queue normally.',
      null::integer, null::integer),
-    ('auto_dispatch_max_offers', 'integer', 'Offers per load',
-     'How many drivers one load may be offered to automatically. Higher fills faster and bothers more drivers.', 1, 20),
+    -- Since 0036 this is the WAVE size (dispatch_wave: v_size), not a per-load cap.
+    ('auto_dispatch_max_offers', 'integer', 'Drivers asked per wave',
+     'How many drivers each dispatch wave offers a load to. Every wave asks this many more, so higher fills faster and bothers more drivers.', 1, 20),
     ('auto_dispatch_max_pending_per_driver', 'integer', 'Live offers per driver',
      'How many unanswered offers one driver may hold. Stops one driver being buried.', 1, 20),
     ('auto_dispatch_requires_price', 'boolean', 'Only auto-dispatch priced loads',
@@ -141,14 +142,16 @@ as $$
      'When on, an unverified driver cannot accept an offer or bid. The website claims "100% verified drivers"; this setting makes that true.', null, null),
     ('dispatch_wave_minutes', 'integer', 'Minutes per dispatch wave',
      'How long each group of drivers has to answer before the next group is asked.', 1, 60),
+    -- At most 3: dispatch reads dispatch_radius_km_<wave> and only three exist; a
+    -- fourth wave would silently search the 1500 km default.
     ('dispatch_max_waves', 'integer', 'Dispatch waves before a person is alerted',
-     'After this many waves with no taker, a dispatcher is alerted. The machine keeps looking.', 1, 10),
+     'After this many waves with no taker, a dispatcher is alerted. The machine keeps looking, as far as the last wave''s radius.', 1, 3),
     ('dispatch_radius_km_1', 'integer', 'First wave radius (km)',
      'How far from the pickup the first wave looks for drivers.', 10, 2000),
     ('dispatch_radius_km_2', 'integer', 'Second wave radius (km)',
      'How far the second wave looks.', 10, 2000),
     ('dispatch_radius_km_3', 'integer', 'Third wave radius (km)',
-     'How far the third and later waves look.', 10, 3000),
+     'How far the third wave looks.', 10, 3000),
     ('dispatch_location_fresh_minutes', 'integer', 'GPS counts as fresh for (minutes)',
      'A driver''s last GPS point older than this is ignored and their town is used instead.', 5, 240),
     ('dispatch_rescue_enabled', 'boolean', 'Keep looking after the alert',
@@ -237,6 +240,18 @@ begin
   select s.value into v_before from private.app_settings s where s.key = p_key;
   insert into private.app_settings (key, value) values (p_key, p_value)
   on conflict (key) do update set value = excluded.value;
+
+  -- Waves widen. A first wave wider than the second would make the second
+  -- search a smaller circle than the one already asked. Checked after the
+  -- write, so the raise rolls it back.
+  if p_key like 'dispatch_radius_km_%'
+     and not (private.setting_int('dispatch_radius_km_1', 1500) <= private.setting_int('dispatch_radius_km_2', 1500)
+              and private.setting_int('dispatch_radius_km_2', 1500) <= private.setting_int('dispatch_radius_km_3', 1500)) then
+    raise exception 'each wave must look at least as far as the one before (now % → % → % km)',
+      private.setting_int('dispatch_radius_km_1', 1500), private.setting_int('dispatch_radius_km_2', 1500),
+      private.setting_int('dispatch_radius_km_3', 1500)
+      using errcode = 'check_violation';
+  end if;
 
   perform private.log_ops('ops_set_setting', 'setting', p_key,
     jsonb_build_object('value', v_before), jsonb_build_object('value', p_value), v_reason);
@@ -382,3 +397,29 @@ end;
 $$;
 revoke all on function public.ops_bid_fee() from public, anon;
 grant execute on function public.ops_bid_fee() to authenticated;
+
+-- The rate card read gains per_km_baisa (0024), so the console can show it and
+-- keep it when a band is replaced — the upsert overwrites it, and a form that
+-- never knew it would zero it. A changed row type means drop and recreate.
+drop function public.ops_rate_cards();
+create function public.ops_rate_cards()
+returns table (id bigint, origin_corridor text, dest_corridor text, truck_type_code text,
+               truck_type_name text, base_baisa bigint, per_tonne_baisa bigint, min_fare_baisa bigint,
+               currency char(3), created_at timestamptz, per_km_baisa bigint)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_ops();
+  return query
+  select rc.id, rc.origin_corridor, rc.dest_corridor, rc.truck_type_code, tt.name_en,
+         rc.base_baisa, rc.per_tonne_baisa, rc.min_fare_baisa, rc.currency, rc.created_at, rc.per_km_baisa
+    from private.rate_cards rc
+    left join public.truck_types tt on tt.code = rc.truck_type_code
+   order by rc.origin_corridor, rc.dest_corridor, tt.sort;
+end;
+$$;
+revoke all on function public.ops_rate_cards() from public, anon;
+grant execute on function public.ops_rate_cards() to authenticated;
