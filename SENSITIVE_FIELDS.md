@@ -81,6 +81,13 @@ reporting RPC checks load or trip participation internally. `my_shipment_cases`
 returns only the reporter's own rows; `ops_shipment_cases` is the approved,
 guarded cross-tenant queue. Resolution is an audited ops write.
 
+0062 (support desk) adds `subject_id`, `priority`, `assignee_id`, `due_at`,
+`opened_by_staff`, `outcome`, and `reopened_at`. None is ever client authority:
+a trigger derives `priority`, `due_at`, and `subject_id` on insert, and only
+`require_ops()` definers (`ops_open_case`, `ops_case_*`) change the rest, each
+audited. `private.case_events` (the case thread) has no client grant at all and
+is read only through `ops_case()`.
+
 ## `loads`
 
 | Field | Why it's locked | Who may change it |
