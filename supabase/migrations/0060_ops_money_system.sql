@@ -361,3 +361,24 @@ end;
 $$;
 revoke all on function public.ops_job_health() from public, anon;
 grant execute on function public.ops_job_health() to authenticated;
+
+-- The bid fee in force, or NULL when it was never set — in which case
+-- private.current_bid_fee_bps() refuses and no bid load can be posted (0045:
+-- a missing fee is not silently a free service). The Money page says so.
+create or replace function public.ops_bid_fee()
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_pct numeric;
+begin
+  perform private.require_ops();
+  select (s.value #>> '{}')::numeric into v_pct from private.app_settings s where s.key = 'bid_fee_pct';
+  return v_pct;
+end;
+$$;
+revoke all on function public.ops_bid_fee() from public, anon;
+grant execute on function public.ops_bid_fee() to authenticated;

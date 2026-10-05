@@ -106,6 +106,12 @@ select assert_raises($$select public.ops_delete_rate_card(1, 'old band')$$, 'sta
 select assert_raises($$select public.ops_set_setting('bid_window_minutes', '90'::jsonb, 'longer auctions')$$, 'stale owner: a setting needs step-up', 'step-up required');
 
 -- ═══ 3. an owner, fresh: money ═════════════════════════════════════════════
+select act_as_reset();
+delete from private.app_settings where key = 'bid_fee_pct';
+select act_as_staff('66000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_true(public.ops_bid_fee() is null, 'an unset bid fee reads as null (bid loads cannot be posted yet)');
+select act_as_staff('66000000-0000-4000-8000-0000000000a1', 'aal2', 1);
+select assert_not_found($$select public.ops_bid_fee()$$, 'a shipper cannot read the bid fee');
 select act_as_staff('66000000-0000-4000-8000-0000000000f1', 'aal2', 1);
 select public.ops_set_commission(12.5, 'Board rate, October');
 select public.ops_set_bid_fee(8, 'Launch fee');
@@ -124,6 +130,9 @@ select assert_true((select count(*) = 4 from private.ops_audit a
 select assert_true((select count(*) = 4 from private.ops_alerts where kind = 'owner_money_change'),
   'and each raises an owner alert');
 select assert_true(private.payout_for(100000) = 87500, 'the commission really changed');
+select act_as_staff('66000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_true(public.ops_bid_fee() = 8, 'staff read the bid fee in force');
+select act_as_reset();
 
 -- ═══ 4. settings: the registry ═════════════════════════════════════════════
 select act_as_staff('66000000-0000-4000-8000-0000000000f1', 'aal2', 1);
@@ -181,7 +190,7 @@ select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search
                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                      where n.nspname = 'public' and p.proname in ('ops_set_commission', 'ops_set_bid_fee', 'ops_upsert_rate_card',
                        'ops_delete_rate_card', 'ops_set_setting', 'ops_settings', 'ops_find_staff_account', 'ops_alert_log',
-                       'ops_audit_find', 'ops_job_health')),
+                       'ops_audit_find', 'ops_job_health', 'ops_bid_fee')),
   'every new or wrapped function is a pinned definer');
 select assert_true((select bool_and(p.provolatile = 'v') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                      where n.nspname = 'public' and p.proname in ('ops_set_commission', 'ops_set_bid_fee', 'ops_upsert_rate_card',
