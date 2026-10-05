@@ -12,7 +12,7 @@
 -- Exit code 0 = all assertions held.
 
 begin;
--- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 
 -- 'notice' so each `pass:` line is visible. Setting this to 'warning' hides the
@@ -1884,6 +1884,9 @@ select assert_raises($$select * from public.shipment_cases$$,
   'driver cannot read shipment case table');
 select act_as_reset();
 
+-- Shipper B was appointed a dispatcher earlier in this file (to prove the ops
+-- queue works for one). Undo that here: these checks are about B as a shipper.
+delete from private.ops_users where profile_id = '22222222-2222-4222-8222-222222222222';
 select act_as('22222222-2222-4222-8222-222222222222');
 select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-0000-4000-8000-000000000001')),
   0, 'another shipper sees no case for the load');

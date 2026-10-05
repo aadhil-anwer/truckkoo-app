@@ -28,7 +28,7 @@
 -- A 403 confirms the row exists (SECURITY.md §3).
 
 begin;
--- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 
 set local client_min_messages to notice;

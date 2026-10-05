@@ -1,9 +1,9 @@
--- 0061 · Ops console v2, phase 2: the live board.
+-- 0055 · Ops console v2, phase 2: the live board.
 --
 -- Spec: ~/truckkoo-ops/docs/superpowers/specs/2026-10-05-ops-console-v2-design.md
 -- §5.2 and §6.1. The board is composed here, in SQL, so the console only draws
 -- it: what needs a person now, why, and what to do. Every reader opens with
--- require_ops(), which since 0060 also requires two-step sign-in.
+-- require_ops(), which since 0054 also requires two-step sign-in.
 
 -- ═══ 1. alerts can be acknowledged ═══════════════════════════════════════════
 

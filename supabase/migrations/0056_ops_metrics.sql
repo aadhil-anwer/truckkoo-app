@@ -1,4 +1,4 @@
--- 0062 · Ops console v2, phase 3: the eagle view's numbers.
+-- 0056 · Ops console v2, phase 3: the eagle view's numbers.
 --
 -- Spec: ~/truckkoo-ops/docs/superpowers/specs/2026-10-05-ops-console-v2-design.md
 -- §5.1. Owner-only. Computed here, from the tables of record, so the console

@@ -1,4 +1,4 @@
--- 0063 · Ops console v2, phase 4: bids for staff; award and extend for owners.
+-- 0057 · Ops console v2, phase 4: bids for staff; award and extend for owners.
 --
 -- Spec: ~/truckkoo-ops/docs/superpowers/specs/2026-10-05-ops-console-v2-design.md
 -- §5.3, §6.2. Award and extend reuse the shipper's own machinery

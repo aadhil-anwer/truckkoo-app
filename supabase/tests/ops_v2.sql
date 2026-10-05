@@ -1,4 +1,4 @@
--- Ops console v2, phase 1 — levels and the fort (0060).
+-- Ops console v2, phase 1 — levels and the fort (0054).
 -- Run: docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/ops_v2.sql
 begin;
 
@@ -250,16 +250,16 @@ select assert_true(
       and p.proname in ('ops_level','staff_account_ok','is_ops','is_owner','require_owner',
                         'require_owner_fresh','assert_an_owner_remains','ops_appoint_staff',
                         'ops_remove_staff','ops_staff','my_ops_level')),
-  'every 0060 function pins search_path');
+  'every 0054 function pins search_path');
 select assert_true(
   (select bool_and(p.provolatile = 'v')
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname in ('ops_appoint_staff','ops_remove_staff','my_ops_level')),
-  'every 0060 function that writes is volatile');
+  'every 0054 function that writes is volatile');
 select assert_true(
   not has_function_privilege('anon', 'public.my_ops_level()', 'execute')
   and not has_function_privilege('anon', 'public.ops_appoint_staff(uuid,text,text)', 'execute'),
-  'nothing in 0060 is callable anonymously');
+  'nothing in 0054 is callable anonymously');
 
 do $$ begin raise notice 'ALL OPS V2 ASSERTIONS HELD'; end $$;
 rollback;

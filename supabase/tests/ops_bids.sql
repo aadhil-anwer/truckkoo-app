@@ -1,4 +1,4 @@
--- Ops console v2, phase 4 — bids for staff, award/extend for owners (0063).
+-- Ops console v2, phase 4 — bids for staff, award/extend for owners (0057).
 begin;
 delete from private.app_settings where key = 'staff_email_domains';
 create or replace function assert_true(p_actual boolean, p_what text)
@@ -83,6 +83,11 @@ begin
   insert into public.trucks (owner_id, truck_type, capacity_kg) values
     ('63000000-0000-4000-8000-0000000000d1', '10t', 10000),
     ('63000000-0000-4000-8000-0000000000d2', '10t', 10000);
+  -- 0050's gate is on: only verified drivers can bid.
+  insert into public.drivers (profile_id, verified_at) values
+    ('63000000-0000-4000-8000-0000000000d1', now()),
+    ('63000000-0000-4000-8000-0000000000d2', now())
+  on conflict (profile_id) do update set verified_at = excluded.verified_at;
   insert into private.ops_users (profile_id, note, level) values
     ('63000000-0000-4000-8000-0000000000f1', 'bids suite', 'owner'),
     ('63000000-0000-4000-8000-0000000000f2', 'bids suite', 'dispatcher');
@@ -167,7 +172,7 @@ select assert_true(
   and (select provolatile = 'v' from pg_proc where proname = 'ops_award_bid')
   and (select provolatile = 'v' from pg_proc where proname = 'ops_extend_bidding')
   and not has_function_privilege('anon', 'public.ops_award_bid(uuid,uuid,text)', 'execute'),
-  '0063 functions are pinned, writers volatile, nothing anonymous');
+  '0057 functions are pinned, writers volatile, nothing anonymous');
 
 do $$ begin raise notice 'ALL OPS BIDS ASSERTIONS HELD'; end $$;
 rollback;

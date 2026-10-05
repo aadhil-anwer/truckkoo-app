@@ -1,4 +1,4 @@
--- 0060 · Ops console v2, phase 1: staff levels and the fort.
+-- 0054 · Ops console v2, phase 1: staff levels and the fort.
 --
 -- Spec: ~/truckkoo-ops/docs/superpowers/specs/2026-10-05-ops-console-v2-design.md
 -- §4 (roles) and §9b (the fort). The locks that matter most are here, in the

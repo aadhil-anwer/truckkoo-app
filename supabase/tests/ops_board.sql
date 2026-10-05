@@ -1,6 +1,6 @@
--- Ops console v2, phase 2 — the live board (0061).
+-- Ops console v2, phase 2 — the live board (0055).
 begin;
--- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 
 create or replace function assert_true(p_actual boolean, p_what text)
@@ -213,7 +213,7 @@ select assert_true(
   (select bool_and(coalesce(p.proconfig, '{}') @> array['search_path=""'])
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname in ('ops_board', 'ops_ack_alert', 'ops_live_map')),
-  'every 0061 function pins search_path');
+  'every 0055 function pins search_path');
 select assert_true(
   (select provolatile = 'v' from pg_proc where proname = 'ops_ack_alert')
   and (select provolatile = 's' from pg_proc where proname = 'ops_board'),
@@ -221,7 +221,7 @@ select assert_true(
 select assert_true(
   not has_function_privilege('anon', 'public.ops_board()', 'execute')
   and not has_function_privilege('anon', 'public.ops_ack_alert(bigint)', 'execute'),
-  'nothing in 0061 is callable anonymously');
+  'nothing in 0055 is callable anonymously');
 
 do $$ begin raise notice 'ALL OPS BOARD ASSERTIONS HELD'; end $$;
 rollback;

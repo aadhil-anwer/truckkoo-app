@@ -4,7 +4,7 @@
 -- moving deadlines and wave stamps into the past as the superuser.
 
 begin;
--- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 
 set local client_min_messages to notice;
@@ -386,6 +386,8 @@ select assert_true(exists (select 1 from private.load_watch where load_id = :'l5
 
 -- ═══ 14. verification follows the launch switch ═══════════════════════════
 
+-- 0050 turns the gate on; switch it off to prove the off half.
+update private.app_settings set value = 'false'::jsonb where key = 'require_verified_driver';
 select assert_true(private.bid_driver_eligible(:'l2', 'd0000000-0000-4000-8000-000000000112'),
   'with require_verified_driver off an unverified driver is eligible, as in dispatch');
 update private.app_settings set value = 'true'::jsonb where key = 'require_verified_driver';

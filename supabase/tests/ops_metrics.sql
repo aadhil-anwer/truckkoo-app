@@ -1,4 +1,4 @@
--- Ops console v2, phase 3 — the eagle view's numbers (0062).
+-- Ops console v2, phase 3 — the eagle view's numbers (0056).
 -- Measured as DIFFERENCES (after fixtures minus before), so rows already in the
 -- database — demo data, other suites' leftovers — cannot move the result.
 begin;

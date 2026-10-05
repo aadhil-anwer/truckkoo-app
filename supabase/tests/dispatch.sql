@@ -21,7 +21,7 @@
 -- simulated by moving `accepted_at` and `expires_at` backwards.
 
 begin;
--- 0060's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 
 set local client_min_messages to notice;
@@ -184,11 +184,11 @@ end $$;
 -- block the caller is a shipper, who rightly cannot call the private pricer.
 select server_price(8000) as p8000, server_price(8000) + 1 as p8000_stale \gset
 
--- 0036 leaves `require_verified_driver` OFF (switched on near launch). This
--- suite proves the behaviour the product promises, so it turns it on for itself;
--- section 9 checks what happens with it off.
-select assert_true(not private.setting_bool('require_verified_driver', true),
-  'the migration leaves require_verified_driver off until launch');
+-- 0036 left `require_verified_driver` OFF; 0050 switched it on (documents and
+-- review before work). This suite proves the behaviour the product promises with
+-- it on; section 9 checks what happens with it off.
+select assert_true(private.setting_bool('require_verified_driver', false),
+  'from 0050 the verified-driver gate is on');
 update private.app_settings set value = 'true'::jsonb where key = 'require_verified_driver';
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -630,7 +630,7 @@ select assert_text(asked((select load_id from lonely), 'pending'), '',
   'a decline is final — the machine never asks again');
 
 -- The switches — before a dispatcher takes the load in hand: ops_audit is
--- append-only (0060), so that cannot be undone afterwards.
+-- append-only (0054), so that cannot be undone afterwards.
 update private.app_settings set value = 'false'::jsonb where key = 'dispatch_rescue_enabled';
 select assert_equals(private.system_rescue_stranded(), 0, 'dispatch_rescue_enabled off: nothing');
 update private.app_settings set value = 'true'::jsonb where key = 'dispatch_rescue_enabled';
