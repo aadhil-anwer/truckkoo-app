@@ -1297,7 +1297,7 @@ end $$;
 
 select assert_ops_only($$select * from public.ops_settings()$$, 'ops_settings');
 select assert_ops_only(
-  $$select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb, 'test')$$,
   'ops_set_setting');
 select assert_ops_only($$select * from public.ops_rate_cards()$$, 'ops_rate_cards');
 select assert_ops_only($$select * from public.ops_corridors()$$, 'ops_corridors');
@@ -1321,31 +1321,38 @@ select act_as_reset();
 
 -- ─── 9a. the settings whitelist ─────────────────────────────────────────────
 
+-- 0060: money and rules are the owner's. The suite's dispatcher becomes an
+-- owner (2FA fresh, as act_as sets it) for this section and is put back at the
+-- end of 9c; ops_money_system.sql proves a dispatcher is refused.
+update private.ops_users set level = 'owner' where profile_id = '33333333-0000-4000-8000-00000000cccc';
+select set_config('tests.registry_size', (select count(*) from private.ops_setting_spec())::text, true);
+
 select act_as('33333333-0000-4000-8000-00000000cccc');
 
-select assert_equals((select count(*) from public.ops_settings()), 5,
-  'ops_settings returns exactly the five whitelisted keys');
+select assert_equals((select count(*) from public.ops_settings()),
+  current_setting('tests.registry_size')::bigint,
+  'ops_settings returns exactly the registry''s keys');
 
 -- `app_settings` is where kill switches live. A generic key/value writer
 -- reachable from a browser turns one compromised session into arbitrary config.
 select assert_not_found(
-  $$select public.ops_set_setting('some_other_key', 'true'::jsonb)$$,
+  $$select public.ops_set_setting('some_other_key', 'true'::jsonb, 'suite')$$,
   'a key outside the whitelist is refused, and refused as "not found"');
 
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_enabled', '3'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_enabled', '3'::jsonb, 'suite')$$,
   'a boolean setting rejects a number');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', 'true'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', 'true'::jsonb, 'suite')$$,
   'a numeric setting rejects a boolean');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', '0'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '0'::jsonb, 'suite')$$,
   'and rejects a value below the range');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', '9999'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '9999'::jsonb, 'suite')$$,
   'and above it');
 
-select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb);
+select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb, 'suite');
 select act_as_reset();
 
 select assert_true(
@@ -1386,7 +1393,7 @@ select assert_equals(
   1, 'and auto-dispatch really is off, and says so in the log');
 
 select act_as('33333333-0000-4000-8000-00000000cccc');
-select public.ops_set_setting('auto_dispatch_enabled', 'true'::jsonb);
+select public.ops_set_setting('auto_dispatch_enabled', 'true'::jsonb, 'suite');
 select act_as_reset();
 
 -- ─── 9b. the rate card ──────────────────────────────────────────────────────
@@ -1537,6 +1544,9 @@ select assert_true(
 select act_as('11111111-0000-4000-8000-00000000aaaa');
 select assert_raises($$select public.ops_set_commission(5, 'helping myself')$$,
   'a shipper cannot set the commission');
+select act_as_reset();
+update private.ops_users set level = 'dispatcher' where profile_id = '33333333-0000-4000-8000-00000000cccc';
+select act_as('11111111-0000-4000-8000-00000000aaaa');
 select assert_raises($$select public.ops_commission()$$,
   'nor read it — it is not their business what a driver is paid');
 select act_as_reset();
