@@ -1907,6 +1907,7 @@ select act_as('11111111-1111-4111-8111-111111111111');
 select assert_raises($$select * from private.case_events$$, 'a shipper cannot read any case thread');
 select assert_raises($$select * from private.incidents$$, 'nor any strike');
 select assert_raises($$select * from public.ops_support_queue()$$, 'nor the support queue');
+select assert_raises($$select * from private.user_messages$$, 'nor anyone''s messages');
 select act_as_reset();
 
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;

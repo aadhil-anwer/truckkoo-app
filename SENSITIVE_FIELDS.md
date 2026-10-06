@@ -88,6 +88,30 @@ a trigger derives `priority`, `due_at`, and `subject_id` on insert, and only
 audited. `private.case_events` (the case thread) has no client grant at all and
 is read only through `ops_case()`.
 
+## `private.incidents` (0063) — strikes
+
+Client table access: **none**. `state`, `weight`, `source`, `decided_by`,
+`decided_at`, `reason` and `decision_reason` are never client authority: staff
+set them through `ops_incident_add/confirm/void` (audited), detectors only ever
+insert `suspected` rows, and `release_trip` records the driver's own release.
+A driver reads their decided strikes through `my_record()`, which never returns
+`reason` or `decision_reason` (they can quote a shipper). `appeal_incident`
+checks ownership inside.
+
+## `private.user_messages` (0065)
+
+Client table access: **none**. Staff send with `ops_message_user` (audited; on a
+case, only to someone on it). A user reads only their own through
+`my_messages()` and marks only their own read. The push says only that a
+message exists — the text never reaches a lock screen.
+
+## Storage: `case-evidence` (0065)
+
+Private bucket. A user uploads only under their own folder; `report_problem`
+accepts only paths the caller uploaded. Staff read through the additive
+`"ops reads case evidence"` select policy (approved with the support-desk plan,
+like `"ops reads pod"`). No update or delete policy for anyone.
+
 ## `loads`
 
 | Field | Why it's locked | Who may change it |
