@@ -707,12 +707,12 @@ begin
   begin
     perform private.system_detect_no_shows();
   exception when others then
-    perform private.log_system('system_detect_error', 'system', 'no_shows', jsonb_build_object('error', sqlerrm));
+    perform private.log_system('system_detect_error', 'system', 'no_shows', jsonb_build_object('sqlstate', sqlstate));
   end;
   begin
     perform private.system_detect_abandoned();
   exception when others then
-    perform private.log_system('system_detect_error', 'system', 'abandoned', jsonb_build_object('error', sqlerrm));
+    perform private.log_system('system_detect_error', 'system', 'abandoned', jsonb_build_object('sqlstate', sqlstate));
   end;
 end;
 $$;
