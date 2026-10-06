@@ -423,3 +423,58 @@ end;
 $$;
 revoke all on function public.ops_case_cancel_load(uuid, text) from public, anon;
 grant execute on function public.ops_case_cancel_load(uuid, text) to authenticated;
+
+-- ═══ 4. the case page sees its strike ════════════════════════════════════════
+create or replace function public.ops_case(p_case_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v public.shipment_cases;
+begin
+  perform private.require_ops();
+  select * into v from public.shipment_cases c where c.id = p_case_id;
+  if not found then
+    raise exception 'case not found' using errcode = 'no_data_found';
+  end if;
+  return jsonb_build_object(
+    'case', to_jsonb(v) || jsonb_build_object(
+       'assignee_name', (select p.full_name from public.profiles p where p.id = v.assignee_id),
+       'resolved_by_name', (select p.full_name from public.profiles p where p.id = v.resolved_by),
+       'route', (select oc.name_en || ' → ' || dc.name_en from public.loads l
+                   join public.cities oc on oc.id = l.origin_city
+                   join public.cities dc on dc.id = l.dest_city where l.id = v.load_id),
+       -- For messages in Arabic: the arrow points the way Arabic reads.
+       'route_ar', (select oc.name_ar || ' ← ' || dc.name_ar from public.loads l
+                      join public.cities oc on oc.id = l.origin_city
+                      join public.cities dc on dc.id = l.dest_city where l.id = v.load_id),
+       'load_status', (select l.status from public.loads l where l.id = v.load_id),
+       'trip_status', (select t.status from public.trips t where t.id = v.trip_id),
+       'overdue', v.status <> 'resolved' and v.responded_at is null and v.due_at < now()),
+    -- 0064: the strike this case carries, and whether anyone has decided it.
+    'incident', (select jsonb_build_object('id', i.id, 'kind', i.kind, 'weight', i.weight, 'state', i.state,
+                                           'subject_id', i.subject_id, 'decision_reason', i.decision_reason)
+                   from private.incidents i where i.id = v.incident_id),
+    'parties', (select coalesce(jsonb_agg(jsonb_build_object(
+                  'side', x.side, 'id', p.id, 'name', p.full_name, 'phone', p.phone,
+                  'language', p.language, 'role', private.party_role(p.id),
+                  'suspended', p.suspended_at is not null) order by x.ord), '[]'::jsonb)
+                  from (select distinct on (y.pid) y.side, y.pid, y.ord
+                          from (values ('reporter', v.reporter_id, 1), ('subject', v.subject_id, 2),
+                                       ('shipper', (select l.shipper_id from public.loads l where l.id = v.load_id), 3),
+                                       ('driver', (select t.driver_id from public.trips t where t.id = v.trip_id), 4)) y(side, pid, ord)
+                         where y.pid is not null
+                         order by y.pid, y.ord) x
+                  join public.profiles p on p.id = x.pid),
+    'events', (select coalesce(jsonb_agg(jsonb_build_object(
+                 'id', e.id, 'kind', e.kind, 'body', e.body, 'meta', e.meta,
+                 'actor_name', p.full_name, 'created_at', e.created_at) order by e.created_at desc, e.id desc), '[]'::jsonb)
+                 from private.case_events e left join public.profiles p on p.id = e.actor_id
+                where e.case_id = v.id));
+end;
+$$;
+revoke all on function public.ops_case(uuid) from public, anon;
+grant execute on function public.ops_case(uuid) to authenticated;

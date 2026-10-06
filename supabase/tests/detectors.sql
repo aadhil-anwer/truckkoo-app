@@ -174,6 +174,7 @@ select act_as_staff('6a000000-0000-4000-8000-0000000000a1', 'aal2', 1);
 select assert_not_found(format($$select public.ops_case_redispatch(%L, 'send it back')$$, (select id from nscase)),
   'a shipper cannot run a playbook');
 select act_as_staff('6a000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+create temp table nsview on commit drop as select public.ops_case((select id from nscase)) j;
 select public.ops_case_redispatch((select id from nscase), 'Driver did not come, sending it back to dispatch');
 select public.ops_case_reassign((select id from abcase), '6a000000-0000-4000-8000-0000000000d4',
   '6a000000-0000-4000-8000-0000000000c4', 'Driver unreachable, spare driver takes it from Nizwa');
@@ -186,6 +187,10 @@ select assert_true((select driver_id = '6a000000-0000-4000-8000-0000000000d4' fr
 select assert_true((select count(*) = 1 from private.case_events where case_id = (select id from nscase) and kind = 'action' and meta->>'action' = 'redispatched')
                and (select count(*) = 1 from private.case_events where case_id = (select id from abcase) and kind = 'action' and meta->>'action' = 'reassigned'),
   'each playbook step is written in the case thread');
+
+select assert_true((select j->'incident'->>'state' = 'suspected' and j->'incident'->>'kind' = 'no_show'
+                       and (j->'incident'->>'weight')::int = 2 from nsview),
+  'the case page knows the strike it carries and whether anyone has decided it');
 
 -- ═══ 4. static ═════════════════════════════════════════════════════════════
 select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search_path=""'] and p.provolatile = 'v')
