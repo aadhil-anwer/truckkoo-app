@@ -99,6 +99,42 @@ describe('a report with photos', () => {
     });
   });
 
+  it('says photos are optional and how many', async () => {
+    mockParams.current = { loadId: 'load-1', tripId: 'trip-1' };
+    await render(<ShipmentCase />);
+    expect(screen.getByText('Photos help us sort it out faster. Up to 4.')).toBeTruthy();
+  });
+
+  it('a photo that will not upload does not stop the report: it goes without it, and says so', async () => {
+    mockParams.current = { loadId: 'load-1', tripId: 'trip-1' };
+    (ImagePicker.launchImageLibraryAsync as jest.Mock)
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///a.jpg', mimeType: 'image/jpeg' }] })
+      .mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///b.jpg', mimeType: 'image/jpeg' }] });
+    upload.mockResolvedValueOnce({ error: null }).mockResolvedValueOnce({ error: { message: 'network' } });
+    await render(<ShipmentCase />);
+    await act(async () => { fireEvent.press(screen.getByText('Cargo damage')); });
+    await act(async () => { fireEvent.changeText(screen.getByLabelText('Tell us what happened'), 'Two crates arrived crushed'); });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Add a photo')); });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Add a photo')); });
+    await act(async () => { fireEvent.press(screen.getByText('Send to dispatch')); });
+    expect(rpc).toHaveBeenCalledWith('report_problem', expect.objectContaining({ p_evidence: [upload.mock.calls[0][0]] }));
+    expect(Alert.alert).toHaveBeenCalledWith('Report sent, but some photos did not go through. Dispatch will ask you for them.');
+  });
+
+  it('sending again after a failed report does not upload the same photo twice', async () => {
+    mockParams.current = { loadId: 'load-1', tripId: 'trip-1' };
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///a.jpg', mimeType: 'image/jpeg' }] });
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '08000', message: 'offline' } });
+    await render(<ShipmentCase />);
+    await act(async () => { fireEvent.press(screen.getByText('Cargo damage')); });
+    await act(async () => { fireEvent.changeText(screen.getByLabelText('Tell us what happened'), 'Two crates arrived crushed'); });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Add a photo')); });
+    await act(async () => { fireEvent.press(screen.getByText('Send to dispatch')); });
+    await act(async () => { fireEvent.press(screen.getByText('Send to dispatch')); });
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenLastCalledWith('report_problem', expect.objectContaining({ p_evidence: [upload.mock.calls[0][0]] }));
+  });
+
   it('still asks for a cancellation the old way', async () => {
     mockParams.current = { loadId: 'load-1', cancel: '1' };
     rpc.mockResolvedValue({ data: true, error: null });

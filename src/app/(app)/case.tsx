@@ -4,21 +4,24 @@
  * 0065: the problems offered depend on who is reporting — a shipper reports a
  * driver who asked for more money, a driver reports cargo that was not ready —
  * and a report can carry up to four photos, uploaded privately under the
- * reporter's own folder before the report links them.
+ * reporter's own folder before the report links them. A photo that will not
+ * upload never stops the report: it goes without it, and says so. Each photo
+ * uploads once, so sending again after a failure does not upload it twice.
  */
-import { useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { QuestionShell } from '@/components/booking/shells';
 import { SecondaryButton, SelectRow, TextField } from '@/components/primitives';
-import { t } from '@/i18n';
+import { arabicIfNeeded } from '@/components/text-direction';
+import { align, t } from '@/i18n';
 import { reportFailure } from '@/lib/monitoring';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
-import { MIN_TARGET, radius, space } from '@/theme/tokens';
+import { MIN_TARGET, color, font, radius, space } from '@/theme/tokens';
 
 // What each side can report. The database checks the same lists (0065).
 const SHIPPER_KINDS = ['delay', 'breakdown', 'damage', 'delivery_dispute', 'price_demand', 'misconduct',
@@ -53,6 +56,8 @@ export default function ShipmentCase() {
   const [details, setDetails] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Photo uri → its uploaded path, so a retry reuses what already went up. */
+  const uploaded = useRef(new Map<string, string>());
 
   async function addPhoto() {
     if (busy || photos.length >= MAX_PHOTOS) return;
@@ -60,36 +65,46 @@ export default function ShipmentCase() {
     if (!result.canceled && result.assets[0]) setPhotos((p) => [...p, result.assets[0]!].slice(0, MAX_PHOTOS));
   }
 
-  /** Upload each photo under the reporter's own folder; the report links the paths. */
-  async function uploadPhotos(): Promise<string[]> {
-    if (photos.length === 0) return [];
+  /**
+   * Upload each photo under the reporter's own folder; the report links the
+   * paths. A photo that fails is left out and reported, never thrown: the
+   * report matters more than its pictures.
+   */
+  async function uploadPhotos(): Promise<{ paths: string[]; failed: boolean }> {
+    if (photos.length === 0) return { paths: [], failed: false };
     const { data: session } = await supabase.auth.getSession();
     const uid = session.session?.user.id;
-    if (!uid) throw new Error('missing session');
+    if (!uid) return { paths: [], failed: true };
     const paths: string[] = [];
+    let failed = false;
     for (const photo of photos) {
-      const type = extensionFor(photo);
-      if (!type) throw new Error('unsupported photo');
-      const bytes = await fetch(photo.uri).then((r) => r.arrayBuffer());
-      if (bytes.byteLength > MAX_BYTES) throw new Error('photo too large');
-      const path = `${uid}/${randomUUID()}.${type.ext}`;
-      const { error: e } = await supabase.storage.from('case-evidence')
-        .upload(path, bytes, { contentType: type.mime, upsert: false });
-      if (e) throw e;
-      paths.push(path);
+      const done = uploaded.current.get(photo.uri);
+      if (done) { paths.push(done); continue; }
+      try {
+        const type = extensionFor(photo);
+        if (!type) throw new Error('unsupported photo');
+        const bytes = await fetch(photo.uri).then((r) => r.arrayBuffer());
+        if (bytes.byteLength > MAX_BYTES) throw new Error('photo too large');
+        const path = `${uid}/${randomUUID()}.${type.ext}`;
+        const { error: e } = await supabase.storage.from('case-evidence')
+          .upload(path, bytes, { contentType: type.mime, upsert: false });
+        if (e) throw e;
+        uploaded.current.set(photo.uri, path);
+        paths.push(path);
+      } catch (e) {
+        reportFailure('case_evidence', e);
+        failed = true;
+      }
     }
-    return paths;
+    return { paths, failed };
   }
 
   async function send() {
     if (busy || details.trim().length < 10 || (!isCancel && !kind)) return;
     setBusy(true); setError(null);
     try {
-      let evidence: string[] = [];
-      if (!isCancel) {
-        try { evidence = await uploadPhotos(); }
-        catch (e) { reportFailure('case_evidence', e); setError(t('case.photo.error')); return; }
-      }
+      const { paths: evidence, failed: photosFailed } = isCancel
+        ? { paths: [], failed: false } : await uploadPhotos();
       const result = isCancel
         ? await supabase.rpc('request_load_cancellation', {
             p_load_id: loadId, p_reason: details.trim(),
@@ -105,7 +120,7 @@ export default function ShipmentCase() {
       }
       Alert.alert(isCancel
         ? result.data === true ? t('case.cancel.done') : t('case.cancel.queued')
-        : t('case.sent'));
+        : photosFailed ? t('case.sent.photos_failed') : t('case.sent'));
       router.back();
     } catch (e) {
       reportFailure('shipment_case', e);
@@ -131,6 +146,9 @@ export default function ShipmentCase() {
         placeholder={t('case.details')} error={error}
         style={{ minHeight: 120, textAlignVertical: 'top' }} />
       {!isCancel && (
+        <Text style={styles.hint}>{t('case.photos')}</Text>
+      )}
+      {!isCancel && (
         <View style={styles.photos}>
           {photos.map((p, i) => (
             <Pressable key={p.uri + i} accessibilityRole="button"
@@ -149,6 +167,7 @@ export default function ShipmentCase() {
 }
 
 const styles = StyleSheet.create({
+  hint: { ...arabicIfNeeded(font.body), color: color.inkText, textAlign: align.start },
   photos: { gap: space.sm, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
   thumbWrap: { minWidth: MIN_TARGET, minHeight: MIN_TARGET },
   thumb: { width: 72, height: 72, borderRadius: radius.tile },
