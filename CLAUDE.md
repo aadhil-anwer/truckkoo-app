@@ -56,8 +56,10 @@ cities, and truck types.
    arrow and alignment rules; its only exemption is `src/map`, and adding a
    second to silence a hit is the failure it exists to prevent.
    The Arabic dictionary is complete as of P7, but **320 of its strings are
-   unproofed drafts** in a marked block, plus 71 support-desk drafts added
-   2026-10-06 — see `OPEN_ISSUES.md`.
+   unproofed drafts** in a marked block, plus 71 support-desk drafts and 18
+   pickup/waiting drafts added 2026-10-06, and the two location-disclosure
+   strings (`loc.ask.body`, `drv.avail.why`) rewritten that day — see
+   `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
    deliberately claims none of these. Public claims we *must* stay consistent
@@ -125,6 +127,15 @@ cities, and truck types.
   it when under 45 min old and ≤1 km accurate, else by town.
   `src/lib/background-location.ts` is the **only** reporter, and
   `src/lib/location-tracking.tsx` decides when it runs.
+- **Arriving at a stop is noticed, never tapped** (0069). From acceptance to
+  delivery the phone reports every 30 s / 150 m (`trackingMode` → `'trip'` for
+  `assigned` too); `report_location` checks each fix against the next stop's pin
+  (`private.auto_arrive`: within `arrive_radius_m`, not moving past) and records
+  only the event, at the **server's** time. No client call marks an arrival.
+  Waiting is computed only in `private.trip_wait`; the shipper can hold a
+  running stop with `report_driver_absent`, staff can check a driver in, waive
+  or release — each audited. A job inside one town needs both pins
+  (`check_same_city`); price is measured pin to pin (`load_km`, `quote_trip`).
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who

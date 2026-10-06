@@ -120,7 +120,9 @@ it('confirms the pin with the server\u2019s city', async () => {
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/book/place-details', params: { end: 'pickup' } });
 });
 
-it('will not confirm a drop-off in the pickup\u2019s city, and says why', async () => {
+// 0069: a job inside one town is a pickup's everyday job — allowed with both
+// pins, far enough apart. Without a pickup pin it would be a 0 km job.
+it('a drop-off in the pickup\u2019s town needs the pickup on the map too, and says so', async () => {
   mockParams.current = { end: 'drop' };
   (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
   await seed({
@@ -131,8 +133,27 @@ it('will not confirm a drop-off in the pickup\u2019s city, and says why', async 
   await fireEvent(await screen.findByTestId('pin-map'), 'regionChangeComplete', {
     latitude: 23.6, longitude: 58.5, latitudeDelta: 0.004, longitudeDelta: 0.004,
   });
-  expect(await screen.findByText(/both in Muscat/)).toBeTruthy();
+  expect(await screen.findByText('For a job inside Muscat, put the pickup on the map too.')).toBeTruthy();
   expect(screen.getByLabelText('Confirm drop-off').props.accessibilityState.disabled).toBe(true);
+  fireEvent.press(screen.getByText('Put the pickup on the map'));
+  expect(mockPush).toHaveBeenCalledWith('/book/origin');
+});
+
+it('confirms a drop-off in the pickup\u2019s town when both are pinned apart', async () => {
+  mockParams.current = { end: 'drop' };
+  (places.cityNear as jest.Mock).mockResolvedValue(MUSCAT.id);
+  await seed({
+    originCityId: MUSCAT.id,
+    originPlace: { lat: 23.588, lng: 58.40, placeName: 'Ruwi', note: '', contactName: '', contactPhone: '' },
+    destinationPlace: { lat: 23.6, lng: 58.5, placeName: 'Qurum', note: '', contactName: '', contactPhone: '' },
+  });
+  await render(<Pin />);
+  await fireEvent(await screen.findByTestId('pin-map'), 'regionChangeComplete', {
+    latitude: 23.6, longitude: 58.5, latitudeDelta: 0.004, longitudeDelta: 0.004,
+  });
+  await screen.findByText(/Muscat/);
+  expect(screen.queryByText(/put the pickup on the map/)).toBeNull();
+  expect(screen.getByLabelText('Confirm drop-off').props.accessibilityState.disabled).toBe(false);
 });
 
 it('offers the city list when the spot cannot be checked', async () => {

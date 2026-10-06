@@ -90,6 +90,9 @@ export default function Review() {
     destCity: ready ? draft.destinationCityId : null,
     truckTypeCode: requested,
     weightKg: draft.weightKg,
+    // 0069: priced between the pins when both are set — the same measure book_load uses.
+    originPin: draft.originPlace ? { lat: draft.originPlace.lat, lng: draft.originPlace.lng } : null,
+    destPin: draft.destinationPlace ? { lat: draft.destinationPlace.lat, lng: draft.destinationPlace.lng } : null,
   });
   const quote = price.data;
   const priced = quote?.outcome === 'quoted' && quote.price_baisa != null;
@@ -244,6 +247,15 @@ export default function Review() {
               <SectionLabel>{t('book.review.priceLabel')}</SectionLabel>
               <Text style={styles.rangeValue}>{amount}</Text>
               <Text style={styles.estimateWhy}>{t('book.review.priceWhy')}</Text>
+              {/* 0069: waiting comes with the price, so it is said before booking. */}
+              {quote?.wait_free_minutes != null && quote.wait_per_15min_baisa != null && (
+                <Text style={styles.estimateWhy}>
+                  {t('wait.terms', {
+                    free: formatNumber(quote.wait_free_minutes),
+                    rate: formatMoney(quote.wait_per_15min_baisa, quote.currency as Currency) ?? '',
+                  })}
+                </Text>
+              )}
             </>
           ) : (
             <>

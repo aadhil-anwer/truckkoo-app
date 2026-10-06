@@ -38,8 +38,17 @@ it('sends only the newest fix of a batch', async () => {
   await sendNewest([fix(1000, 23.1), fix(3000, 23.3), fix(2000, 23.2)]);
   expect(supabase.rpc).toHaveBeenCalledTimes(1);
   expect(supabase.rpc).toHaveBeenCalledWith('report_location', {
-    p_lat: 23.3, p_lng: 58.5, p_accuracy_m: 20, p_recorded_at: new Date(3000).toISOString(),
+    p_lat: 23.3, p_lng: 58.5, p_accuracy_m: 20, p_recorded_at: new Date(3000).toISOString(), p_speed_mps: null,
   });
+});
+
+it('sends the speed when the phone knows it, so driving past a pin is not arriving (0069)', async () => {
+  const moving = { timestamp: 5000, coords: { latitude: 23.4, longitude: 58.5, accuracy: 15, speed: 12.5 } } as Location.LocationObject;
+  const unknown = { timestamp: 6000, coords: { latitude: 23.4, longitude: 58.5, accuracy: 15, speed: -1 } } as Location.LocationObject;
+  await sendNewest([moving]);
+  expect(supabase.rpc).toHaveBeenLastCalledWith('report_location', expect.objectContaining({ p_speed_mps: 12.5 }));
+  await sendNewest([unknown]);
+  expect(supabase.rpc).toHaveBeenLastCalledWith('report_location', expect.objectContaining({ p_speed_mps: null }));
 });
 
 it('never throws — no session, no signal', async () => {

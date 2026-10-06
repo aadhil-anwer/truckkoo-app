@@ -48,7 +48,11 @@ beforeEach(() => {
 describe('trackingMode', () => {
   it('trip beats the switch; off and shippers get nothing', () => {
     expect(trackingMode('driver', false, [{ status: 'in_transit' }])).toBe('trip');
-    expect(trackingMode('driver', true, [{ status: 'assigned' }])).toBe('online');
+    // 0069: heading to a pickup is tracked closely too — arrival is noticed, not tapped —
+    // whatever the switch says (the trip trigger takes a driver on a job offline).
+    expect(trackingMode('driver', true, [{ status: 'assigned' }])).toBe('trip');
+    expect(trackingMode('driver', false, [{ status: 'assigned' }])).toBe('trip');
+    expect(trackingMode('driver', true, [{ status: 'delivered' }])).toBe('online');
     expect(trackingMode('driver', false, [])).toBeNull();
     expect(trackingMode('shipper', true, [])).toBeNull();
     expect(trackingMode(undefined, true, [])).toBeNull();

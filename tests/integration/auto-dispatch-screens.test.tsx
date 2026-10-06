@@ -126,6 +126,25 @@ describe('Review — the price is the price', () => {
     });
   });
 
+  it('says the waiting terms with the price, before booking (0069)', async () => {
+    m('useRoutePrice').mockReturnValue(ok({ price_baisa: 4400, currency: 'OMR', outcome: 'quoted', truck_type_code: 'pickup',
+      km: 7.5, wait_free_minutes: 20, wait_per_15min_baisa: 1000 }));
+    await render(<Review />);
+    expect(screen.getByText('First 20 min free, then 1.000 OMR per 15 min')).toBeTruthy();
+  });
+
+  it('asks the price between the pins when the shipper pinned both (0069)', async () => {
+    mockDraft.current = {
+      ...mockDraft.current,
+      originPlace: { lat: 23.68, lng: 58.15, placeName: 'Shop', note: '', contactName: '', contactPhone: '' },
+      destinationPlace: { lat: 23.66, lng: 58.2, placeName: 'Home', note: '', contactName: '', contactPhone: '' },
+    };
+    await render(<Review />);
+    expect(m('useRoutePrice')).toHaveBeenCalledWith(expect.objectContaining({
+      originPin: { lat: 23.68, lng: 58.15 }, destPin: { lat: 23.66, lng: 58.2 },
+    }));
+  });
+
   it('sends the same request id on a retry, so a timed-out tap cannot book twice', async () => {
     await render(<Review />);
     const book = screen.getByLabelText(/^Book for 405\.698 OMR$/);

@@ -160,28 +160,44 @@ insert into public.drivers (profile_id, verified_at) values ('6e000000-0000-4000
 on conflict (profile_id) do update set verified_at = excluded.verified_at;
 insert into public.trips (id, load_id, driver_id, status)
 select '6e000000-0000-4000-8000-000000000201', load_id, '6e000000-0000-4000-8000-0000000000d1', 'assigned' from booked;
+update public.trips set created_at = now() - interval '3 hours' where id = '6e000000-0000-4000-8000-000000000201';
 
+-- Arriving is noticed from the phone's reports; there is no button.
 select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
-select assert_raises($$select public.mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', 23.66, 58.20, 10)$$,
-  'arriving far from the pin is refused, saying how far', '%m from the pin%');
-select assert_raises($$select public.mark_arrived('6e000000-0000-4000-8000-000000000201', 'drop', 23.66, 58.20, 10)$$,
-  'the drop-off cannot be reached before pickup', '%not at this stage%');
-select public.mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', 23.6803, 58.1503, 15) is not null;
+select * from public.report_location(23.66, 58.20, 10);
+select act_as_reset();
+select assert_true((select count(*) = 0 from public.trip_events where trip_id = '6e000000-0000-4000-8000-000000000201' and type like 'arrived%'),
+  'a report far from the pin is not an arrival');
+select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
+select * from public.report_location(23.6803, 58.1503, 15, now(), 13.5);
+select act_as_reset();
+select assert_true((select count(*) = 0 from public.trip_events where trip_id = '6e000000-0000-4000-8000-000000000201' and type like 'arrived%'),
+  'driving past the pin at speed is not an arrival');
+select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
+select * from public.report_location(23.6803, 58.1503, 15, now() - interval '10 minutes', 0);
+select act_as_reset();
+select assert_true((select count(*) = 0 from public.trip_events where trip_id = '6e000000-0000-4000-8000-000000000201' and type like 'arrived%'),
+  'a report from ten minutes ago does not start the clock now');
+select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
+select * from public.report_location(23.6803, 58.1503, 15, now(), 0.5);
 select act_as_reset();
 select assert_true((select count(*) = 1 from public.trip_events where trip_id = '6e000000-0000-4000-8000-000000000201' and type = 'arrived_pickup'),
-  'arriving at the pin records it');
+  'stopped at the pin is an arrival, recorded once');
 select assert_true((select count(*) = 1 from private.push_log where kind = 'shipper_driver_arrived'
                      and profile_id = '6e000000-0000-4000-8000-0000000000a1')
                or not coalesce((select (value #>> '{}')::boolean from private.app_settings where key = 'push_enabled'), true),
   'the shipper is told the truck is there');
+select assert_true(to_regprocedure('public.mark_arrived(uuid,text,double precision,double precision,numeric)') is null,
+  'there is no client call that marks an arrival');
 
 -- The driver has waited 50 minutes: 20 free, then 30 = two blocks of 15.
 update public.trip_events set occurred_at = now() - interval '50 minutes'
  where trip_id = '6e000000-0000-4000-8000-000000000201' and type = 'arrived_pickup';
 select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
-select assert_true((select public.mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', 23.6803, 58.1503, 15)
+select * from public.report_location(23.6803, 58.1503, 15, now(), 0);
+select assert_true((select (public.trip_waiting('6e000000-0000-4000-8000-000000000201') #>> '{stops,0,arrived_at}')::timestamptz
                      < now() - interval '49 minutes'),
-  'arriving twice keeps the first time');
+  'reports at the pin later keep the first arrival time');
 select assert_true((select (public.trip_waiting('6e000000-0000-4000-8000-000000000201') #>> '{stops,0,charge_baisa}')::bigint = 2000
                        and (public.trip_waiting('6e000000-0000-4000-8000-000000000201') #>> '{stops,0,running}')::boolean),
   'fifty minutes with twenty free is two blocks: 2.000, still running');
@@ -209,7 +225,7 @@ select act_as_reset();
 
 -- At the drop-off the shipper's customer keeps the truck 200 minutes: counted to the 120-minute cap.
 select act_as_staff('6e000000-0000-4000-8000-0000000000d1', 'aal1', null);
-select public.mark_arrived('6e000000-0000-4000-8000-000000000201', 'drop', 23.6601, 58.2001, 15) is not null;
+select * from public.report_location(23.6601, 58.2001, 15, now(), 0);
 select act_as_reset();
 update public.trip_events set occurred_at = now() - interval '200 minutes'
  where trip_id = '6e000000-0000-4000-8000-000000000201' and type = 'arrived_drop';
@@ -220,12 +236,62 @@ select assert_true(private.system_detect_long_waits() = 0, 'once');
 select assert_true((select priority = 'high' from public.shipment_cases where kind = 'long_wait'),
   'and it is high priority');
 
+-- "Driver isn't here": the shipper holds a running stop's charge at zero.
+select act_as_staff('6e000000-0000-4000-8000-0000000000a1', 'aal1', null);
+select assert_raises($$select public.report_driver_absent('6e000000-0000-4000-8000-000000000201', 'pickup')$$,
+  'a finished stop cannot be held', '%not checked in there%');
+create temp table absent on commit drop as
+  select public.report_driver_absent('6e000000-0000-4000-8000-000000000201', 'drop') as case_id;
+select assert_true((select public.report_driver_absent('6e000000-0000-4000-8000-000000000201', 'drop') = case_id from absent),
+  'saying it twice is the same case');
+select act_as_reset();
+select assert_true((select kind = 'not_here' and priority = 'urgent' and subject_id = '6e000000-0000-4000-8000-0000000000d1'
+                      from public.shipment_cases where id = (select case_id from absent)),
+  'it opens an urgent case about the driver');
+select assert_true((select w.held and w.charge_baisa = 0 from private.trip_wait('6e000000-0000-4000-8000-000000000201') w where w.stop = 'drop'),
+  'and the stop charges nothing while held');
+select act_as_staff('6e000000-0000-4000-8000-0000000000a2', 'aal1', null);
+select assert_not_found($$select public.report_driver_absent('6e000000-0000-4000-8000-000000000201', 'drop')$$,
+  'another shipper cannot hold someone else''s trip');
+select act_as_reset();
+select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select public.ops_release_wait_hold('6e000000-0000-4000-8000-000000000201', 'drop', 'Called the receiver, truck was at the side gate');
+select act_as_reset();
+select assert_true((select not w.held and w.charge_baisa = 7000 from private.trip_wait('6e000000-0000-4000-8000-000000000201') w where w.stop = 'drop'),
+  'a person releasing the hold puts the charge back');
+
+-- Staff check a driver in by hand, inside the stop and with a reason.
+select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_raises($$select public.ops_mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', now() + interval '1 hour', 'wrong pin')$$,
+  'not in the future', '%between the trip starting and now%');
+select act_as_reset();
+update public.trip_events set occurred_at = now() - interval '40 minutes'
+ where trip_id = '6e000000-0000-4000-8000-000000000201' and type = 'en_route';
+select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_raises($$select public.ops_mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', now() - interval '30 minutes', 'wrong pin')$$,
+  'not after the stop ended', '%after the stop ended%');
+select assert_raises($$select public.ops_mark_arrived('6e000000-0000-4000-8000-000000000201', 'drop', now() - interval '45 minutes', 'wrong pin')$$,
+  'a drop-off arrival not before the pickup', '%before the cargo was picked up%');
+select act_as_reset();
+update public.trip_events set occurred_at = now()
+ where trip_id = '6e000000-0000-4000-8000-000000000201' and type = 'en_route';
+select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select public.ops_mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', now() - interval '65 minutes', 'Pin was on the wrong gate; driver was there from 9:40');
+select act_as_reset();
+select assert_true((select w.arrived_at < now() - interval '64 minutes' from private.trip_wait('6e000000-0000-4000-8000-000000000201') w where w.stop = 'pickup'),
+  'a staff check-in sets when the clock started');
+select assert_true((select count(*) = 1 from private.ops_audit where action = 'ops_mark_arrived'), 'and is audited');
+select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select public.ops_mark_arrived('6e000000-0000-4000-8000-000000000201', 'pickup', now() - interval '50 minutes', 'Back to what the driver''s phone said');
+select act_as_reset();
+
 -- Staff waive the drop-off wait, with a reason.
 select act_as_staff('6e000000-0000-4000-8000-0000000000f2', 'aal2', 1);
 select assert_raises($$select public.ops_waive_waiting('6e000000-0000-4000-8000-000000000201', 'drop', '')$$,
   'waiving needs a reason');
 select public.ops_waive_waiting('6e000000-0000-4000-8000-000000000201', 'drop', 'Receiver was told the wrong time by us');
 select assert_true((select (w->>'waiting_baisa')::bigint = 2000 and jsonb_array_length(w->'waivers') = 1
+                       and jsonb_array_length(w->'holds') = 1 and jsonb_array_length(w->'checked_in') = 1
                       from (select public.ops_trip_waiting('6e000000-0000-4000-8000-000000000201') w) x),
   'the waived stop charges nothing, and the console shows who waived it and why');
 select act_as_reset();
@@ -243,10 +309,12 @@ select act_as_reset();
 -- ── nobody reads the terms or waivers directly ──────────────────────────────
 select assert_true(not has_table_privilege('authenticated', 'private.load_wait_terms', 'select')
                and not has_table_privilege('authenticated', 'private.trip_wait_waivers', 'select')
-               and not has_table_privilege('anon', 'private.load_wait_terms', 'select'),
+               and not has_table_privilege('anon', 'private.load_wait_terms', 'select')
+               and not has_table_privilege('authenticated', 'private.trip_wait_holds', 'select')
+               and not has_table_privilege('authenticated', 'private.trip_wait_arrivals', 'select'),
   'no client reads the waiting tables');
 select assert_true((select provolatile = 'v' from pg_proc where proname = 'quote_trip')
-               and (select provolatile = 'v' from pg_proc where proname = 'mark_arrived'),
+               and (select provolatile = 'v' from pg_proc where proname = 'report_location'),
   'the writers are volatile');
 
 rollback;

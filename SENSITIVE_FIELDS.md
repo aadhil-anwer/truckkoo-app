@@ -120,9 +120,15 @@ Client table access: **none**. A load's waiting terms are copied from the rate
 card when it is priced (`issue_quote`); the shipper sees them through
 `quote_trip` and `trip_waiting`, which never return the driver's payout to a
 shipper. The waiting charge is computed only in `private.trip_wait` from trip
-events — the client sends no minutes and no amount. "I've arrived"
-(`mark_arrived`) takes the phone's fix, checks it against the pin and stores
-nothing but the event. Waivers are staff only (`ops_waive_waiting`, audited).
+events — the client sends no minutes and no amount. Arrival is automatic:
+`report_location` checks each fix against the next stop's pin
+(`private.auto_arrive`) and records only the event, at the server's time — no
+client call marks an arrival. Staff can check a driver in (`ops_mark_arrived`),
+waive a stop (`ops_waive_waiting`) or release a hold (`ops_release_wait_hold`),
+each audited. A shipper can hold a running stop at zero with
+`report_driver_absent`, which checks they own the trip and opens an urgent
+case. `private.trip_wait_holds` and `private.trip_wait_arrivals` have no client
+grant.
 The rate card's waiting columns follow the rest of the card: no client grant,
 edited through `ops_upsert_rate_card` by the owner.
 

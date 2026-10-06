@@ -294,10 +294,17 @@ export type RoutePrice = {
   outcome: QuoteOutcome;
   /** The truck the price is for — the resolved one when the shipper said "let us choose". */
   truck_type_code: string | null;
+  /** 0069: the road distance the price was measured on — between the pins when both are set. */
+  km?: number | null;
+  /** 0069: waiting terms that come with this price; null when the band charges none. */
+  wait_free_minutes?: number | null;
+  wait_per_15min_baisa?: number | null;
 };
 
 /**
- * The review screen's price. The same `quote_route` the server books against,
+ * The review screen's price. The same measure the server books against (0069
+ * `quote_trip`: between the pins when both are set, so a job inside one town
+ * has a distance),
  * so the number shown is the number booked: `useBookLoad` sends it back and the
  * server refuses to auto-accept anything else. `bigint` arrives from PostgREST
  * as a string, and a string price concatenates — it is made a number here.
@@ -307,19 +314,26 @@ export function useRoutePrice(input: {
   destCity: number | null;
   truckTypeCode: string | null;
   weightKg: number | null;
+  originPin?: { lat: number; lng: number } | null;
+  destPin?: { lat: number; lng: number } | null;
 }) {
   return useQuery({
-    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg],
+    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg,
+      input.originPin?.lat, input.originPin?.lng, input.destPin?.lat, input.destPin?.lng],
     enabled: input.originCity != null && input.destCity != null,
     // Rate-limited server-side (30 an hour); a review screen re-rendering must
     // not spend them.
     staleTime: 60_000,
     queryFn: async (): Promise<RoutePrice | null> => {
-      const { data, error } = await supabase.rpc('quote_route', {
+      const { data, error } = await supabase.rpc('quote_trip', {
         p_origin_city: input.originCity,
         p_dest_city: input.destCity,
         p_truck_type_code: input.truckTypeCode,
         p_weight_kg: input.weightKg,
+        p_origin_lat: input.originPin?.lat ?? null,
+        p_origin_lng: input.originPin?.lng ?? null,
+        p_dest_lat: input.destPin?.lat ?? null,
+        p_dest_lng: input.destPin?.lng ?? null,
       });
       if (error) throw error;
       const row = ((data ?? []) as Record<string, unknown>[])[0];
@@ -329,6 +343,76 @@ export function useRoutePrice(input: {
         currency: String(row.currency ?? 'OMR'),
         outcome: row.outcome as QuoteOutcome,
         truck_type_code: (row.truck_type_code as string | null) ?? null,
+        km: row.km == null ? null : Number(row.km),
+        wait_free_minutes: row.wait_free_minutes == null ? null : Number(row.wait_free_minutes),
+        wait_per_15min_baisa: row.wait_per_15min_baisa == null ? null : Number(row.wait_per_15min_baisa),
+      };
+    },
+  });
+}
+
+/** One stop's waiting, as the database computed it (0069 `private.trip_wait`). */
+export type WaitStop = {
+  stop: 'pickup' | 'drop';
+  arrived_at: string | null;
+  ended_at: string | null;
+  running: boolean;
+  minutes: number;
+  free_minutes: number;
+  per_15min_baisa: number;
+  cap_minutes: number;
+  capped: boolean;
+  waived: boolean;
+  /** "Driver isn't here": charged nothing until a person at Truckkoo checks. */
+  held: boolean;
+  charge_baisa: number;
+};
+export type TripWaiting = {
+  terms: { free_minutes: number; per_15min_baisa: number; cap_minutes: number } | null;
+  stops: WaitStop[];
+  waiting_baisa: number;
+  price_baisa: number | null;
+  /** Price + waiting: what the shipper pays and the driver collects. */
+  total_baisa: number | null;
+  /** The driver's own earnings on the trip; null for the shipper, always. */
+  payout_baisa: number | null;
+};
+
+/**
+ * A trip's waiting charge and totals, for its driver or its shipper. Every
+ * amount is computed in SQL; nothing here adds money up. Refreshes while a
+ * clock may be running.
+ */
+export function useTripWaiting(tripId: string | null | undefined, live: boolean) {
+  return useQuery({
+    queryKey: ['tripWaiting', tripId],
+    enabled: !!tripId,
+    refetchInterval: live ? 60_000 : false,
+    queryFn: async (): Promise<TripWaiting> => {
+      const { data, error } = await supabase.rpc('trip_waiting', { p_trip_id: tripId });
+      if (error) throw error;
+      const w = (data ?? {}) as Record<string, unknown>;
+      const num = (v: unknown) => (v == null ? null : Number(v));
+      return {
+        terms: (w.terms as TripWaiting['terms']) ?? null,
+        stops: ((w.stops as Record<string, unknown>[] | undefined) ?? []).map((s) => ({
+          stop: s.stop as WaitStop['stop'],
+          arrived_at: (s.arrived_at as string | null) ?? null,
+          ended_at: (s.ended_at as string | null) ?? null,
+          running: s.running === true,
+          minutes: Number(s.minutes ?? 0),
+          free_minutes: Number(s.free_minutes ?? 0),
+          per_15min_baisa: Number(s.per_15min_baisa ?? 0),
+          cap_minutes: Number(s.cap_minutes ?? 0),
+          capped: s.capped === true,
+          waived: s.waived === true,
+          held: s.held === true,
+          charge_baisa: Number(s.charge_baisa ?? 0),
+        })),
+        waiting_baisa: Number(w.waiting_baisa ?? 0),
+        price_baisa: num(w.price_baisa),
+        total_baisa: num(w.total_baisa),
+        payout_baisa: num(w.payout_baisa),
       };
     },
   });

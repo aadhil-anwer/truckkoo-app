@@ -46,6 +46,7 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
     prefixes: ['support.', 'record.', 'appeal.', 'reports.', 'messages.'] },
   // Search, pin and details in booking; the same place lines on review, T3/T4, D5 and D7.
   { title: 'Places — booking, review, and the driver at the gate (0041)', prefixes: ['places.'] },
+  { title: 'Waiting at the pickup and drop-off, and "Driver isn\'t here" (0069)', prefixes: ['wait.'] },
   { title: 'Map labels — seas and countries, every drawn map', prefixes: ['map.'] },
   {
     title: 'Shared chrome',

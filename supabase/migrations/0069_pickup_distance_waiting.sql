@@ -14,11 +14,16 @@
 --     refuses it.
 --   * Waiting was unpaid. The rate card gains free minutes and a rate per
 --     started 15 minutes; the terms are kept with the load at pricing. The
---     driver taps "I've arrived" with the phone's fix, checked against the pin
---     and not stored; the clock runs to "picked up" / "delivered", counts up to
+--     driver's arrival is noticed from the phone's reports (no button), checked
+--     against the pin; the clock runs to "picked up" / "delivered", counts up to
 --     a cap, and past the cap a support case opens. The driver keeps all of the
 --     waiting charge; commission is on the price only. Staff can waive a stop,
 --     with a reason.
+--   * A false "I've arrived" (founder's choice of protections, 2026-10-06): the
+--     shipper, standing at the gate, can say "Driver isn't here" — the stop's
+--     charge is held at zero and an urgent case opens until a person releases
+--     the hold or waives it. And staff can check a driver in by hand (a wrong
+--     pin, location off), with a reason. Arrival is within 300 m of the pin.
 --
 -- quote_route keeps its shape for builds already installed; the app now asks
 -- quote_trip, which takes the pins and returns the waiting terms.
@@ -631,6 +636,35 @@ revoke all on private.trip_wait_waivers from public, anon, authenticated;
 alter table private.trip_wait_waivers enable row level security;
 alter table private.trip_wait_waivers force row level security;
 
+-- Staff checking a driver in by hand. Wins over the driver's own tap.
+create table private.trip_wait_arrivals (
+  trip_id    uuid not null references public.trips(id) on delete cascade,
+  stop       text not null check (stop in ('pickup', 'drop')),
+  arrived_at timestamptz not null,
+  set_by     uuid references public.profiles(id),
+  reason     text not null,
+  created_at timestamptz not null default now(),
+  primary key (trip_id, stop)
+);
+revoke all on private.trip_wait_arrivals from public, anon, authenticated;
+alter table private.trip_wait_arrivals enable row level security;
+alter table private.trip_wait_arrivals force row level security;
+
+-- "Driver isn't here": the stop charges nothing until a person releases it.
+create table private.trip_wait_holds (
+  trip_id        uuid not null references public.trips(id) on delete cascade,
+  stop           text not null check (stop in ('pickup', 'drop')),
+  case_id        uuid references public.shipment_cases(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  released_at    timestamptz,
+  released_by    uuid references public.profiles(id),
+  release_reason text,
+  primary key (trip_id, stop)
+);
+revoke all on private.trip_wait_holds from public, anon, authenticated;
+alter table private.trip_wait_holds enable row level security;
+alter table private.trip_wait_holds force row level security;
+
 -- Each stop of a trip on a load with waiting terms: when the driver arrived,
 -- when the wait ended (picked up / delivered; still running while the trip is
 -- live), and the charge — free minutes first, then per started 15 minutes, up
@@ -638,7 +672,7 @@ alter table private.trip_wait_waivers force row level security;
 create or replace function private.trip_wait(p_trip_id uuid)
 returns table (stop text, arrived_at timestamptz, ended_at timestamptz, running boolean, minutes integer,
                free_minutes integer, per_15min_baisa bigint, cap_minutes integer, capped boolean,
-               waived boolean, charge_baisa bigint)
+               waived boolean, held boolean, charge_baisa bigint)
 language sql
 stable
 security definer
@@ -657,7 +691,8 @@ as $$
   ),
   a as (
     select s.stop, s.ord, t.*,
-           (select min(e.occurred_at) from public.trip_events e where e.trip_id = t.id and e.type = s.arrive_type) as arrived,
+           coalesce((select x.arrived_at from private.trip_wait_arrivals x where x.trip_id = t.id and x.stop = s.stop),
+                    (select min(e.occurred_at) from public.trip_events e where e.trip_id = t.id and e.type = s.arrive_type)) as arrived,
            (select min(e.occurred_at) from public.trip_events e where e.trip_id = t.id and e.type = s.end_type) as ended_event
       from t cross join s
   ),
@@ -669,7 +704,9 @@ as $$
                 else a.arrived end as ended,
            (a.arrived is not null and (a.ended_event is null or a.ended_event < a.arrived)
              and a.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)) as is_running,
-           exists (select 1 from private.trip_wait_waivers x where x.trip_id = a.id and x.stop = a.stop) as is_waived
+           exists (select 1 from private.trip_wait_waivers x where x.trip_id = a.id and x.stop = a.stop) as is_waived,
+           exists (select 1 from private.trip_wait_holds h where h.trip_id = a.id and h.stop = a.stop
+                     and h.released_at is null) as is_held
       from a
   ),
   c as (
@@ -678,8 +715,8 @@ as $$
       from b
   )
   select c.stop, c.arrived, case when c.is_running then null else c.ended end, c.is_running, c.mins,
-         c.free_minutes, c.per_15min_baisa, c.cap_minutes, c.mins >= c.cap_minutes, c.is_waived,
-         case when c.is_waived then 0::bigint
+         c.free_minutes, c.per_15min_baisa, c.cap_minutes, c.mins >= c.cap_minutes, c.is_waived, c.is_held,
+         case when c.is_waived or c.is_held then 0::bigint
               else (ceil(greatest(least(c.mins, c.cap_minutes) - c.free_minutes, 0) / 15.0)::bigint * c.per_15min_baisa)
          end
     from c
@@ -746,13 +783,14 @@ $$;
 revoke all on function public.trip_waiting(uuid) from public, anon;
 grant execute on function public.trip_waiting(uuid) to authenticated;
 
--- "I've arrived". The phone's fix comes with the tap and is checked against the
--- pin, then dropped: nothing about it is stored (a position is only ever one
--- row, 0032/0039). Arriving twice keeps the first time. The shipper is told,
--- with the waiting terms — amounts only on the lock screen (0046).
-create or replace function public.mark_arrived(
-  p_trip_id uuid, p_stop text, p_lat double precision, p_lng double precision, p_accuracy_m numeric default null
-)
+-- Arriving is automatic (founder, 2026-10-06): no button. While a driver has a
+-- job the phone reports every 30 s / 150 m (location-tracking.tsx), and each
+-- report is checked against the next stop's pin. Inside arrive_radius_m (300 by
+-- default) and not driving past (≤ 4 m/s when the phone knows its speed), the
+-- stop is arrived. The time is the server's — the phone's clock never sets
+-- when waiting starts — and a report older than five minutes is not "now".
+-- The position itself is not stored here (a position is only ever one row).
+create or replace function private.record_arrival(p_trip_id uuid, p_stop text)
 returns timestamptz
 language plpgsql
 volatile
@@ -760,48 +798,19 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_uid    uuid := auth.uid();
-  v_trip   public.trips;
-  v_load   public.loads;
-  v_pin    public.load_places;
-  v_type   text;
-  v_at     timestamptz;
-  v_dist   numeric;
-  v_terms  private.load_wait_terms;
-  v_lang   text;
+  v_trip  public.trips;
+  v_load  public.loads;
+  v_terms private.load_wait_terms;
+  v_type  text := 'arrived_' || p_stop;
+  v_at    timestamptz;
 begin
-  perform private.check_rate_limit('mark_arrived', 60, interval '1 hour');
-  select * into v_trip from public.trips t where t.id = p_trip_id and t.driver_id = v_uid for update;
-  if not found then
-    raise exception 'not found' using errcode = 'no_data_found';
-  end if;
-  if p_stop not in ('pickup', 'drop') then
-    raise exception 'stop is pickup or drop' using errcode = 'check_violation';
-  end if;
-  if (p_stop = 'pickup' and v_trip.status <> 'assigned'::public.trip_status)
-     or (p_stop = 'drop' and v_trip.status <> 'in_transit'::public.trip_status) then
-    raise exception 'not at this stage of the job' using errcode = 'check_violation';
-  end if;
-  v_type := 'arrived_' || p_stop;
   select min(e.occurred_at) into v_at from public.trip_events e where e.trip_id = p_trip_id and e.type = v_type;
   if v_at is not null then
     return v_at;
   end if;
-
-  select * into v_pin from public.load_places p where p.load_id = v_trip.load_id and p.kind = p_stop;
-  if not found then
-    raise exception 'This job has no pin for that stop.' using errcode = 'check_violation';
-  end if;
-  if p_lat is null or p_lng is null or p_lat not between 12 and 33 or p_lng not between 34 and 60 then
-    raise exception 'no location from the phone' using errcode = 'check_violation';
-  end if;
-  v_dist := private.metres_between(p_lat, p_lng, v_pin.lat, v_pin.lng);
-  if v_dist > private.setting_int('arrive_radius_m', 500) + least(coalesce(p_accuracy_m, 0), 200) then
-    raise exception 'You are % m from the pin. Tap again when you are there.', round(v_dist)
-      using errcode = 'check_violation';
-  end if;
-
-  insert into public.trip_events (trip_id, type) values (p_trip_id, v_type) returning occurred_at into v_at;
+  select * into v_trip from public.trips t where t.id = p_trip_id;
+  insert into public.trip_events (trip_id, type, created_by) values (p_trip_id, v_type, v_trip.driver_id)
+  returning occurred_at into v_at;
 
   select * into v_load from public.loads l where l.id = v_trip.load_id;
   select * into v_terms from private.load_wait_terms w where w.load_id = v_trip.load_id;
@@ -818,8 +827,126 @@ begin
   return v_at;
 end;
 $$;
-revoke all on function public.mark_arrived(uuid, text, double precision, double precision, numeric) from public, anon;
-grant execute on function public.mark_arrived(uuid, text, double precision, double precision, numeric) to authenticated;
+revoke all on function private.record_arrival(uuid, text) from public, anon, authenticated;
+
+create or replace function private.auto_arrive(
+  p_driver uuid, p_lat double precision, p_lng double precision, p_accuracy_m numeric,
+  p_speed_mps numeric, p_at timestamptz
+)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  r record;
+begin
+  if p_at < now() - interval '5 minutes' then
+    return;
+  end if;
+  if p_speed_mps is not null and p_speed_mps > 4 then
+    return;
+  end if;
+  for r in
+    select t.id, case t.status when 'assigned'::public.trip_status then 'pickup' else 'drop' end as stop, p.lat, p.lng
+      from public.trips t
+      join public.load_places p on p.load_id = t.load_id
+       and p.kind = case t.status when 'assigned'::public.trip_status then 'pickup' else 'drop' end
+     where t.driver_id = p_driver
+       and t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
+  loop
+    if private.metres_between(p_lat, p_lng, r.lat, r.lng)
+         <= private.setting_int('arrive_radius_m', 300) + least(coalesce(p_accuracy_m, 0), 100)
+       and not exists (select 1 from public.trip_events e where e.trip_id = r.id and e.type = 'arrived_' || r.stop) then
+      perform private.record_arrival(r.id, r.stop);
+    end if;
+  end loop;
+end;
+$$;
+revoke all on function private.auto_arrive(uuid, double precision, double precision, numeric, numeric, timestamptz)
+  from public, anon, authenticated;
+
+-- report_location gains the phone's speed and the arrival check. The extra
+-- argument has a default, so builds that do not send it keep working.
+drop function public.report_location(double precision, double precision, numeric, timestamptz);
+create or replace function public.report_location(p_lat double precision, p_lng double precision, p_accuracy_m numeric DEFAULT NULL::numeric, p_recorded_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_speed_mps numeric DEFAULT NULL::numeric)
+ RETURNS TABLE(stored boolean, on_trip boolean)
+ LANGUAGE plpgsql
+ VOLATILE
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_actor   uuid := auth.uid();
+  v_at      timestamptz;
+  v_trip    uuid;
+  v_stored  boolean := false;
+begin
+  if v_actor is null then
+    raise exception 'not authenticated' using errcode = 'insufficient_privilege';
+  end if;
+  if (select private.actor_role()) <> 'driver' then
+    raise exception 'not permitted' using errcode = 'insufficient_privilege';
+  end if;
+  perform private.require_active();
+  -- 240/hour: the phone asks every 30 s at most (on a trip, 0040). This bounds a
+  -- broken client, not the real one.
+  perform private.check_rate_limit('report_location', 240, interval '1 hour');
+
+  if p_lat is null or p_lng is null
+     or p_lat not between 12 and 33 or p_lng not between 34 and 60 then
+    raise exception 'position out of range' using errcode = 'check_violation';
+  end if;
+  if p_accuracy_m is not null and (p_accuracy_m < 0 or p_accuracy_m > 100000) then
+    raise exception 'accuracy out of range' using errcode = 'check_violation';
+  end if;
+
+  -- A fast phone clock is clamped, not refused: refusing would lock that phone
+  -- out for as long as its clock is wrong, silently. A day-old point is a
+  -- replay from a phone that was off; it is dropped, not raised, so the
+  -- rate-limit row stays spent.
+  v_at := least(coalesce(p_recorded_at, now()), now());
+  if v_at < now() - interval '24 hours' then
+    return query select false, false;
+    return;
+  end if;
+
+  -- The load being carried is tracked whatever the switch says: the trip
+  -- trigger (0036) takes a driver on a job offline.
+  select t.id into v_trip
+  from public.trips t
+  where t.driver_id = v_actor and t.status = 'in_transit'::public.trip_status
+  order by t.created_at desc
+  limit 1;
+
+  if v_trip is not null then
+    insert into public.trip_positions (trip_id, driver_id, lat, lng, accuracy_m, seen_at)
+    values (v_trip, v_actor, p_lat, p_lng, p_accuracy_m, v_at);
+  end if;
+
+  -- Offline stores nothing. Older than what we have is ignored. `updated_at`
+  -- is NOT touched: it records the switch, and 0037's re-ask rule reads it.
+  update public.driver_availability da
+     set lat = p_lat, lng = p_lng, accuracy_m = p_accuracy_m, located_at = v_at,
+         city_id = private.nearest_city(p_lat, p_lng), source = 'gps'
+   where da.driver_id = v_actor
+     and da.available
+     and (da.located_at is null or da.located_at < v_at);
+  v_stored := found;
+
+  -- 0069: arriving is noticed, not tapped. Never allowed to break reporting.
+  begin
+    perform private.auto_arrive(v_actor, p_lat, p_lng, p_accuracy_m, p_speed_mps, v_at);
+  exception when others then
+    perform private.log_system('auto_arrive_error', 'driver', v_actor::text, jsonb_build_object('sqlstate', sqlstate));
+  end;
+
+  return query select v_stored, v_trip is not null;
+end;
+$function$;
+revoke all on function public.report_location(double precision, double precision, numeric, timestamptz, numeric) from public, anon;
+grant execute on function public.report_location(double precision, double precision, numeric, timestamptz, numeric) to authenticated;
 
 -- Staff: the same picture with the driver's side, and waiving a stop.
 create or replace function public.ops_trip_waiting(p_trip_id uuid)
@@ -838,7 +965,15 @@ begin
     || jsonb_build_object('waivers', coalesce((select jsonb_agg(jsonb_build_object(
          'stop', x.stop, 'reason', x.reason, 'at', x.created_at,
          'by', (select p.full_name from public.profiles p where p.id = x.waived_by)))
-         from private.trip_wait_waivers x where x.trip_id = p_trip_id), '[]'::jsonb));
+         from private.trip_wait_waivers x where x.trip_id = p_trip_id), '[]'::jsonb),
+       'checked_in', coalesce((select jsonb_agg(jsonb_build_object(
+         'stop', x.stop, 'arrived_at', x.arrived_at, 'reason', x.reason, 'at', x.created_at,
+         'by', (select p.full_name from public.profiles p where p.id = x.set_by)))
+         from private.trip_wait_arrivals x where x.trip_id = p_trip_id), '[]'::jsonb),
+       'holds', coalesce((select jsonb_agg(jsonb_build_object(
+         'stop', h.stop, 'case_id', h.case_id, 'at', h.created_at, 'released_at', h.released_at,
+         'release_reason', h.release_reason))
+         from private.trip_wait_holds h where h.trip_id = p_trip_id), '[]'::jsonb));
 end;
 $$;
 revoke all on function public.ops_trip_waiting(uuid) from public, anon;
@@ -876,12 +1011,147 @@ $$;
 revoke all on function public.ops_waive_waiting(uuid, text, text) from public, anon;
 grant execute on function public.ops_waive_waiting(uuid, text, text) to authenticated;
 
+-- The shipper at the gate: "the driver says he is here, and he is not". Only
+-- while that stop's clock is running. Holds the charge, opens an urgent case,
+-- tells the driver. Once per stop.
+create or replace function public.report_driver_absent(p_trip_id uuid, p_stop text)
+returns uuid
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid  uuid := auth.uid();
+  v_trip public.trips;
+  v_load public.loads;
+  v_case uuid;
+begin
+  perform private.check_rate_limit('report_driver_absent', 10, interval '1 hour');
+  select t.* into v_trip from public.trips t join public.loads l on l.id = t.load_id
+   where t.id = p_trip_id and l.shipper_id = v_uid;
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if p_stop not in ('pickup', 'drop') then
+    raise exception 'stop is pickup or drop' using errcode = 'check_violation';
+  end if;
+  select h.case_id into v_case from private.trip_wait_holds h where h.trip_id = p_trip_id and h.stop = p_stop;
+  if found then
+    return v_case;
+  end if;
+  if not exists (select 1 from private.trip_wait(p_trip_id) w where w.stop = p_stop and w.running) then
+    raise exception 'the driver has not checked in there' using errcode = 'check_violation';
+  end if;
+  select * into v_load from public.loads l where l.id = v_trip.load_id;
+
+  insert into public.shipment_cases (load_id, trip_id, reporter_id, subject_id, kind, details)
+  values (v_load.id, p_trip_id, v_uid, v_trip.driver_id, 'not_here',
+          'The shipper says the driver checked in at the '
+          || case p_stop when 'pickup' then 'pickup' else 'drop-off' end || ' but is not there.')
+  returning id into v_case;
+  insert into private.trip_wait_holds (trip_id, stop, case_id) values (p_trip_id, p_stop, v_case);
+
+  perform private.push_send(v_trip.driver_id, 'driver_absence_reported', v_load.id,
+    'The customer can''t see your truck',
+    'They say you are not at the ' || case p_stop when 'pickup' then 'pickup' else 'drop-off' end
+      || '. Waiting is paused. Truckkoo will call you.',
+    'العميل لا يرى شاحنتك',
+    'يقول العميل إنك لست عند ' || case p_stop when 'pickup' then 'موقع التحميل' else 'موقع التسليم' end
+      || '. تم إيقاف احتساب الانتظار. سيتصل بك فريق تركو.',
+    jsonb_build_object('kind', 'driver_absence_reported', 'trip_id', p_trip_id));
+  return v_case;
+end;
+$$;
+revoke all on function public.report_driver_absent(uuid, text) from public, anon;
+grant execute on function public.report_driver_absent(uuid, text) to authenticated;
+
+-- Staff: a person decided the driver was there after all.
+create or replace function public.ops_release_wait_hold(p_trip_id uuid, p_stop text, p_reason text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_reason text;
+begin
+  perform private.require_ops();
+  v_reason := private.clean_text(p_reason, 3, 'releasing the hold');
+  update private.trip_wait_holds
+     set released_at = now(), released_by = auth.uid(), release_reason = v_reason
+   where trip_id = p_trip_id and stop = p_stop and released_at is null;
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  perform private.log_ops('ops_release_wait_hold', 'trip', p_trip_id::text,
+    jsonb_build_object('stop', p_stop, 'held', true), jsonb_build_object('stop', p_stop, 'held', false), v_reason);
+end;
+$$;
+revoke all on function public.ops_release_wait_hold(uuid, text, text) from public, anon;
+grant execute on function public.ops_release_wait_hold(uuid, text, text) to authenticated;
+
+-- Staff: check a driver in by hand — a wrong pin, location switched off, no signal.
+-- The time is when they were really there; it cannot be in the future, before
+-- the trip, or after the stop ended.
+create or replace function public.ops_mark_arrived(p_trip_id uuid, p_stop text, p_at timestamptz, p_reason text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_trip   public.trips;
+  v_reason text;
+  v_end    timestamptz;
+  v_before timestamptz;
+begin
+  perform private.require_ops();
+  perform private.check_rate_limit('ops_mark_arrived', 100, interval '1 hour');
+  v_reason := private.clean_text(p_reason, 3, 'checking a driver in');
+  select * into v_trip from public.trips t where t.id = p_trip_id;
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if p_stop not in ('pickup', 'drop') then
+    raise exception 'stop is pickup or drop' using errcode = 'check_violation';
+  end if;
+  if v_trip.status = 'cancelled'::public.trip_status then
+    raise exception 'this trip was cancelled' using errcode = 'check_violation';
+  end if;
+  if p_at is null or p_at > now() or p_at < v_trip.created_at then
+    raise exception 'the time must be between the trip starting and now' using errcode = 'check_violation';
+  end if;
+  select min(e.occurred_at) into v_end from public.trip_events e
+   where e.trip_id = p_trip_id and e.type = case p_stop when 'pickup' then 'en_route' else 'delivered' end;
+  if v_end is not null and p_at > v_end then
+    raise exception 'that is after the stop ended' using errcode = 'check_violation';
+  end if;
+  if p_stop = 'drop' and exists (select 1 from public.trip_events e where e.trip_id = p_trip_id and e.type = 'en_route'
+                                    and e.occurred_at > p_at) then
+    raise exception 'that is before the cargo was picked up' using errcode = 'check_violation';
+  end if;
+  select w.arrived_at into v_before from private.trip_wait(p_trip_id) w where w.stop = p_stop;
+  insert into private.trip_wait_arrivals (trip_id, stop, arrived_at, set_by, reason)
+  values (p_trip_id, p_stop, p_at, auth.uid(), v_reason)
+  on conflict (trip_id, stop) do update
+    set arrived_at = excluded.arrived_at, set_by = excluded.set_by, reason = excluded.reason, created_at = now();
+  perform private.log_ops('ops_mark_arrived', 'trip', p_trip_id::text,
+    jsonb_build_object('stop', p_stop, 'arrived_at', v_before), jsonb_build_object('stop', p_stop, 'arrived_at', p_at),
+    v_reason);
+end;
+$$;
+revoke all on function public.ops_mark_arrived(uuid, text, timestamptz, text) from public, anon;
+grant execute on function public.ops_mark_arrived(uuid, text, timestamptz, text) to authenticated;
+
 -- ═══ 5. past the cap, a person steps in ══════════════════════════════════════
 alter table public.shipment_cases drop constraint shipment_cases_kind_check;
 alter table public.shipment_cases add constraint shipment_cases_kind_check check (kind = any (array[
   'delay', 'breakdown', 'damage', 'other', 'cancel_request', 'no_show', 'abandoned', 'release',
   'delivery_dispute', 'no_pod', 'price_demand', 'misconduct', 'not_ready', 'cargo_mismatch', 'late_cancel',
-  'unreachable', 'change_request', 'account_flag', 'appeal', 'app_problem', 'long_wait']));
+  'unreachable', 'change_request', 'account_flag', 'appeal', 'app_problem', 'long_wait', 'not_here']));
 
 create or replace function private.case_priority_for(p_kind text)
 returns text
@@ -890,7 +1160,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_kind in ('breakdown', 'abandoned', 'no_show', 'misconduct') then 'urgent'
+    when p_kind in ('breakdown', 'abandoned', 'no_show', 'misconduct', 'not_here') then 'urgent'
     when p_kind in ('damage', 'delivery_dispute', 'price_demand', 'release', 'late_cancel', 'cancel_request',
                     'not_ready', 'unreachable', 'delay', 'change_request', 'cargo_mismatch', 'long_wait') then 'high'
     else 'normal'
@@ -916,7 +1186,7 @@ begin
       join private.load_wait_terms lw on lw.load_id = t.load_id
       cross join lateral private.trip_wait(t.id) w
      where t.status in ('assigned'::public.trip_status, 'in_transit'::public.trip_status)
-       and w.running and w.capped and not w.waived
+       and w.running and w.capped and not w.waived and not w.held
        and not exists (select 1 from public.shipment_cases c
                         where c.trip_id = t.id and c.kind = 'long_wait'
                           and c.details like 'Waiting at the ' || case w.stop when 'pickup' then 'pickup' else 'drop-off' end || '%')
@@ -1032,7 +1302,7 @@ AS $function$
     ('wait_cap_minutes', 'integer', 'Waiting stops counting after (minutes, per stop)',
      'Waiting at a pickup or drop-off is charged up to this long; past it the charge stops and a support case opens for a person to sort out. Applies to loads priced after the change.', 30, 480),
     ('arrive_radius_m', 'integer', 'Driver counts as arrived within (metres of the pin)',
-     'How close the driver''s phone must be to the pin for "I''ve arrived" to start the waiting clock.', 100, 2000),
+     'How close the driver''s phone must be to the pin to count as arrived and start the waiting clock. 300 by default.', 100, 2000),
     ('same_city_min_m', 'integer', 'Shortest job inside one town (metres between pins)',
      'A job whose pickup and drop-off are in the same town needs both pins at least this far apart.', 100, 5000)
 $function$;

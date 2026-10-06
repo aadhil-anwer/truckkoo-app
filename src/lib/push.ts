@@ -145,11 +145,15 @@ export function hrefFor(data: unknown): string | null {
       const offer = id('offer_id');
       return offer ? (d.bid === true ? `/bid/${offer}` : `/offer/${offer}`) : null;
     }
+    // 0069: the shipper said the driver is not at the pin.
+    case 'driver_absence_reported':
     case 'driver_trip': {
       const trip = id('trip_id');
       return trip ? `/trip/${trip}` : null;
     }
     case 'shipper_load':
+    // 0069: the truck reached the pickup or the drop-off; the load shows the waiting.
+    case 'shipper_driver_arrived':
     // 0065: the driver released the job; the load page says a new truck is being found.
     case 'shipper_driver_released': {
       const load = id('load_id');

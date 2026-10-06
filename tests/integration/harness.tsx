@@ -156,6 +156,8 @@ jest.mock('@/lib/queries', () => {
     useDriverLoadBids: jest.fn(),
     usePlaceDriverBid: jest.fn(),
     useMyMessages: jest.fn(),
+    // 0069. A trip's waiting charge.
+    useTripWaiting: jest.fn(),
     useMyRecord: jest.fn(),
     useMyCases: jest.fn(),
   };
@@ -390,6 +392,7 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useDriverTrip').mockReturnValue(ok(null));
   m('useMyMessages').mockReturnValue(ok([]));
+  m('useTripWaiting').mockReturnValue(ok({ terms: null, stops: [], waiting_baisa: 0, price_baisa: null, total_baisa: null, payout_baisa: null }));
   m('useMyRecord').mockReturnValue(ok([]));
   m('useMyCases').mockReturnValue(ok([]));
   // DEFAULT: NO FIX. A trip nobody has reported on is the state every trip

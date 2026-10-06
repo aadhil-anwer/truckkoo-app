@@ -9,6 +9,39 @@ an entry only when it is actually closed.
 
 ---
 
+## Pickups: distance, jobs inside one town, waiting (0068–0069, 2026-10-06)
+
+Launch is pickups, one town at a time, fixed prices, 0% commission. Built:
+price between the pins, same-town jobs (both pins, ≥300 m apart), waiting
+terms on the rate card, automatic arrival from the phone's reports, the
+shipper's "Driver isn't here", staff check-in / waive / release, a cap that
+opens a case. Bidding is hidden (`BIDDING` off), still built.
+
+- **Nothing here has run on a phone.** Automatic arrival depends on the OS
+  delivering background fixes every 30 s / 150 m while heading to a pickup.
+  `distanceInterval: 150` means a parked truck sends nothing more — fine, since
+  the first fix inside 300 m is the arrival — but a truck that reaches the gate
+  between fixes is noticed late. Measure on a cheap Android before launch.
+- **Fake-GPS apps are not blocked** (founder's choice, 2026-10-06). Android
+  marks mocked fixes; the app does not send that flag. The defence is the
+  shipper, who is pushed "your truck is here" while standing at the gate.
+- **An impossible jump** (25 km in 5 min to the pin) is not flagged. Possible
+  later from the last stored fix.
+- **A driver offline and with the app killed** sends no fixes and is never
+  checked in; staff check-in covers it.
+- **Pins set the price.** A shipper can pin short and phone the driver another
+  address. The driver sees both pins before accepting; there is no check that
+  delivery happened at the drop pin yet.
+- **The rate card is empty.** Fixed prices and waiting need the pickup band
+  loaded by hand in the console (Money) before launch.
+- **18 Arabic and 18 Urdu strings are drafts** (`wait.*`, `places.pin.need*`,
+  `places.pin.setPickup`, `places.pin.tooClose`), and the two location
+  disclosure strings (`loc.ask.body`, `drv.avail.why`) were rewritten in all
+  three languages to say location is also used while on a job. The store
+  listing's data-safety answers must say the same.
+- **The console** needs the waiting fields on the rate card form and the trip
+  page's waiting panel (check in / waive / release) — see `~/truckkoo-ops`.
+
 ## Support desk (0062–0066, 2026-10-06)
 
 The support desk is built: cases with deadlines and a thread, strikes

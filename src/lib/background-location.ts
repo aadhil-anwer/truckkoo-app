@@ -45,6 +45,9 @@ export async function sendNewest(locations: Location.LocationObject[]): Promise<
       p_lng: newest.coords.longitude,
       p_accuracy_m: newest.coords.accuracy ?? null,
       p_recorded_at: new Date(newest.timestamp).toISOString(),
+      // 0069: arrival at a pin is noticed server-side, and a truck doing 45 km/h
+      // past the gate has not arrived. Unknown is null — Android reports -1.
+      p_speed_mps: newest.coords.speed != null && newest.coords.speed >= 0 ? newest.coords.speed : null,
     });
   } catch {
     // No signal in the Hajar, or no session on a headless launch. The next

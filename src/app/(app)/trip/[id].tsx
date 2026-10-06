@@ -46,7 +46,8 @@ import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
-import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition, useTripWaiting } from '@/lib/queries';
+import { WaitingCard } from '@/components/trip/WaitingCard';
 import { directionsLink, safeText } from '@/lib/safe-text';
 import { reportFailure } from '@/lib/monitoring';
 import { supabase } from '@/lib/supabase';
@@ -72,6 +73,7 @@ export default function TripScreen() {
 
   const cities = useCities();
   const job = useDriverTrip(id);
+  const waiting = useTripWaiting(id, job.data?.status === 'assigned' || job.data?.status === 'in_transit');
   const advance = useAdvanceTrip();
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -329,6 +331,11 @@ export default function TripScreen() {
               )}
             </Pressable>
           )}
+
+          {/* 0069: arriving is noticed from the phone's reports, so there is
+              nothing to tap — only the clock, once it runs. */}
+          <WaitingCard waiting={waiting.data} side="driver" tripId={id}
+            nextStop={done ? null : { stop: collected ? 'drop' : 'pickup', pinned: !!(collected ? dropPlace : pickupPlace) }} />
 
           {!!error && (
             <Text style={styles.error} accessibilityLiveRegion="polite">

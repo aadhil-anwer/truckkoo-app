@@ -99,6 +99,7 @@ import {
   useTripCounterpart,
   useTripPosition,
   useTripEvents,
+  useTripWaiting,
   useTripTruck,
   useTruckTypes,
   type City,
@@ -109,6 +110,7 @@ import {
   type TripCounterpart,
   type TripTruck,
 } from '@/lib/queries';
+import { WaitingCard } from '@/components/trip/WaitingCard';
 import {
   GUTTER_INK,
   MIN_TARGET,
@@ -160,6 +162,8 @@ export default function TrackLoad() {
   const counterpart = useTripCounterpart(trip?.id);
   const truck = useTripTruck(trip?.id);
   const events = useTripEvents(trip?.id);
+  // 0069: the waiting clock at the pickup and the drop-off, and what it adds.
+  const waiting = useTripWaiting(trip?.id, !!trip && (trip.status === 'assigned' || trip.status === 'in_transit'));
   const position = useTripPosition(trip?.id, { live: load?.status === 'in_transit' });
   const summary = useDriverSummary(trip?.driver_id);
   // The exact pickup and drop-off, when the shipper pinned them (0041).
@@ -421,6 +425,12 @@ export default function TrackLoad() {
             </Text>
           )}
         </View>
+
+        {trip && (
+          <View style={styles.block}>
+            <WaitingCard waiting={waiting.data} side="shipper" tripId={trip.id} onChanged={() => void waiting.refetch()} />
+          </View>
+        )}
 
         {status !== 'cancelled' && (
           <View style={styles.block}>

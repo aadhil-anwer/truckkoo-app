@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { greatCircleKm } from '@/map/distance';
 import { BIDDING } from './features';
 import { useSession } from './session';
 
@@ -368,4 +369,22 @@ export function useBookingDraft() {
   }, [ownerId]);
 
   return { draft: current ?? EMPTY_DRAFT, update, reset, ready: current != null };
+}
+
+/**
+ * A job inside one town (0069) needs both pins, far enough apart to be a job.
+ * The same rule `check_same_city` applies on the server, which decides; this
+ * only lets the pin screen say so before the shipper gets to the price.
+ * 300 m mirrors the server's default `same_city_min_m`.
+ */
+export const SAME_TOWN_MIN_M = 300;
+export function sameTownProblem(
+  originCityId: number | null,
+  destCityId: number | null,
+  originPin: { lat: number; lng: number } | null,
+  destPin: { lat: number; lng: number } | null,
+): 'needsPickupPin' | 'tooClose' | null {
+  if (originCityId == null || destCityId == null || originCityId !== destCityId) return null;
+  if (!originPin || !destPin) return 'needsPickupPin';
+  return greatCircleKm(originPin, destPin) * 1000 < SAME_TOWN_MIN_M ? 'tooClose' : null;
 }
