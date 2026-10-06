@@ -155,6 +155,9 @@ jest.mock('@/lib/queries', () => {
     useDriverBidInvite: jest.fn(),
     useDriverLoadBids: jest.fn(),
     usePlaceDriverBid: jest.fn(),
+    useMyMessages: jest.fn(),
+    useMyRecord: jest.fn(),
+    useMyCases: jest.fn(),
   };
 });
 
@@ -386,6 +389,9 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverPastTrips').mockReturnValue(ok([]));
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useDriverTrip').mockReturnValue(ok(null));
+  m('useMyMessages').mockReturnValue(ok([]));
+  m('useMyRecord').mockReturnValue(ok([]));
+  m('useMyCases').mockReturnValue(ok([]));
   // DEFAULT: NO FIX. A trip nobody has reported on is the state every trip
   // starts in, so it is what a fresh test renders.
   m('useTripPosition').mockReturnValue(ok(null));

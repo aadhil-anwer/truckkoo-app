@@ -128,6 +128,9 @@ describe('where a tap goes', () => {
 
   it('opens the job, the trip or the load it is about', () => {
     expect(hrefFor({ kind: 'driver_new_job', offer_id: id, bid: true })).toBe(`/bid/${id}`);
+    expect(hrefFor({ kind: 'staff_message', message_id: id })).toBe('/messages');
+    expect(hrefFor({ kind: 'shipper_driver_released', load_id: id })).toBe(`/load/${id}`);
+    expect(hrefFor({ kind: 'shipper_driver_released', load_id: 'not-a-uuid' })).toBeNull();
     expect(hrefFor({ kind: 'driver_new_job', offer_id: id, bid: false })).toBe(`/offer/${id}`);
     expect(hrefFor({ kind: 'driver_trip', trip_id: id })).toBe(`/trip/${id}`);
     expect(hrefFor({ kind: 'shipper_load', load_id: id })).toBe(`/load/${id}`);

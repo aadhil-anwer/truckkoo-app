@@ -9,6 +9,34 @@ an entry only when it is actually closed.
 
 ---
 
+## Support desk (0062–0066, 2026-10-06)
+
+The support desk is built: cases with deadlines and a thread, strikes
+(suspected until a person confirms, appealable), detectors for no-shows,
+silent trucks and returning suspended accounts, playbooks, a driver's "Release
+this job", staff messages with push, and reports with photos. What is still
+open:
+
+- **Nothing here has been seen on a phone.** The app screens (release, my
+  record, appeal, my reports, messages, photo reports) are verified by Jest
+  only; the console by Vitest and a browser walk on a local stack. Done when a
+  driver and a shipper have each used them on a real Android phone.
+- **71 new Arabic strings and 71 Urdu strings are drafts** (support desk block
+  at the end of the `ar` and `ur` dictionaries), and the console's WhatsApp
+  message templates (`truckkoo-ops/src/lib/templates.ts`) are drafts too. Done
+  when a native reader has proofed them; `npm run preview:rtl` groups them
+  under "Support desk".
+- **Detector thresholds are guesses.** No-show at 14:00 on the last pickup day,
+  abandonment after 10 h of silence, returning accounts by phone or plate. They
+  are owner settings; tune them from real cases before trusting the board.
+- **Fixed on the way (0066), pre-existing since 0001:** trips had
+  `UNIQUE(load_id)`, so any cancelled trip — a staff cancel, a send-back, a
+  release — blocked every later accept of its load and the shipper waited for
+  ever. Now one LIVE trip per load. Any new code that reads a trip by load must
+  prefer the non-cancelled one.
+
+---
+
 ## From the Load 24 teardown (2026-10-04)
 
 Load 24 (Nafith) runs two Oman apps: a trucker app and a cargo-owner app. Both

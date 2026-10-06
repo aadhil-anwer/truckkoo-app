@@ -149,10 +149,15 @@ export function hrefFor(data: unknown): string | null {
       const trip = id('trip_id');
       return trip ? `/trip/${trip}` : null;
     }
-    case 'shipper_load': {
+    case 'shipper_load':
+    // 0065: the driver released the job; the load page says a new truck is being found.
+    case 'shipper_driver_released': {
       const load = id('load_id');
       return load ? `/load/${load}` : null;
     }
+    // 0065: staff wrote; the words are in the app, never on the lock screen.
+    case 'staff_message':
+      return '/messages';
     default:
       return null;
   }

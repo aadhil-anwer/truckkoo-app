@@ -39,7 +39,8 @@ import { Icon } from '@/components/icon';
 import { PressableSurface, SecondaryButton, SelectRow } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { DetailGroup, DetailRow, Notice } from '@/components/ui';
-import { align, getLanguage, t, type Language } from '@/i18n';
+import { align, formatNumber, getLanguage, t, type Language } from '@/i18n';
+import { useMyMessages } from '@/lib/queries';
 import { signOut } from '@/lib/auth';
 import { usePush } from '@/lib/push-context';
 import { setLanguage } from '@/lib/language';
@@ -84,6 +85,10 @@ export default function AccountTab() {
 
   const name = profile?.full_name?.trim() ?? '';
   const isDriver = profile?.role === 'driver';
+  // The count lives in the row, not a tab badge: offers are the app's only
+  // badge, on purpose (tabs/_layout.tsx). The push is what brings people here.
+  const messages = useMyMessages();
+  const unread = (messages.data ?? []).filter((m) => !m.read_at).length;
   const current = getLanguage();
 
   /**
@@ -153,6 +158,15 @@ export default function AccountTab() {
         </DetailGroup>
 
         <DetailGroup label={t('account.help')}>
+          <DetailRow
+            label={t('account.messages')}
+            value={unread > 0 ? t('account.messages.new', { n: formatNumber(unread) }) : t('account.messages.none')}
+            onPress={() => router.push('/messages' as Href)}
+          />
+          <DetailRow label={t('account.reports')} value={t('account.reports.value')}
+            onPress={() => router.push('/reports' as Href)} />
+          {isDriver && <DetailRow label={t('account.record')} value={t('account.record.value')}
+            onPress={() => router.push('/record' as Href)} />}
           <DetailRow
             label={t('whatsapp.action')}
             value={t('account.help.detail')}

@@ -56,7 +56,8 @@ cities, and truck types.
    arrow and alignment rules; its only exemption is `src/map`, and adding a
    second to silence a hit is the failure it exists to prevent.
    The Arabic dictionary is complete as of P7, but **320 of its strings are
-   unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
+   unproofed drafts** in a marked block, plus 71 support-desk drafts added
+   2026-10-06 — see `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
    deliberately claims none of these. Public claims we *must* stay consistent
@@ -134,6 +135,15 @@ cities, and truck types.
 - **Storage is private** with short-lived signed URLs. Proof of delivery is
   append-only: no update or delete policy.
 - **Extend `supabase/tests/tenant_isolation.sql`** with every new owned table.
+- **Strikes are suspected until a person decides** (0063–0066). A detector
+  only ever inserts a `suspected` incident with a case; nothing suspends anyone
+  automatically; a driver reads their own decided strikes through `my_record()`
+  — never the internal reason text — and can appeal each one. Staff reasons on
+  a playbook stay in the case and the audit, not on the trip timeline the
+  driver and shipper read.
+- **One LIVE trip per load** (0066). A cancelled trip stays on record; the
+  unique index covers only non-cancelled trips. Any code reading a trip by its
+  load must prefer the non-cancelled one.
 
 **Stop and ask** before: a new service-role call site, loosening any RLS policy,
 accepting a price/role/status/ownership-id from the client, a public storage

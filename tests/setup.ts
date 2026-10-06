@@ -44,6 +44,7 @@ jest.mock('expo-web-browser', () => ({
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
   launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
 
 // jest-expo's automock returns undefined; the booking request id (0047) needs a real one.

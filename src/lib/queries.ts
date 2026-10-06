@@ -1399,3 +1399,80 @@ export function usePodUrl(photoPath: string | null | undefined) {
     },
   });
 }
+
+/* ─── support (0063, 0065) ───────────────────────────────────────────────── */
+
+/** A message from Truckkoo staff (0065). The push only says one exists. */
+export type StaffMessage = { id: string; body: string; case_id: string | null; created_at: string; read_at: string | null };
+
+/** The query key includes the account: the root QueryClient survives sign-out. */
+export function useMyMessages() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['messages', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<StaffMessage[]> => {
+      const { data, error } = await supabase.rpc('my_messages', { p_limit: 50 });
+      if (error) throw error;
+      return (data ?? []) as StaffMessage[];
+    },
+  });
+}
+
+/** One of the driver's own decided strikes (0063). Never the internal reason. */
+export type MyStrike = {
+  id: string;
+  kind: string;
+  weight: number;
+  state: 'confirmed' | 'voided';
+  trip_id: string | null;
+  trip_route: string | null;
+  created_at: string;
+  decided_at: string | null;
+  appeal_open: boolean;
+};
+
+export function useMyRecord() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['record', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<MyStrike[]> => {
+      const { data, error } = await supabase.rpc('my_record');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        kind: String(r.kind),
+        weight: Number(r.weight),
+        state: r.state === 'voided' ? 'voided' : 'confirmed',
+        trip_id: (r.trip_id as string | null) ?? null,
+        trip_route: (r.trip_route as string | null) ?? null,
+        created_at: String(r.created_at),
+        decided_at: (r.decided_at as string | null) ?? null,
+        appeal_open: r.appeal_open === true,
+      }));
+    },
+  });
+}
+
+/** What the person reported, and where it stands (0065). Never staff notes. */
+export type MyReport = { id: string; kind: string; status: string; created_at: string; route: string | null };
+
+export function useMyCases() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['reports', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<MyReport[]> => {
+      const { data, error } = await supabase.rpc('my_cases');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        kind: String(r.kind),
+        status: String(r.status),
+        created_at: String(r.created_at),
+        route: (r.route as string | null) ?? null,
+      }));
+    },
+  });
+}

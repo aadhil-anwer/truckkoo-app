@@ -151,7 +151,10 @@ export default function TrackLoad() {
   // the list IS the authorisation check — there is no id here that could reach
   // someone else's load, and a miss is "not found" rather than "forbidden".
   const load = (loads.data ?? []).find((l) => l.id === id);
-  const trip = (trips ?? []).find((tr) => tr.load_id === id);
+  // A released or sent-back trip stays on record (0066: one LIVE trip per load);
+  // the live one is the one that matters.
+  const trip = (trips ?? []).find((tr) => tr.load_id === id && tr.status !== 'cancelled')
+    ?? (trips ?? []).find((tr) => tr.load_id === id);
 
   // Every one of these no-ops until a trip exists, so T1 and T2 cost nothing.
   const counterpart = useTripCounterpart(trip?.id);

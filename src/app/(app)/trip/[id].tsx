@@ -336,6 +336,12 @@ export default function TripScreen() {
             </Text>
           )}
 
+          {/* 0065: the honest exit, before the cargo is aboard. After pickup it
+              is a problem to report, not a job to hand back. */}
+          {trip?.status === 'assigned' && (
+            <SecondaryButton label={t('support.release.action')}
+              onPress={() => router.push(`/release?tripId=${encodeURIComponent(id)}` as Href)} />
+          )}
           <SecondaryButton label={t('drv.job.problem')}
             onPress={() => router.push(`/case?tripId=${encodeURIComponent(id)}` as Href)} />
 

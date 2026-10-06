@@ -42,6 +42,8 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Account (X2)', prefixes: ['account.', 'whatsapp.'] },
   { title: 'Notifications — permission and account (0046)', prefixes: ['push.'] },
   { title: 'Shipment reports and cancellation (0052)', prefixes: ['case.'] },
+  { title: 'Support desk — release a job, my record and appeals, my reports, messages (0063–0065)',
+    prefixes: ['support.', 'record.', 'appeal.', 'reports.', 'messages.'] },
   // Search, pin and details in booking; the same place lines on review, T3/T4, D5 and D7.
   { title: 'Places — booking, review, and the driver at the gate (0041)', prefixes: ['places.'] },
   { title: 'Map labels — seas and countries, every drawn map', prefixes: ['map.'] },

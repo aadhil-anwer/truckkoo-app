@@ -35,6 +35,8 @@ jest.mock('react-native-safe-area-context', () => {
 
 jest.mock('@/lib/session', () => ({ useSession: jest.fn() }));
 jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
+const mockMessages = { current: [] as { id: string; read_at: string | null }[] };
+jest.mock('@/lib/queries', () => ({ useMyMessages: () => ({ data: mockMessages.current }) }));
 
 import AccountTab from '@/app/(app)/(tabs)/account';
 import * as pushContext from '@/lib/push-context';
@@ -63,6 +65,13 @@ describe('X2 · account', () => {
     await waitFor(() => expect(screen.getByText('Could not sign out. Check your connection and try again.')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('Sign out'));
     expect(mockSignOut).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts unread messages from Truckkoo in the row, not as a tab badge', async () => {
+    mockMessages.current = [{ id: 'm1', read_at: null }, { id: 'm2', read_at: null }, { id: 'm3', read_at: '2026-10-01' }];
+    await render(<AccountTab />);
+    expect(screen.getByLabelText('Messages from Truckkoo, 2 new')).toBeTruthy();
+    mockMessages.current = [];
   });
 
   it('names the role in the second person', async () => {
