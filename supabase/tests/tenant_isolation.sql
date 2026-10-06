@@ -1910,6 +1910,12 @@ select assert_raises($$select * from public.ops_support_queue()$$, 'nor the supp
 select assert_raises($$select * from private.user_messages$$, 'nor anyone''s messages');
 select act_as_reset();
 
+-- 0068: the commission a trip was accepted at is the margin; its shipper can
+-- read the trip row, so the rate lives where no client can, the driver included.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_raises($$select * from private.trip_commission$$, 'a shipper cannot read the commission on a trip');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;

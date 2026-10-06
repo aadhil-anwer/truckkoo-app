@@ -94,6 +94,10 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+  **A trip's payout uses the commission it was accepted at** (0068,
+  `private.trip_commission`, read by `private.trip_payout()`); `payout_for()`
+  is today's rate and is right only for an offer not yet accepted. Reading a
+  trip through `payout_for()` makes a commission change rewrite settled jobs.
 - **Bidding keeps the fee off client-readable rows** (0045,
   `docs/bidding-v1-design.md`). `loads` and `trips` are readable by every
   invited driver and the shipper, so the fee snapshot, the target price and the

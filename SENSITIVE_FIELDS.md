@@ -105,6 +105,15 @@ case, only to someone on it). A user reads only their own through
 `my_messages()` and marks only their own read. The push says only that a
 message exists — the text never reaches a lock screen.
 
+## `private.trip_commission` (0068)
+
+Client table access: **none**, the driver included. A trigger records the
+commission in force when a trip is created (a driver accepting, or staff
+reassigning — a new trip on the new driver's terms); nothing else writes it.
+It is the margin, and a trip row is readable by its shipper, so it is not a
+column on `trips`. Read only through `private.trip_payout()`, which every
+driver-facing payout and the Eagle view margin go through.
+
 ## Storage: `case-evidence` (0065)
 
 Private bucket. A user uploads only under their own folder; `report_problem`

@@ -80,7 +80,7 @@
     "test:coverage": "jest --coverage",
     "seed:rates": "docker exec -i -e PGOPTIONS=\"-c truckkoo.allow_dev_seed=1\" supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed_dev_rates.sql",
     "seed:rates:clear": "docker exec -i -e PGOPTIONS=\"-c truckkoo.allow_dev_seed=1\" supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed_dev_rates_clear.sql",
-    "test:db": "npm run test:db:tenants && npm run test:db:pricing && npm run test:db:ops && npm run test:db:dispatch && npm run test:db:places && npm run test:db:bidding && npm run test:db:push && npm run test:db:verification && npm run test:db:ops_v2 && npm run test:db:ops_board && npm run test:db:ops_metrics && npm run test:db:ops_bids && npm run test:db:ops_verification_bidding && npm run test:db:ops_people && npm run test:db:ops_money_system && npm run test:db:ops_review_minors && npm run test:db:support_cases && npm run test:db:reliability && npm run test:db:detectors && npm run test:db:release_messages && npm run test:db:support_metrics",
+    "test:db": "npm run test:db:tenants && npm run test:db:pricing && npm run test:db:ops && npm run test:db:dispatch && npm run test:db:places && npm run test:db:bidding && npm run test:db:push && npm run test:db:verification && npm run test:db:ops_v2 && npm run test:db:ops_board && npm run test:db:ops_metrics && npm run test:db:ops_bids && npm run test:db:ops_verification_bidding && npm run test:db:ops_people && npm run test:db:ops_money_system && npm run test:db:ops_review_minors && npm run test:db:support_cases && npm run test:db:reliability && npm run test:db:detectors && npm run test:db:release_messages && npm run test:db:support_metrics && npm run test:db:commission_snapshot",
     "test:db:tenants": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/tenant_isolation.sql",
     "test:db:pricing": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/pricing.sql",
     "test:db:ops": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/ops_console.sql",
@@ -106,7 +106,8 @@
     "test:db:reliability": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/reliability.sql",
     "test:db:detectors": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/detectors.sql",
     "test:db:release_messages": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/release_messages.sql",
-    "test:db:support_metrics": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/support_metrics.sql"
+    "test:db:support_metrics": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/support_metrics.sql",
+    "test:db:commission_snapshot": "docker exec -i supabase_db_truckkoo-app psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/commission_snapshot.sql"
   },
   "private": true,
   "overrides": {
