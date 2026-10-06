@@ -350,6 +350,10 @@ begin
        'route', (select oc.name_en || ' → ' || dc.name_en from public.loads l
                    join public.cities oc on oc.id = l.origin_city
                    join public.cities dc on dc.id = l.dest_city where l.id = v.load_id),
+       -- For messages in Arabic: the arrow points the way Arabic reads.
+       'route_ar', (select oc.name_ar || ' ← ' || dc.name_ar from public.loads l
+                      join public.cities oc on oc.id = l.origin_city
+                      join public.cities dc on dc.id = l.dest_city where l.id = v.load_id),
        'load_status', (select l.status from public.loads l where l.id = v.load_id),
        'trip_status', (select t.status from public.trips t where t.id = v.trip_id),
        'overdue', v.status <> 'resolved' and v.due_at < now()),

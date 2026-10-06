@@ -168,6 +168,9 @@ select assert_true((select j->'case'->>'status' = 'in_progress' and j->'case'->>
 select assert_true((select array_agg(e->>'kind' order by ord) = array['reopened', 'resolved', 'status', 'contact', 'note', 'assign', 'opened']
                       from cs, jsonb_array_elements(cs.j->'events') with ordinality x(e, ord)),
   'the thread holds every step, newest first');
+select assert_true((select j->'case'->>'route_ar' = (select o.name_ar || ' ← ' || d.name_ar from public.cities o, public.cities d
+                                                       where o.name_en = 'Muscat' and d.name_en = 'Sohar') from cs),
+  'the case carries its route in Arabic too, for messages in Arabic');
 select assert_true((select bool_or(p->>'phone' = '+96890000002' and p->>'language' = 'ar' and p->>'side' = 'subject')
                       from cs, jsonb_array_elements(cs.j->'parties') p),
   'the case names its parties with phone and language, for contacting them');
