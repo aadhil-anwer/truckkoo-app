@@ -27,9 +27,16 @@ export const DECLARED_TRIPS: boolean = false;
 /**
  * Driver-priced loads (0045, `docs/bidding-v1-design.md`).
  *
- * ON (2026-10-04). New bookings go through `post_bid_load`: no fixed price at
- * the review, an optional "most you will pay", and drivers name their price.
- * Off, the review books through `book_load` at the rate-card price as before.
+ * OFF for launch (founder, 2026-10-06): pickups, one city at a time, at fixed
+ * prices. An auction needs several free drivers per load to find a price, and
+ * a new city has a handful; fixed prices give the shipper a price and a truck
+ * at once. Kept built and tested for long-haul and GCC lanes later.
+ *
+ * On, new bookings go through `post_bid_load`: no fixed price at the review, an
+ * optional "most you will pay", and drivers name their price. Off, the review
+ * books through `book_load` at the rate-card price — which needs the rate card
+ * loaded (STACK.md §2c): a route with no rate is posted unpriced and waits
+ * for a dispatcher to price it by hand (stuck-load alert after 30 min).
  *
  * Switching it off by an update is the rollback. Loads already posted as bids
  * keep their bid screens either way — the screens follow `loads.pricing_mode`,
@@ -38,7 +45,7 @@ export const DECLARED_TRIPS: boolean = false;
  * Needs 0045 applied and `bid_fee_pct` set before a build with this on reaches
  * shippers; until then posting fails with "bid fee is not configured".
  */
-export const BIDDING: boolean = true;
+export const BIDDING: boolean = false;
 
 /** Supabase phone auth through Meta's signed Send SMS hook. Keep disabled until
  * the approved template, server secrets, identity linking and device tests pass
