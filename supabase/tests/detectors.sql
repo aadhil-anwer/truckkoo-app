@@ -92,7 +92,7 @@ update public.profiles set suspended_at = now() - interval '5 days', suspended_r
  where id = '6a000000-0000-4000-8000-0000000000e1';
 update public.profiles set created_at = now() - interval '1 hour' where id = '6a000000-0000-4000-8000-0000000000e2';
 insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status, price_baisa, weight_kg) values
-  ('6a000000-0000-4000-8000-000000000101', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sohar'), current_date - 1, current_date, 'boxes', 'assigned', 50000, 5000),
+  ('6a000000-0000-4000-8000-000000000101', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sohar'), current_date - 2, current_date - 1, 'boxes', 'assigned', 50000, 5000),
   ('6a000000-0000-4000-8000-000000000102', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date + 1, current_date + 1, 'tiles', 'assigned', 40000, 5000),
   ('6a000000-0000-4000-8000-000000000103', '6a000000-0000-4000-8000-0000000000a1', city('Nizwa'), city('Muscat'), current_date - 1, current_date, 'dates', 'in_transit', 30000, 5000),
   ('6a000000-0000-4000-8000-000000000104', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sohar'), current_date - 1, current_date, 'cement', 'assigned', 30000, 5000);
@@ -105,8 +105,11 @@ insert into public.trips (id, load_id, driver_id, status, created_at) values
 -- fixture needs the past, so it steps around it.
 alter table public.trip_events disable trigger trip_events_set_actor;
 insert into public.trip_events (trip_id, type, occurred_at) values
-  ('6a000000-0000-4000-8000-000000000203', 'en_route', now() - interval '8 hours');
+  ('6a000000-0000-4000-8000-000000000203', 'en_route', now() - interval '11 hours');
 alter table public.trip_events enable trigger trip_events_set_actor;
+
+-- Each driver got their trip when it was created (assigned_at defaults to now()).
+update public.trips set assigned_at = created_at where id::text like '6a000000-%';
 
 -- ═══ 1. detectors ══════════════════════════════════════════════════════════
 select private.system_detect_no_shows();
@@ -130,7 +133,7 @@ select assert_true(not exists (select 1 from private.incidents where trip_id = '
 select assert_true((select count(*) = 1 from private.incidents i where i.trip_id = '6a000000-0000-4000-8000-000000000203'
                       and i.kind = 'abandoned' and i.state = 'suspected')
                and (select count(*) = 1 from public.shipment_cases c where c.trip_id = '6a000000-0000-4000-8000-000000000203' and c.kind = 'abandoned'),
-  'a truck silent for 8 hours on the road is a suspected abandonment, once, with an urgent case');
+  'a truck silent for 11 hours on the road is a suspected abandonment, once, with an urgent case');
 select assert_true((select count(*) = 1 from public.shipment_cases c where c.kind = 'account_flag'
                       and c.subject_id = '6a000000-0000-4000-8000-0000000000e2'),
   'a new account with a suspended driver''s phone number is flagged once for a person to look at');
@@ -191,6 +194,90 @@ select assert_true((select count(*) = 1 from private.case_events where case_id =
 select assert_true((select j->'incident'->>'state' = 'suspected' and j->'incident'->>'kind' = 'no_show'
                        and (j->'incident'->>'weight')::int = 2 from nsview),
   'the case page knows the strike it carries and whether anyone has decided it');
+
+-- ═══ 5. review fixes ═══════════════════════════════════════════════════════
+-- C1: after "send back to dispatch" the load can be taken again.
+insert into public.offers (id, load_id, driver_id, status, source, expires_at) values
+  ('6a000000-0000-4000-8000-000000000401', '6a000000-0000-4000-8000-000000000101', '6a000000-0000-4000-8000-0000000000d4', 'pending', 'ops', now() + interval '10 minutes');
+update public.driver_availability set available = true where driver_id = '6a000000-0000-4000-8000-0000000000d4';
+-- d4 was given trip 203 above; free them for this check.
+update public.trips set status = 'cancelled' where id = '6a000000-0000-4000-8000-000000000203';
+select act_as_staff('6a000000-0000-4000-8000-0000000000d4', 'aal1', null);
+select public.respond_to_offer('6a000000-0000-4000-8000-000000000401', true) is not null;
+select act_as_reset();
+select assert_true((select count(*) = 2 from public.trips where load_id = '6a000000-0000-4000-8000-000000000101')
+               and (select status = 'assigned' from public.loads where id = '6a000000-0000-4000-8000-000000000101'),
+  'a load sent back to dispatch can be accepted again by another driver');
+select act_as_staff('6a000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+create temp table ld on commit drop as select * from public.ops_loads();
+create temp table one on commit drop as select * from public.ops_load('6a000000-0000-4000-8000-000000000101');
+select act_as_reset();
+select assert_true((select count(*) = 1 from one) and (select trip_id = (select id from public.trips where load_id = '6a000000-0000-4000-8000-000000000101' and status <> 'cancelled') from one),
+  'the staff load page shows the live trip, once');
+select assert_true(exists (select 1 from ld where load_id = '6a000000-0000-4000-8000-000000000101'), 'and the load list still lists it');
+select assert_true((select count(*) = 0 from public.trip_events where trip_id = '6a000000-0000-4000-8000-000000000201'
+                     and note like '%Driver did not come%'),
+  'the staff reason stays in the case; the trip timeline the driver and shipper see says only what happened');
+
+-- C2: handing a trip to another driver restarts their clock.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status, price_baisa) values
+  ('6a000000-0000-4000-8000-000000000106', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date - 2, current_date - 2, 'pipes', 'assigned', 30000);
+insert into public.trips (id, load_id, driver_id, status, created_at) values
+  ('6a000000-0000-4000-8000-000000000206', '6a000000-0000-4000-8000-000000000106', '6a000000-0000-4000-8000-0000000000d2', 'assigned', now() - interval '2 days');
+update public.trips set assigned_at = now() - interval '2 days' where id = '6a000000-0000-4000-8000-000000000206';
+update public.trips set driver_id = '6a000000-0000-4000-8000-0000000000d1' where id = '6a000000-0000-4000-8000-000000000206';
+select private.system_detect_no_shows();
+select assert_true(not exists (select 1 from private.incidents where trip_id = '6a000000-0000-4000-8000-000000000206'),
+  'a driver just handed a trip is not flagged as a no-show for it');
+
+-- I1: no send-back once the cargo is on the truck.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status, price_baisa) values
+  ('6a000000-0000-4000-8000-000000000107', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date - 1, current_date, 'glass', 'in_transit', 30000);
+insert into public.trips (id, load_id, driver_id, status) values
+  ('6a000000-0000-4000-8000-000000000207', '6a000000-0000-4000-8000-000000000107', '6a000000-0000-4000-8000-0000000000d3', 'in_transit');
+insert into public.shipment_cases (id, load_id, trip_id, kind, details) values
+  ('6a000000-0000-4000-8000-000000000507', '6a000000-0000-4000-8000-000000000107', '6a000000-0000-4000-8000-000000000207', 'breakdown', 'Truck broke down near Ibra');
+select act_as_staff('6a000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_raises($$select public.ops_case_redispatch('6a000000-0000-4000-8000-000000000507', 'send it back')$$,
+  'a loaded truck''s trip cannot be sent back to dispatch — give it to another driver instead', '%another driver%');
+select act_as_reset();
+
+-- I2: a multi-day window is not a no-show until its last day.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status, price_baisa) values
+  ('6a000000-0000-4000-8000-000000000108', '6a000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date - 1, current_date + 2, 'sand', 'assigned', 30000);
+insert into public.trips (id, load_id, driver_id, status, created_at) values
+  ('6a000000-0000-4000-8000-000000000208', '6a000000-0000-4000-8000-000000000108', '6a000000-0000-4000-8000-0000000000d2', 'assigned', now() - interval '2 days');
+update public.trips set assigned_at = now() - interval '2 days' where id = '6a000000-0000-4000-8000-000000000208';
+-- I2b: a silent truck whose driver already reported a breakdown is not "abandoned".
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status, price_baisa) values
+  ('6a000000-0000-4000-8000-000000000109', '6a000000-0000-4000-8000-0000000000a1', city('Nizwa'), city('Sur'), current_date - 1, current_date, 'steel', 'in_transit', 30000);
+insert into public.trips (id, load_id, driver_id, status, created_at) values
+  ('6a000000-0000-4000-8000-000000000209', '6a000000-0000-4000-8000-000000000109', '6a000000-0000-4000-8000-0000000000d2', 'in_transit', now() - interval '1 day');
+insert into public.shipment_cases (load_id, trip_id, reporter_id, kind, details) values
+  ('6a000000-0000-4000-8000-000000000109', '6a000000-0000-4000-8000-000000000209', '6a000000-0000-4000-8000-0000000000d2', 'breakdown', 'Engine overheated, waiting for a mechanic');
+select private.system_detect_no_shows();
+select private.system_detect_abandoned();
+select assert_true(not exists (select 1 from private.incidents where trip_id = '6a000000-0000-4000-8000-000000000208'),
+  'a trip whose pickup window runs to the day after tomorrow is not a no-show yet');
+select assert_true(not exists (select 1 from private.incidents where trip_id = '6a000000-0000-4000-8000-000000000209'),
+  'a truck whose driver reported a breakdown is not flagged as abandoned');
+
+-- I6: a case cannot be closed while its strike is undecided.
+select act_as_staff('6a000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_raises(format($$select public.ops_case_resolve(%L, 'no_fault', 'Driver turned up late but turned up')$$, (select id from abcase)),
+  'decide the case''s strike before resolving it', '%strike%');
+select act_as_reset();
+
+-- Returning-account check ignores placeholder phone numbers.
+insert into auth.users (id, email, email_confirmed_at) values
+  ('6a000000-0000-4000-8000-0000000000e3', 'e3@det.test', now()), ('6a000000-0000-4000-8000-0000000000e4', 'e4@det.test', now());
+insert into public.profiles (id, role, full_name, phone) values
+  ('6a000000-0000-4000-8000-0000000000e3', 'driver', 'Short Phone Banned', '0'),
+  ('6a000000-0000-4000-8000-0000000000e4', 'driver', 'Short Phone New', '0');
+update public.profiles set suspended_at = now() where id = '6a000000-0000-4000-8000-0000000000e3';
+select private.system_detect_returning();
+select assert_true(not exists (select 1 from public.shipment_cases where kind = 'account_flag' and subject_id = '6a000000-0000-4000-8000-0000000000e4'),
+  'a placeholder phone number matches nobody');
 
 -- ═══ 4. static ═════════════════════════════════════════════════════════════
 select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search_path=""'] and p.provolatile = 'v')

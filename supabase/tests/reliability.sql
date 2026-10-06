@@ -175,7 +175,7 @@ create temp table rec2 on commit drop as select * from public.my_record();
 select assert_not_found(format($$select public.appeal_incident(%L, 'not mine but let me try')$$, (select id from i1)),
   'nobody can appeal someone else''s strike');
 select act_as_reset();
-select assert_true((select count(*) = 4 from rec) and not exists (select 1 from rec where state = 'suspected'),
+select assert_true((select count(*) = 3 from rec) and not exists (select 1 from rec where state = 'suspected'),
   'a driver sees their decided incidents (confirmed and voided), never suspicions');
 select assert_true((select bool_and(r.trip_route is not null or r.trip_id is null) from rec r), 'each with its trip');
 select assert_true(not exists (select 1 from information_schema.columns c where c.table_name = 'my_record' and c.column_name = 'reason')
@@ -187,6 +187,10 @@ select assert_true((select c.kind = 'appeal' and c.incident_id = (select id from
                       from public.shipment_cases c where c.id = (select id from ap)),
   'an appeal is a support case linked to the strike');
 select assert_true((select appeal_open from rec where id = (select id from i1)) is not null, 'the record says whether an appeal is open');
+select assert_true((select subject_id = '69000000-0000-4000-8000-0000000000d1' from public.shipment_cases where id = (select id from ap)),
+  'an appeal is about the driver who made it, not the shipper on the trip');
+select assert_true(not exists (select 1 from rec where id = '69000000-0000-4000-8000-000000000302'),
+  'a suspicion voided before anyone confirmed it never shows on the driver''s record');
 
 -- ═══ 5. the person page shows incidents ════════════════════════════════════
 select act_as_staff('69000000-0000-4000-8000-0000000000f2', 'aal2', 1);

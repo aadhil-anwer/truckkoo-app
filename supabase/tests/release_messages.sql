@@ -132,14 +132,25 @@ select assert_true((select count(*) = 1 from private.push_log where profile_id =
 select assert_true((select count(*) = 1 from public.trip_events where trip_id = '6b000000-0000-4000-8000-000000000201' and type = 'note'),
   'the trip records why it ended');
 
+-- And the released load can be taken by someone else.
+insert into public.drivers (profile_id, verified_at) values ('6b000000-0000-4000-8000-0000000000d2', now())
+on conflict (profile_id) do update set verified_at = excluded.verified_at;
+insert into public.trucks (owner_id, truck_type, capacity_kg) values ('6b000000-0000-4000-8000-0000000000d2', '10t', 10000);
+update public.driver_availability set available = true where driver_id = '6b000000-0000-4000-8000-0000000000d2';
+insert into public.offers (id, load_id, driver_id, status, source, expires_at) values
+  ('6b000000-0000-4000-8000-000000000401', '6b000000-0000-4000-8000-000000000101', '6b000000-0000-4000-8000-0000000000d2', 'pending', 'ops', now() + interval '10 minutes');
+select act_as_staff('6b000000-0000-4000-8000-0000000000d2', 'aal1', null);
+select public.respond_to_offer('6b000000-0000-4000-8000-000000000401', true) is not null;
+select act_as_reset();
+select assert_true((select status = 'assigned' from public.loads where id = '6b000000-0000-4000-8000-000000000101'),
+  'a released load is taken by the next driver who accepts');
+
 -- The same end state as a staff cancel of an equivalent trip.
 select act_as_staff('6b000000-0000-4000-8000-0000000000f2', 'aal2', 1);
 select public.ops_set_trip_status('6b000000-0000-4000-8000-000000000204', 'cancelled', 'equivalence check');
 select act_as_reset();
-select assert_true((select l1.status = l2.status from public.loads l1, public.loads l2
-                     where l1.id = '6b000000-0000-4000-8000-000000000101' and l2.id = '6b000000-0000-4000-8000-000000000104')
-               and (select array_agg(distinct status) from public.offers where load_id = '6b000000-0000-4000-8000-000000000101')
-                 = (select array_agg(distinct status) from public.offers where load_id = '6b000000-0000-4000-8000-000000000104'),
+select assert_true((select status = 'finding_truck' from public.loads where id = '6b000000-0000-4000-8000-000000000104')
+               and not exists (select 1 from public.offers where load_id = '6b000000-0000-4000-8000-000000000104' and status in ('pending', 'accepted')),
   'a release lands the load exactly where a staff cancel does');
 
 -- ═══ 2. staff messages ════════════════════════════════════════════════════
