@@ -33,7 +33,10 @@ alter table public.shipment_cases
   add column outcome         text check (outcome in ('redispatched', 'reassigned', 'driver_warned',
                                'shipper_informed', 'no_fault', 'resolved_by_parties', 'duplicate',
                                'not_actionable', 'other')),
-  add column reopened_at     timestamptz;
+  add column reopened_at     timestamptz,
+  -- The deadline is for a FIRST response: once staff have touched a case it is
+  -- no longer overdue, or the board fills with cases already being worked.
+  add column responded_at    timestamptz;
 
 drop index if exists public.shipment_cases_queue_idx;
 create index shipment_cases_queue_idx on public.shipment_cases (due_at) where status <> 'resolved';
@@ -70,6 +73,17 @@ as $$
 $$;
 revoke all on function private.case_sla(text) from public, anon, authenticated;
 
+-- Rows from before 0062 get the same triage a new row gets.
+update public.shipment_cases c
+   set priority = private.case_priority_for(c.kind),
+       due_at = c.created_at + private.case_sla(private.case_priority_for(c.kind)),
+       responded_at = case when c.status = 'resolved' then coalesce(c.resolved_at, c.created_at) end,
+       outcome = case when c.status = 'resolved' then 'other' end,
+       subject_id = (select case when c.reporter_id = l.shipper_id then t.driver_id
+                                 when c.reporter_id = t.driver_id then l.shipper_id end
+                       from public.trips t join public.loads l on l.id = t.load_id where t.id = c.trip_id)
+ where c.priority is null;
+
 -- Defaults for every insert path: priority from the kind, a deadline from the
 -- priority, and — for a report on a trip — the other side as the subject.
 create or replace function private.shipment_cases_triage()
@@ -85,6 +99,11 @@ begin
   if new.status = 'open' then new.status := 'new'; end if;
   new.priority := coalesce(new.priority, private.case_priority_for(new.kind));
   new.due_at := coalesce(new.due_at, coalesce(new.created_at, now()) + private.case_sla(new.priority));
+  if new.status = 'resolved' then
+    -- request_load_cancellation (0052) inserts a case that is already done.
+    new.outcome := coalesce(new.outcome, 'not_actionable');
+    new.responded_at := coalesce(new.responded_at, now());
+  end if;
   if new.subject_id is null and new.trip_id is not null and new.reporter_id is not null then
     select t.driver_id, l.shipper_id into v_driver, v_shipper
       from public.trips t join public.loads l on l.id = t.load_id where t.id = new.trip_id;
@@ -126,6 +145,10 @@ begin
   insert into private.case_events (case_id, kind, meta, actor_id)
   values (new.id, 'opened', jsonb_build_object('kind', new.kind, 'priority', new.priority,
                                                'by_staff', new.opened_by_staff), new.reporter_id);
+  if new.status = 'resolved' then
+    insert into private.case_events (case_id, kind, body, meta, actor_id)
+    values (new.id, 'resolved', new.resolution, jsonb_build_object('outcome', new.outcome), new.reporter_id);
+  end if;
   return null;
 end;
 $$;
@@ -141,6 +164,8 @@ set search_path = ''
 as $$
   insert into private.case_events (case_id, kind, body, meta, actor_id)
   values (p_case_id, p_kind, p_body, p_meta, auth.uid());
+  update public.shipment_cases set responded_at = coalesce(responded_at, now())
+   where id = p_case_id and p_kind <> 'opened';
 $$;
 revoke all on function private.case_event(uuid, text, text, jsonb) from public, anon, authenticated;
 
@@ -239,7 +264,7 @@ as $$
     ('case_sla_high_minutes', 'integer', 'High-priority case: answer within (minutes)',
      'A high-priority case (damage, dispute, delay, cancellation) is overdue after this long.', 15, 1440),
     ('case_sla_normal_minutes', 'integer', 'Normal case: answer within (minutes)',
-     'Any other case is overdue after this long.', 60, 10080)
+     'Any other case is overdue after this long. Changing these does not move deadlines already set.', 60, 10080)
 $$;
 
 -- ═══ 4. staff reads ══════════════════════════════════════════════════════════
@@ -286,7 +311,7 @@ begin
   return query
   with base as (
     select c.*,
-           (c.status <> 'resolved' and c.due_at < now()) as is_overdue,
+           (c.status <> 'resolved' and c.responded_at is null and c.due_at < now()) as is_overdue,
            case c.priority when 'urgent' then 0 when 'high' then 1 else 2 end as prank
       from public.shipment_cases c
      where (coalesce(p_include_resolved, false) or c.status <> 'resolved')
@@ -300,7 +325,7 @@ begin
        and (p_party is null or p_party in (c.reporter_id, c.subject_id))
   ),
   ordered as (
-    select b.*, row_number() over (order by b.is_overdue desc, b.prank, b.due_at, b.created_at, b.id) as pos,
+    select b.*, row_number() over (order by b.is_overdue desc nulls last, b.prank, b.due_at nulls last, b.created_at, b.id) as pos,
            count(*) over () as total
       from base b
   )
@@ -356,12 +381,17 @@ begin
                       join public.cities dc on dc.id = l.dest_city where l.id = v.load_id),
        'load_status', (select l.status from public.loads l where l.id = v.load_id),
        'trip_status', (select t.status from public.trips t where t.id = v.trip_id),
-       'overdue', v.status <> 'resolved' and v.due_at < now()),
+       'overdue', v.status <> 'resolved' and v.responded_at is null and v.due_at < now()),
     'parties', (select coalesce(jsonb_agg(jsonb_build_object(
                   'side', x.side, 'id', p.id, 'name', p.full_name, 'phone', p.phone,
                   'language', p.language, 'role', private.party_role(p.id),
                   'suspended', p.suspended_at is not null) order by x.ord), '[]'::jsonb)
-                  from (values ('reporter', v.reporter_id, 1), ('subject', v.subject_id, 2)) x(side, pid, ord)
+                  from (select distinct on (y.pid) y.side, y.pid, y.ord
+                          from (values ('reporter', v.reporter_id, 1), ('subject', v.subject_id, 2),
+                                       ('shipper', (select l.shipper_id from public.loads l where l.id = v.load_id), 3),
+                                       ('driver', (select t.driver_id from public.trips t where t.id = v.trip_id), 4)) y(side, pid, ord)
+                         where y.pid is not null
+                         order by y.pid, y.ord) x
                   join public.profiles p on p.id = x.pid),
     'events', (select coalesce(jsonb_agg(jsonb_build_object(
                  'id', e.id, 'kind', e.kind, 'body', e.body, 'meta', e.meta,
@@ -403,6 +433,9 @@ begin
   if p_trip_id is not null then
     select t.load_id into v_load from public.trips t where t.id = p_trip_id;
     if v_load is null then raise exception 'trip not found' using errcode = 'no_data_found'; end if;
+    if p_load_id is not null and p_load_id <> v_load then
+      raise exception 'that trip belongs to another load' using errcode = 'check_violation';
+    end if;
   elsif v_load is not null and not exists (select 1 from public.loads l where l.id = v_load) then
     raise exception 'load not found' using errcode = 'no_data_found';
   end if;
@@ -432,7 +465,11 @@ declare
   v public.shipment_cases;
 begin
   perform private.require_ops();
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
   v := private.case_for_update(p_case_id);
+  if v.status = 'resolved' then
+    raise exception 'a resolved case is reopened, not reassigned' using errcode = 'check_violation';
+  end if;
   if p_assignee is not null and not exists (select 1 from private.ops_users o where o.profile_id = p_assignee) then
     raise exception 'a case can only be assigned to staff' using errcode = 'check_violation';
   end if;
@@ -440,12 +477,42 @@ begin
          status = case when status = 'new' and p_assignee is not null then 'in_progress' else status end
    where id = p_case_id;
   perform private.case_event(p_case_id, 'assign', null, jsonb_build_object('assignee', p_assignee, 'before', v.assignee_id));
+  if v.status = 'new' and p_assignee is not null then
+    perform private.case_event(p_case_id, 'status', null, jsonb_build_object('from', 'new', 'to', 'in_progress'));
+  end if;
   perform private.log_ops('ops_case_assign', 'shipment_case', p_case_id::text,
     jsonb_build_object('assignee', v.assignee_id), jsonb_build_object('assignee', p_assignee), null);
 end;
 $$;
 revoke all on function public.ops_case_assign(uuid, uuid) from public, anon;
 grant execute on function public.ops_case_assign(uuid, uuid) to authenticated;
+
+-- "Take it": assign to me only if nobody has it — two dispatchers looking at
+-- the same queue must not silently take a case off each other.
+create or replace function public.ops_case_take(p_case_id uuid)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v public.shipment_cases;
+begin
+  perform private.require_ops();
+  v := private.case_for_update(p_case_id);
+  if v.assignee_id = auth.uid() then
+    return;
+  end if;
+  if v.assignee_id is not null then
+    raise exception 'already taken by %', coalesce((select p.full_name from public.profiles p where p.id = v.assignee_id), 'someone else')
+      using errcode = 'check_violation';
+  end if;
+  perform public.ops_case_assign(p_case_id, auth.uid());
+end;
+$$;
+revoke all on function public.ops_case_take(uuid) from public, anon;
+grant execute on function public.ops_case_take(uuid) to authenticated;
 
 create or replace function public.ops_case_note(p_case_id uuid, p_body text)
 returns void
@@ -459,6 +526,7 @@ declare
   v_body text;
 begin
   perform private.require_ops();
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
   v := private.case_for_update(p_case_id);
   v_body := private.clean_text(p_body, 1, 'a note');
   perform private.case_event(p_case_id, 'note', v_body, null);
@@ -489,8 +557,12 @@ begin
   if p_outcome is null or p_outcome not in ('sent', 'reached', 'no_answer', 'wrong_number', 'left_message') then
     raise exception 'contact outcome is sent, reached, no_answer, wrong_number or left_message' using errcode = 'check_violation';
   end if;
-  if not exists (select 1 from public.profiles p where p.id = p_party) then
-    raise exception 'person not found' using errcode = 'no_data_found';
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
+  if p_party is null or p_party not in (
+       select x from unnest(array[v.reporter_id, v.subject_id,
+         (select l.shipper_id from public.loads l where l.id = v.load_id),
+         (select t.driver_id from public.trips t where t.id = v.trip_id)]) x where x is not null) then
+    raise exception 'that person is not on this case' using errcode = 'check_violation';
   end if;
   v_note := case when nullif(btrim(coalesce(p_note, '')), '') is null then null
                  else private.clean_text(p_note, 1, 'a contact note') end;
@@ -525,6 +597,7 @@ begin
   if v.status = 'resolved' then
     raise exception 'a resolved case is reopened, not moved' using errcode = 'check_violation';
   end if;
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
   v_reason := private.clean_text(p_reason, 3, 'a status change');
   update public.shipment_cases set status = p_status where id = p_case_id;
   perform private.case_event(p_case_id, 'status', v_reason, jsonb_build_object('from', v.status, 'to', p_status));
@@ -555,6 +628,7 @@ begin
   if v.status = 'resolved' then
     raise exception 'case already resolved' using errcode = 'check_violation';
   end if;
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
   v_text := private.clean_text(p_resolution, 10, 'a resolution');
   update public.shipment_cases set status = 'resolved', outcome = p_outcome, resolution = v_text,
          resolved_by = auth.uid(), resolved_at = now()
@@ -583,9 +657,11 @@ begin
   if v.status <> 'resolved' then
     raise exception 'only a resolved case can be reopened' using errcode = 'check_violation';
   end if;
+  perform private.check_rate_limit('ops_case_write', 600, interval '1 hour');
   v_reason := private.clean_text(p_reason, 3, 'reopening');
+  -- The old resolution stays in the thread (its 'resolved' event), not on the case.
   update public.shipment_cases set status = 'in_progress', reopened_at = now(), outcome = null,
-         resolved_by = null, resolved_at = null,
+         resolved_by = null, resolved_at = null, resolution = null, responded_at = null,
          due_at = now() + private.case_sla(priority)
    where id = p_case_id;
   perform private.case_event(p_case_id, 'reopened', v_reason, jsonb_build_object('previous_outcome', v.outcome));
@@ -615,6 +691,7 @@ grant execute on function public.ops_shipment_cases(boolean) to authenticated;
 create or replace function public.ops_resolve_shipment_case(p_case_id uuid, p_resolution text)
 returns void language plpgsql volatile security definer set search_path = '' as $$
 begin
+  perform private.require_ops();
   perform private.check_rate_limit('ops_resolve_shipment_case', 200, interval '1 hour');
   perform public.ops_case_resolve(p_case_id, 'other', p_resolution);
 end $$;
@@ -736,7 +813,7 @@ begin
            case when c.assignee_id is null then 'Take it' else 'Chase it' end
       from public.shipment_cases c
       left join route r on r.id = c.load_id
-     where c.status <> 'resolved' and c.due_at < now()
+     where c.status <> 'resolved' and c.responded_at is null and c.due_at < now()
 
     union all
     -- 0062: an urgent case nobody has picked up yet (not yet overdue).
@@ -748,7 +825,7 @@ begin
            'Take it'
       from public.shipment_cases c
       left join route r on r.id = c.load_id
-     where c.status = 'new' and c.priority = 'urgent' and c.due_at >= now()
+     where c.status = 'new' and c.priority = 'urgent' and c.responded_at is null and c.due_at >= now()
 
     union all
     -- An alert from the last day nobody has acknowledged.

@@ -123,7 +123,7 @@ as $$
     ('case_sla_high_minutes', 'integer', 'High-priority case: answer within (minutes)',
      'A high-priority case (damage, dispute, delay, cancellation) is overdue after this long.', 15, 1440),
     ('case_sla_normal_minutes', 'integer', 'Normal case: answer within (minutes)',
-     'Any other case is overdue after this long.', 60, 10080),
+     'Any other case is overdue after this long. Changing these does not move deadlines already set.', 60, 10080),
     -- 0063: strikes and the detectors.
     ('strike_suspend_threshold', 'integer', 'Strikes before suspension is suggested',
      'When a driver''s strikes in the last 30 days reach this, the console suggests suspending them. Staff decide.', 1, 20),

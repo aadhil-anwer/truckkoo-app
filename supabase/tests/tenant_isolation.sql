@@ -1902,6 +1902,13 @@ select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-00
   1, 'reporting shipper sees their own case');
 select act_as_reset();
 
+-- 0062/0063: the case thread and strikes are never client-readable, by anyone.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_raises($$select * from private.case_events$$, 'a shipper cannot read any case thread');
+select assert_raises($$select * from private.incidents$$, 'nor any strike');
+select assert_raises($$select * from public.ops_support_queue()$$, 'nor the support queue');
+select act_as_reset();
+
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;
 
 rollback;

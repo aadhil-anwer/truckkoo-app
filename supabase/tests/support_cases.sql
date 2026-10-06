@@ -165,7 +165,7 @@ select assert_true(not exists (select 1 from q_open where id = (select id from c
 select assert_true((select j->'case'->>'status' = 'in_progress' and j->'case'->>'reopened_at' is not null
                        and j->'case'->>'assignee_name' = 'Desk Disp' from cs),
   'a reopened case is in progress again, still assigned');
-select assert_true((select array_agg(e->>'kind' order by ord) = array['reopened', 'resolved', 'status', 'contact', 'note', 'assign', 'opened']
+select assert_true((select array_agg(e->>'kind' order by ord) = array['reopened', 'resolved', 'status', 'contact', 'note', 'status', 'assign', 'opened']
                       from cs, jsonb_array_elements(cs.j->'events') with ordinality x(e, ord)),
   'the thread holds every step, newest first');
 select assert_true((select j->'case'->>'route_ar' = (select o.name_ar || ' ← ' || d.name_ar from public.cities o, public.cities d
@@ -205,6 +205,66 @@ select public.ops_resolve_shipment_case((select id from c_drv), 'Spoke to the sh
 select act_as_reset();
 select assert_true((select status = 'resolved' and outcome = 'other' from public.shipment_cases where id = (select id from c_drv)),
   'the original resolve still closes a new-style case');
+
+-- ═══ 7. review fixes ═══════════════════════════════════════════════════════
+-- Touching a case answers it: the deadline is for the first response.
+select act_as_staff('68000000-0000-4000-8000-0000000000f3', 'aal2', 1);
+select public.ops_case_note((select id from c_ship), 'Called the shipper back');
+create temp table q2 on commit drop as select * from public.ops_support_queue();
+create temp table board2 on commit drop as select * from public.ops_board();
+select act_as_reset();
+select assert_true(not (select overdue from q2 where id = (select id from c_ship)),
+  'a case someone has responded to is no longer overdue');
+select assert_true(not exists (select 1 from board2 where kind = 'case_overdue' and target_id = (select id from c_ship)::text),
+  'and leaves the live board');
+
+-- Taking a case another dispatcher already took is refused, by name.
+select act_as_staff('68000000-0000-4000-8000-0000000000f3', 'aal2', 1);
+select public.ops_case_take((select id from c_ship));
+select act_as_staff('68000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_raises(format($$select public.ops_case_take(%L)$$, (select id from c_ship)),
+  'taking a case someone else has is refused', '%already taken by Desk Disp Two%');
+select act_as_reset();
+select assert_true((select count(*) = 1 from private.case_events e where e.case_id = (select id from c_ship) and e.kind = 'status'
+                     and e.meta->>'to' = 'in_progress'),
+  'taking a new case writes its move to in progress');
+
+-- A staff-opened case names the shipper and the driver, whoever reported it.
+select act_as_staff('68000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+create temp table c_ph on commit drop as
+  select public.ops_open_case('not_ready', 'Driver called: cargo not ready at the gate',
+    null, '68000000-0000-4000-8000-000000000201', null, null) id;
+create temp table cv on commit drop as select public.ops_case((select id from c_ph)) j;
+select assert_raises(format($$select public.ops_case_log_contact(%L, 'call', '68000000-0000-4000-8000-0000000000b1', 'reached', null)$$, (select id from c_ph)),
+  'contact can only be logged with someone on the case', '%case%');
+select public.ops_case_log_contact((select id from c_ph), 'call', '68000000-0000-4000-8000-0000000000a1', 'left_message', null);
+select assert_raises($$select public.ops_open_case('other', 'Load and trip do not match here', '68000000-0000-4000-8000-000000000102', '68000000-0000-4000-8000-000000000201', null, null)$$,
+  'a trip on a different load is refused, not quietly overridden', '%load%');
+select act_as_reset();
+select assert_true((select count(*) filter (where p->>'side' = 'shipper' and p->>'id' = '68000000-0000-4000-8000-0000000000a1') = 1
+                       and count(*) filter (where p->>'side' = 'driver' and p->>'id' = '68000000-0000-4000-8000-0000000000d1') = 1
+                      from cv, jsonb_array_elements(cv.j->'parties') p),
+  'the shipper and the driver are both reachable from a staff-opened case');
+
+-- Reopening clears the old resolution; the thread keeps it.
+select act_as_staff('68000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select public.ops_case_resolve((select id from c_ph), 'resolved_by_parties', 'Shipper loaded the truck an hour later');
+select public.ops_case_reopen((select id from c_ph), 'Driver says he is still waiting');
+select act_as_reset();
+select assert_true((select resolution is null from public.shipment_cases where id = (select id from c_ph))
+               and exists (select 1 from private.case_events where case_id = (select id from c_ph) and kind = 'resolved'
+                            and body = 'Shipper loaded the truck an hour later'),
+  'a reopened case has no resolution; its thread still says what was done');
+
+-- A cancellation that resolved itself says so.
+insert into public.loads (id, shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description, status) values
+  ('68000000-0000-4000-8000-000000000103', '68000000-0000-4000-8000-0000000000a1', city('Muscat'), city('Sur'), current_date + 3, current_date + 3, 'chairs', 'posted');
+select act_as_staff('68000000-0000-4000-8000-0000000000a1', 'aal1', null);
+select public.request_load_cancellation('68000000-0000-4000-8000-000000000103', 'Plans changed, no longer needed');
+select act_as_reset();
+select assert_true((select c.outcome = 'not_actionable' and exists (select 1 from private.case_events e where e.case_id = c.id and e.kind = 'resolved')
+                      from public.shipment_cases c where c.load_id = '68000000-0000-4000-8000-000000000103'),
+  'an instant cancellation is a resolved case with an outcome and a resolved event');
 
 -- ═══ 6. static ═════════════════════════════════════════════════════════════
 select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search_path=""'])
