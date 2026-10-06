@@ -1914,6 +1914,8 @@ select act_as_reset();
 -- read the trip row, so the rate lives where no client can, the driver included.
 select act_as('11111111-1111-4111-8111-111111111111');
 select assert_raises($$select * from private.trip_commission$$, 'a shipper cannot read the commission on a trip');
+select assert_raises($$select * from private.load_wait_terms$$, 'nor any load''s waiting terms directly');
+select assert_raises($$select * from private.trip_wait_waivers$$, 'nor who waived waiting');
 select act_as_reset();
 
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;

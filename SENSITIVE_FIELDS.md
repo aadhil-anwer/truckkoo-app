@@ -114,6 +114,23 @@ It is the margin, and a trip row is readable by its shipper, so it is not a
 column on `trips`. Read only through `private.trip_payout()`, which every
 driver-facing payout and the Eagle view margin go through.
 
+## Waiting (0069): `private.load_wait_terms`, `private.trip_wait_waivers`, `rate_cards.wait_*`
+
+Client table access: **none**. A load's waiting terms are copied from the rate
+card when it is priced (`issue_quote`); the shipper sees them through
+`quote_trip` and `trip_waiting`, which never return the driver's payout to a
+shipper. The waiting charge is computed only in `private.trip_wait` from trip
+events — the client sends no minutes and no amount. "I've arrived"
+(`mark_arrived`) takes the phone's fix, checks it against the pin and stores
+nothing but the event. Waivers are staff only (`ops_waive_waiting`, audited).
+The rate card's waiting columns follow the rest of the card: no client grant,
+edited through `ops_upsert_rate_card` by the owner.
+
+**Accepted risk:** pins come from the shipper's phone and now set the distance
+the price is measured on. The driver sees both pins before accepting, a pin must
+lie in the town it is booked in, and a same-town job needs the pins at least
+`same_city_min_m` apart.
+
 ## Storage: `case-evidence` (0065)
 
 Private bucket. A user uploads only under their own folder; `report_problem`
