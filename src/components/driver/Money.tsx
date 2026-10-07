@@ -11,6 +11,12 @@
  * "Collect 96.000 · To Truckkoo 0.000" is two numbers of noise on the screen a
  * driver reads one-handed, in a cab, in sunlight.
  *
+ * In its place, on the hero only, one plain line says no commission is taken.
+ * It reads `owed` for *this* job rather than a setting or a slogan, so it cannot
+ * outlive the 0% period: the day commission is switched on, it disappears from
+ * every job accepted after that, and the split line takes over (OPEN_ISSUES.md,
+ * "No commission is their headline").
+ *
  * No amount is ever zeroed into existence: an unpriced load renders nothing at
  * all rather than 0.000 (CLAUDE.md #5).
  */
@@ -60,6 +66,10 @@ export function DriverMoney({
         </Text>
         <Text style={styles.unit}>{currency}</Text>
       </View>
+
+      {owed === 0 && take != null && size === 'hero' && (
+        <Text style={styles.supporting}>{t('drv.money.noCommission')}</Text>
+      )}
 
       {!!remit && !!take && (
         <Text style={styles.supporting}>

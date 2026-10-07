@@ -12,6 +12,7 @@ import { Notice, Skeleton } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { getAuthDraft } from '@/lib/auth-draft';
 import { reportFailure } from '@/lib/monitoring';
+import { looksBlank } from '@/lib/photo-check';
 import { useDriverVerification } from '@/lib/queries';
 import { safeText } from '@/lib/safe-text';
 import { supabase } from '@/lib/supabase';
@@ -73,6 +74,9 @@ export default function Verification() {
       const path = `${uid}/${kind}/${randomUUID()}.${ext}`;
       const bytes = await bounded(fetch(photo.uri).then((r) => r.arrayBuffer()));
       if (bytes.byteLength > 8 * 1024 * 1024) { setError(t('auth.verify.size')); return; }
+      if (looksBlank({ mime, bytes: bytes.byteLength, width: photo.width, height: photo.height })) {
+        setError(t('auth.verify.blank')); return;
+      }
       const { error: uploadError } = await bounded(supabase.storage.from('driver-verification')
         .upload(path, bytes, { contentType: mime, upsert: false }));
       if (uploadError) throw uploadError;

@@ -50,6 +50,7 @@ import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPo
 import { WaitingCard } from '@/components/trip/WaitingCard';
 import { directionsLink, safeText } from '@/lib/safe-text';
 import { reportFailure } from '@/lib/monitoring';
+import { looksBlank } from '@/lib/photo-check';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
@@ -77,6 +78,7 @@ export default function TripScreen() {
   const advance = useAdvanceTrip();
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoSize, setPhotoSize] = useState({ width: 0, height: 0 });
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,7 +119,11 @@ export default function TripScreen() {
       mediaTypes: ['images'],
     });
 
-    if (!shot.canceled && shot.assets[0]) setPhotoUri(shot.assets[0].uri);
+    if (!shot.canceled && shot.assets[0]) {
+      const { uri, width, height } = shot.assets[0];
+      setPhotoUri(uri);
+      setPhotoSize({ width, height });
+    }
   }
 
   async function confirmCollected() {
@@ -145,6 +151,10 @@ export default function TripScreen() {
       // on exactly that, so it is not a naming convention, it is the check.
       const path = `${id}/${Date.now()}.jpg`;
       const bytes = await fetch(photoUri).then((r) => r.arrayBuffer());
+      if (looksBlank({ mime: 'image/jpeg', bytes: bytes.byteLength, ...photoSize })) {
+        setError(t('trip.deliver.blank'));
+        return;
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('pod')

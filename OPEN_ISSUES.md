@@ -115,6 +115,12 @@ say fees "are subject to change". Our bid fee is meant to be 0 at launch
 **Done when:** the fee rule is written in the app and on the website. It must
 not be a slogan that can be taken back, and it must match the configured fee.
 
+**In the app, 2026-10-07:** the driver's offer and trip hero say "No commission
+on this job. The whole price is yours." whenever that job's `owed` is 0. It is
+read from the job, not a setting, so it disappears by itself once commission is
+switched on. **Still open:** the website, and the end date of the 0% period
+(a founder decision) — nothing promises a date until one is chosen.
+
 ### Shipment problem reports — implemented, deployment pending
 
 They have Report abuse on a truck (`TRUCK_ALREADY_REPORTED` guards repeats). We
@@ -173,6 +179,11 @@ things in plain words, and the rate card makes the instant price real.
   WhatsApp codes land, keep the resend under a minute and offer an edit link.
 - **Blank document photos accepted.** Five solid-black images passed as a
   licence, a mulkiya and a truck photo. Any upload we add needs a blank/blur check.
+  **Blank check added 2026-10-07** (`src/lib/photo-check.ts`): driver documents
+  and proof-of-delivery JPEGs under 0.008 bytes per pixel are refused with
+  "This photo looks empty". The threshold is reasoned, not measured on a phone —
+  confirm it on a device with a covered lens and a dim real photo. Blur stays a
+  reviewer's call.
 - **Permissions asked before any value is shown.** Notifications came on first
   launch, location immediately after sign-up, both with generic wording. Theirs
   is good in one place: nearby deals are blurred behind "Allow Location".

@@ -35,6 +35,20 @@ describe('DriverMoney', () => {
     expect(screen.queryByText(/Collect/)).toBeNull();
   });
 
+  it('says no commission is taken on this job, in the hero only', async () => {
+    // Load 24 leads with "No commission". Ours is read from this job's own
+    // numbers, so it vanishes the day commission is switched on.
+    await render(<DriverMoney payout={96000} collect={96000} owed={0} currency="OMR" />);
+    expect(screen.getByText(/No commission on this job/)).toBeTruthy();
+  });
+
+  it('makes no commission claim when a margin is owed, or in the compressed row', async () => {
+    await render(<DriverMoney payout={78000} collect={96000} owed={18000} currency="OMR" />);
+    expect(screen.queryByText(/No commission/)).toBeNull();
+    await render(<DriverMoney payout={96000} collect={96000} owed={0} currency="OMR" size="row" />);
+    expect(screen.queryByText(/No commission/)).toBeNull();
+  });
+
   it('renders three OMR decimals, never two', async () => {
     // OMR has THREE decimal places. A two-decimal render is a 10x error that
     // looks entirely plausible on the screen.
