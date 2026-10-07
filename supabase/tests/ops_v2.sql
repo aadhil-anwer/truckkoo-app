@@ -87,6 +87,10 @@ begin
     ('60000000-0000-4000-8000-000000000002', 'v2 suite', 'dispatcher'),
     ('60000000-0000-4000-8000-000000000003', 'v2 suite', 'dispatcher'),
     ('60000000-0000-4000-8000-000000000004', 'v2 suite', 'dispatcher');
+  -- 0070: the owner fixture is the founder, the only appointer of staff.
+  insert into private.founder (profile_id, email)
+  values ('60000000-0000-4000-8000-000000000001', 'owner@truckkoo.com')
+  on conflict (only_one) do update set profile_id = excluded.profile_id, email = excluded.email;
   insert into public.loads (shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description)
   select '60000000-0000-4000-8000-000000000004', c1.id, c2.id, current_date + 1, current_date + 1, 'busy cargo'
     from public.cities c1, public.cities c2 where c1.name_en = 'Muscat' and c2.name_en = 'Sohar';
@@ -186,10 +190,10 @@ select assert_true(
 select act_as_staff('60000000-0000-4000-8000-000000000001', 'aal2', 1);
 select assert_raises(
   $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000001', 'dispatcher', 'step down')$$,
-  'last owner: the only owner cannot demote themselves', '%last owner%');
+  'the founder cannot demote themselves', '%founder stays an owner%');
 select assert_raises(
   $$select public.ops_remove_staff('60000000-0000-4000-8000-000000000001', 'leaving')$$,
-  'last owner: the only owner cannot be removed', '%last owner%');
+  'the founder cannot be removed', '%founder cannot be removed%');
 select public.ops_appoint_staff('60000000-0000-4000-8000-000000000002', 'owner', 'second owner');
 select public.ops_remove_staff('60000000-0000-4000-8000-000000000005', 'trial ended');
 select act_as_reset();
@@ -199,6 +203,51 @@ select assert_true(
 select assert_true(
   not exists (select 1 from private.ops_users where profile_id = '60000000-0000-4000-8000-000000000005'),
   'an owner removes a dispatcher');
+
+-- ═══ 3b. the founder (0070) ════════════════════════════════════════════════
+-- 002 is an owner now, with fresh 2FA, and still not the founder.
+select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1);
+select assert_not_found(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000005', 'dispatcher', 'hire')$$,
+  'an owner who is not the founder cannot appoint staff');
+select assert_not_found(
+  $$select public.ops_remove_staff('60000000-0000-4000-8000-000000000003', 'fire')$$,
+  'an owner who is not the founder cannot remove staff');
+select assert_not_found(
+  $$select public.ops_appoint_staff('60000000-0000-4000-8000-000000000001', 'dispatcher', 'coup')$$,
+  'and so cannot demote the founder');
+select act_as_reset();
+
+-- The exemption: make the gmail fixture (wrong domain) the founder, and give
+-- it customer history too.
+update private.founder
+   set profile_id = '60000000-0000-4000-8000-000000000003', email = 'gmail@example.com';
+insert into public.loads (shipper_id, origin_city, dest_city, pickup_from, pickup_to, goods_description)
+select '60000000-0000-4000-8000-000000000003', c1.id, c2.id, current_date + 1, current_date + 1, 'founder cargo'
+  from public.cities c1, public.cities c2 where c1.name_en = 'Muscat' and c2.name_en = 'Sohar';
+select assert_true(private.staff_account_ok('60000000-0000-4000-8000-000000000003'),
+  'the founder passes the staff-account rule on any domain, with customer history');
+select assert_true(not private.staff_account_ok('60000000-0000-4000-8000-000000000004'),
+  'and nobody else is exempted by it');
+select act_as_staff('60000000-0000-4000-8000-000000000003', 'aal1', null);
+select assert_true(not private.is_ops(), 'the founder still needs 2FA to be ops');
+select act_as_staff('60000000-0000-4000-8000-000000000003', 'aal2', 1);
+select assert_true(private.is_ops(), 'with 2FA, the founder is ops');
+select act_as_reset();
+update auth.users set email = 'someone-else@example.com' where id = '60000000-0000-4000-8000-000000000003';
+select assert_true(not private.staff_account_ok('60000000-0000-4000-8000-000000000003'),
+  'changing the email on the founder account ends the exemption');
+update auth.users set email = 'gmail@example.com' where id = '60000000-0000-4000-8000-000000000003';
+update private.founder
+   set profile_id = '60000000-0000-4000-8000-000000000001', email = 'owner@truckkoo.com';
+select assert_raises(
+  $$insert into private.founder (only_one, profile_id, email) values (true, '60000000-0000-4000-8000-000000000002', 'disp@truckkoo.com')$$,
+  'there is only ever one founder');
+select assert_true(
+  not has_table_privilege('authenticated', 'private.founder', 'select')
+  and not has_table_privilege('authenticated', 'private.founder', 'insert')
+  and not has_table_privilege('authenticated', 'private.founder', 'update'),
+  'no client can read or change who the founder is');
 
 select act_as_staff('60000000-0000-4000-8000-000000000002', 'aal2', 1);
 select assert_true(
@@ -249,7 +298,8 @@ select assert_true(
     where n.nspname in ('public', 'private')
       and p.proname in ('ops_level','staff_account_ok','is_ops','is_owner','require_owner',
                         'require_owner_fresh','assert_an_owner_remains','ops_appoint_staff',
-                        'ops_remove_staff','ops_staff','my_ops_level')),
+                        'ops_remove_staff','ops_staff','my_ops_level',
+                        'is_founder','require_founder_fresh')),
   'every 0054 function pins search_path');
 select assert_true(
   (select bool_and(p.provolatile = 'v')
