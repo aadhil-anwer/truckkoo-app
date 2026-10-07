@@ -33,11 +33,13 @@ cities, and truck types.
    are loaded by hand, never invented in a migration. `npm run seed:rates` loads a
    fake card for development — it lives outside `migrations/` on purpose, so it
    cannot reach production. See `STACK.md` §2c.
-   **0018 exception, agreed explicitly:** an appointed dispatcher can read and
-   edit the card through `require_ops()` RPCs from the ops console. The table
-   still has no client grant, the formula is still SQL-only, and no rate data
-   reaches the shipper/driver bundle. Every edit needs a reason and lands in
-   both `rate_card_audit` and `ops_audit`.
+   **0018 exception, agreed explicitly:** staff can read the card through
+   `require_ops()` RPCs from the ops console; since 0060 only an **owner** with
+   2FA verified in the last few minutes can edit it (as with the commission, the
+   bid fee and settings — each also emails an alert). The table still has no
+   client grant, the formula is still SQL-only, and no rate data reaches the
+   shipper/driver bundle. Every edit needs a reason and lands in both
+   `rate_card_audit` and `ops_audit`.
 4. **RTL is structural, not a phase-2 task.** Logical properties only
    (`marginStart`, `paddingEnd`, `start`/`end`). Never `left`/`right`. All
    user-facing strings go through `t()` in `src/i18n`. For text alignment use
@@ -51,10 +53,13 @@ cities, and truck types.
    placeholders — `t('drv.offer.detour', { km })` — so each language owns its own
    word order, and units live *inside* the string: `${n} km` renders a Latin "km"
    in Arabic copy. `tests/unit/no-literals.test.ts` enforces both, plus the
-   arrow and alignment rules; its only exemptions are `src/map` and `legacy.tsx`,
-   and adding a third to silence a hit is the failure it exists to prevent.
-   The Arabic dictionary is complete as of P7, but **254 of its strings are
-   unproofed drafts** in a marked block — see `OPEN_ISSUES.md`.
+   arrow and alignment rules; its only exemption is `src/map`, and adding a
+   second to silence a hit is the failure it exists to prevent.
+   The Arabic dictionary is complete as of P7, but **320 of its strings are
+   unproofed drafts** in a marked block, plus 71 support-desk drafts and 18
+   pickup/waiting drafts added 2026-10-06, and the two location-disclosure
+   strings (`loc.ask.body`, `drv.avail.why`) rewritten that day — see
+   `OPEN_ISSUES.md`.
 5. **Never fabricate proof.** No testimonials, customer names, ratings, trip
    counts, fleet size, founding year, or certifications. The website
    deliberately claims none of these. Public claims we *must* stay consistent
@@ -91,6 +96,21 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+  **A trip's payout uses the commission it was accepted at** (0068,
+  `private.trip_commission`, read by `private.trip_payout()`); `payout_for()`
+  is today's rate and is right only for an offer not yet accepted. Reading a
+  trip through `payout_for()` makes a commission change rewrite settled jobs.
+- **Bidding keeps the fee off client-readable rows** (0045,
+  `docs/bidding-v1-design.md`). `loads` and `trips` are readable by every
+  invited driver and the shipper, so the fee snapshot, the target price and the
+  awarded payout live in `private.bid_loads`, and a bid load's `price_baisa`
+  stays NULL until award. Drivers see competing bids as payouts, shippers as
+  totals — never both on one side.
+- **Push is sent by the database** (0046): deferred triggers re-read the row at
+  commit and hand Expo a message through pg_net. A push never raises into the
+  transaction that caused it, nothing intermediate buzzes, and the lock screen
+  gets cities and amounts only — never cargo, a name or a phone. Device tokens
+  are in `private.push_tokens`, written only through `register_push_token`.
 - **A position is only ever one row.** `trip_positions` (0032) has no client
   grant of any kind. `report_position` stores nothing outside an `in_transit`
   trip owned by the caller, so tracking stopping when a trip ends is a database
@@ -107,6 +127,15 @@ cities, and truck types.
   it when under 45 min old and ≤1 km accurate, else by town.
   `src/lib/background-location.ts` is the **only** reporter, and
   `src/lib/location-tracking.tsx` decides when it runs.
+- **Arriving at a stop is noticed, never tapped** (0069). From acceptance to
+  delivery the phone reports every 30 s / 150 m (`trackingMode` → `'trip'` for
+  `assigned` too); `report_location` checks each fix against the next stop's pin
+  (`private.auto_arrive`: within `arrive_radius_m`, not moving past) and records
+  only the event, at the **server's** time. No client call marks an arrival.
+  Waiting is computed only in `private.trip_wait`; the shipper can hold a
+  running stop with `report_driver_absent`, staff can check a driver in, waive
+  or release — each audited. A job inside one town needs both pins
+  (`check_same_city`); price is measured pin to pin (`load_km`, `quote_trip`).
 - **Driver legs are supply intelligence.** Never readable by shippers or other
   drivers. Drivers do **not** browse a load board; they see `offers` addressed to
   them. A load board would expose every shipper's cargo details to anyone who
@@ -121,6 +150,15 @@ cities, and truck types.
 - **Storage is private** with short-lived signed URLs. Proof of delivery is
   append-only: no update or delete policy.
 - **Extend `supabase/tests/tenant_isolation.sql`** with every new owned table.
+- **Strikes are suspected until a person decides** (0063–0066). A detector
+  only ever inserts a `suspected` incident with a case; nothing suspends anyone
+  automatically; a driver reads their own decided strikes through `my_record()`
+  — never the internal reason text — and can appeal each one. Staff reasons on
+  a playbook stay in the case and the audit, not on the trip timeline the
+  driver and shipper read.
+- **One LIVE trip per load** (0066). A cancelled trip stays on record; the
+  unique index covers only non-cancelled trips. Any code reading a trip by its
+  load must prefer the non-cancelled one.
 
 **Stop and ask** before: a new service-role call site, loosening any RLS policy,
 accepting a price/role/status/ownership-id from the client, a public storage
@@ -214,13 +252,11 @@ reference data **not** derived from the website, which has none. `npm run
 check:pins` asserts none is in the sea; `npm run preview:map` renders them for the
 only check that matters, which is whether a pin is in the right town.
 
-**`src/components/legacy.tsx` is transitional and shrinking.** P0 replaced the
-design system but built none of the 32 screens, so the old vocabulary lives there
-on new tokens until each phase lands. `grep -rl "components/legacy" src/app` is
-the list of screens still awaiting their phase; when it is empty, delete the file.
-**Nothing new may import from it.** Since the P2 interim (2026-09-26) that list is
-`post-load.tsx` alone — still reached by "Send this route again" on the shipper
-home and T5. Move that onto the booking flow and the file can go.
+**`src/components/legacy.tsx` is gone (2026-10-04)**, with `post-load.tsx` and
+`picker.tsx`, its last users. "Send this route again" on the shipper home and T5
+now fills a fresh booking draft from the old load (`draftFromLoad`) and opens the
+booking flow on the date; every other answer carries over and is still shown
+before review. There is one way to post a load from the app.
 
 **Getting in is N1–N6 on email, for now.** The handoff's N2/N3 are a phone
 number and a one-time code over WhatsApp; until Meta's side is ready the same
@@ -310,9 +346,9 @@ and dispatch nobody (it happened, 2026-09-27).
 ## Verify before you claim anything works
 
 ```
-npm run verify    # typecheck + lint + 690 tests
+npm run verify    # typecheck + lint + 800 tests
 npm run preview:rtl  # every Arabic string, grouped by screen, for a human to read
-npm run test:db   # four SQL suites (isolation + pricing + ops + dispatch) — needs `npx supabase start`
+npm run test:db   # seven SQL suites (isolation, pricing, ops, dispatch, places, bidding, push) — needs `npx supabase start`
 node scripts/check-migrations.mjs local   # migration numbering; `diff origin/main` for edits
 ```
 

@@ -17,7 +17,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useObserve } from 'expo-observe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,6 +27,7 @@ import { QuestionHeading } from '@/components/ui';
 import { align, t } from '@/i18n';
 import { signInWithProvider } from '@/lib/auth';
 import { startAuthDraft, type AuthMode } from '@/lib/auth-draft';
+import { WHATSAPP_AUTH } from '@/lib/features';
 import { MapCanvas, Scrim, framingFor } from '@/map';
 import { face } from '@/theme/faces';
 import { GUTTER_INK, alpha, color, font, space } from '@/theme/tokens';
@@ -45,8 +46,8 @@ export default function Welcome() {
   const [error, setError] = useState<string | null>(null);
 
   function begin(mode: AuthMode) {
-    startAuthDraft(mode);
-    router.push('/email');
+    startAuthDraft(mode, WHATSAPP_AUTH);
+    router.push((WHATSAPP_AUTH ? '/otp-phone' : '/email') as Href);
   }
 
   async function onProvider(provider: 'google' | 'apple') {

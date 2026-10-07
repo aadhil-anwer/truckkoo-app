@@ -32,15 +32,19 @@
 
 import { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { PressableSurface, SecondaryButton, SelectRow } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { DetailGroup, DetailRow, Notice } from '@/components/ui';
-import { align, getLanguage, t, type Language } from '@/i18n';
+import { align, formatNumber, getLanguage, t, type Language } from '@/i18n';
+import { useMyMessages } from '@/lib/queries';
 import { signOut } from '@/lib/auth';
+import { usePush } from '@/lib/push-context';
 import { setLanguage } from '@/lib/language';
+import { reportFailure } from '@/lib/monitoring';
 import { safeText, whatsappLink } from '@/lib/safe-text';
 import { useSession } from '@/lib/session';
 import {
@@ -54,7 +58,7 @@ import {
 } from '@/theme/tokens';
 
 /** Each language names itself, in itself. Nobody looks for "Arabic" in English. */
-const LANGUAGE_NAME: Record<Language, string> = { en: 'English', ar: 'العربية' };
+const LANGUAGE_NAME: Record<Language, string> = { en: 'English', ar: 'العربية', ur: 'اردو' };
 
 /** Two words at most. A third initial is noise at 64px. */
 function initialsOf(name: string): string {
@@ -70,13 +74,21 @@ function initialsOf(name: string): string {
 }
 
 export default function AccountTab() {
+  const router = useRouter();
   const { profile } = useSession();
+  const push = usePush();
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
 
   const name = profile?.full_name?.trim() ?? '';
   const isDriver = profile?.role === 'driver';
+  // The count lives in the row, not a tab badge: offers are the app's only
+  // badge, on purpose (tabs/_layout.tsx). The push is what brings people here.
+  const messages = useMyMessages();
+  const unread = (messages.data ?? []).filter((m) => !m.read_at).length;
   const current = getLanguage();
 
   /**
@@ -90,6 +102,20 @@ export default function AccountTab() {
     if (next === current) return;
     await setLanguage(next);
     setRestartNeeded(true);
+  }
+
+  async function leave() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(false);
+    try {
+      await signOut();
+    } catch (e) {
+      reportFailure('sign_out', e);
+      setSignOutError(true);
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   return (
@@ -116,7 +142,14 @@ export default function AccountTab() {
         {restartNeeded && <Notice icon="info">{t('account.language.hint')}</Notice>}
 
         <DetailGroup label={t('account.details')}>
+          {isDriver && <DetailRow label={t('account.verification')} value={t('account.verification.open')}
+            onPress={() => router.push('/verification' as Href)} />}
           <DetailRow label={t('auth.phone')} value={safeText(profile?.phone ?? '—')} />
+          <DetailRow
+            label={t('push.row')}
+            value={t(push.access === 'granted' ? 'push.row.on' : 'push.row.off')}
+            onPress={push.access === 'granted' ? undefined : () => void push.request()}
+          />
           <DetailRow
             label={t('account.language')}
             value={LANGUAGE_NAME[current]}
@@ -125,6 +158,15 @@ export default function AccountTab() {
         </DetailGroup>
 
         <DetailGroup label={t('account.help')}>
+          <DetailRow
+            label={t('account.messages')}
+            value={unread > 0 ? t('account.messages.new', { n: formatNumber(unread) }) : t('account.messages.none')}
+            onPress={() => router.push('/messages' as Href)}
+          />
+          <DetailRow label={t('account.reports')} value={t('account.reports.value')}
+            onPress={() => router.push('/reports' as Href)} />
+          {isDriver && <DetailRow label={t('account.record')} value={t('account.record.value')}
+            onPress={() => router.push('/record' as Href)} />}
           <DetailRow
             label={t('whatsapp.action')}
             value={t('account.help.detail')}
@@ -135,7 +177,9 @@ export default function AccountTab() {
         </DetailGroup>
 
         <View style={styles.out}>
-          <SecondaryButton label={t('auth.signOut')} onPress={signOut} />
+          {signOutError && <Text style={styles.signOutError}>{t('account.signOut.failed')}</Text>}
+          {signingOut && <Text style={styles.signOutWaiting}>{t('account.signOut.waiting')}</Text>}
+          <SecondaryButton label={t('auth.signOut')} onPress={() => { void leave(); }} disabled={signingOut} />
         </View>
       </ScrollView>
 
@@ -159,7 +203,7 @@ export default function AccountTab() {
             </View>
 
             <View accessibilityRole="radiogroup" accessibilityLabel={t('account.language')}>
-              {(['en', 'ar'] as const).map((lang) => (
+              {(['en', 'ar', 'ur'] as const).map((lang) => (
                 <SelectRow
                   key={lang}
                   title={LANGUAGE_NAME[lang]}
@@ -196,7 +240,9 @@ const styles = StyleSheet.create({
   name: { ...arabicIfNeeded(font.statement), color: color.lightText },
   role: { ...arabicIfNeeded(font.body), color: alpha.onInk.body },
 
-  out: { marginTop: space.sm },
+  out: { marginTop: space.sm, gap: space.sm },
+  signOutError: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
+  signOutWaiting: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start },
 
   scrim: { flex: 1, backgroundColor: 'rgba(11,12,15,.72)', justifyContent: 'flex-end' },
   sheet: {

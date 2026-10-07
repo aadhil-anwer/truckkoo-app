@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { ScrollView, Text, View, StyleSheet } from 'react-native';
 
 import { MapStepShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { CityList } from '@/components/booking/CityList';
 import { PlaceSearch } from '@/components/booking/PlaceSearch';
 import { PrimaryButton } from '@/components/primitives';
@@ -28,7 +29,7 @@ export default function Origin() {
   const index = cityIndex(cities);
   const chosen = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
 
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   return (
     <MapStepShell

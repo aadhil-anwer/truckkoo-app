@@ -2,7 +2,7 @@
   "expo": {
     "name": "Truckkoo",
     "slug": "truckkoo",
-    "version": "1.1.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "truckkoo",
@@ -14,8 +14,8 @@
       "bundleIdentifier": "com.truckkoo.app",
       "infoPlist": {
         "CFBundleAllowMixedLocalizations": true,
-        "NSCameraUsageDescription": "Truckkoo uses the camera so you can photograph proof of delivery when a load is dropped off.",
-        "NSPhotoLibraryUsageDescription": "Truckkoo needs access to your photos so you can attach proof of delivery to a trip."
+        "NSCameraUsageDescription": "Truckkoo uses the camera for driver verification documents, truck photos, and proof of delivery.",
+        "NSPhotoLibraryUsageDescription": "Truckkoo uses selected photos for driver verification and proof of delivery."
       },
       "usesAppleSignIn": true
     },
@@ -66,6 +66,12 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F1551F"
         }
       ],
       "./plugins/with-first-launch-direction",

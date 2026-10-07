@@ -39,10 +39,12 @@ import {
 } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, framingFor } from '@/map';
 import { cityIndex, useCities, useMyLoads, useTruckTypes, type Load } from '@/lib/queries';
+import { loadStatusKey } from '@/lib/load-status';
+import { draftFromLoad, startDraft } from '@/lib/booking';
 import { useSession } from '@/lib/session';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import { formatWeight, formatWindow } from '@/lib/format';
-import { align, directionArrow, localized, t, type StringKey } from '@/i18n';
+import { align, directionArrow, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import {
   GUTTER_INK,
@@ -69,7 +71,7 @@ const LIVE: Load['status'][] = [
 export default function ShipperHome() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile } = useSession();
+  const { profile, session } = useSession();
   const cities = useCities();
   const { data: loads, isLoading, isError, refetch, isRefetching } = useMyLoads();
   const { data: truckTypes } = useTruckTypes();
@@ -249,12 +251,12 @@ export default function ShipperHome() {
                   accessibilityLabel={`${t('route.aria', {
                     origin: localized(o),
                     destination: localized(d),
-                  })}. ${t(`status.${load.status}` as StringKey)}`}
+                  })}. ${t(loadStatusKey(load))}`}
                   style={styles.loadCard}
                 >
                   <View style={styles.loadHead}>
                     <StatusPill
-                      label={t(`status.${load.status}` as StringKey)}
+                      label={t(loadStatusKey(load))}
                       // Accent only while something is genuinely happening.
                       tone={load.status === 'in_transit' ? 'accent' : 'neutral'}
                     />
@@ -288,15 +290,12 @@ export default function ShipperHome() {
 
         {repeat && repeatFrom && repeatTo && (
           <PressableSurface
-            onPress={() =>
-              router.push({
-                pathname: '/post-load',
-                params: {
-                  origin: String(repeat.origin_city),
-                  dest: String(repeat.dest_city),
-                },
-              })
-            }
+            onPress={async () => {
+              // The same booking flow as a new load, answers filled in, opening
+              // on the one question that is always new: the date.
+              await startDraft(draftFromLoad({ ...repeat, destCountry: repeatTo.country }), session?.user.id ?? '');
+              router.push('/book/date');
+            }}
             accessibilityLabel={`${t('home.again.title')}. ${t('route.aria', {
               origin: localized(repeatFrom),
               destination: localized(repeatTo),

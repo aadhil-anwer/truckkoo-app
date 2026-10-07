@@ -1,0 +1,318 @@
+{
+  "auditDate": "2026-10-04",
+  "baseCommit": "0eb2b6d",
+  "branch": "redesign-p2-interim-auth",
+  "includesPreexistingUncommittedChanges": true,
+  "applicationCodeChangedByAudit": false,
+  "verification": {
+    "typecheck": "passed",
+    "lint": {
+      "errors": 0,
+      "warnings": 2,
+      "warningFile": "src/app/(app)/leg/route.tsx"
+    },
+    "jest": {
+      "passedSuites": 54,
+      "passedTests": 759,
+      "workerTeardownWarning": true,
+      "initialSandboxFailure": "framing test shell invocation blocked; full suite passed after rerun"
+    },
+    "database": {
+      "scope": "local only",
+      "suites": [
+        "tenant isolation",
+        "pricing",
+        "ops",
+        "dispatch",
+        "places",
+        "bidding",
+        "push"
+      ],
+      "result": "all passed"
+    },
+    "migrationNumbering": {
+      "count": 47,
+      "result": "passed"
+    },
+    "nativeBuild": "not performed"
+  },
+  "export": {
+    "platform": "android",
+    "result": "passed",
+    "modules": 2281,
+    "hermesBytes": 5051556,
+    "assetBytes": 5024798,
+    "fontFiles": 28,
+    "brandFontFiles": 27,
+    "usedBrandFontFiles": 10,
+    "unusedBrandFontRawBytes": 2438792
+  },
+  "expoCompatibility": {
+    "offlineBundledMap": "passed",
+    "online": "28 packages flagged",
+    "packages": [
+      {
+        "package": "@expo/ui",
+        "installed": "57.0.7",
+        "recommended": "~57.0.21"
+      },
+      {
+        "package": "expo",
+        "installed": "57.0.8",
+        "recommended": "~57.0.26"
+      },
+      {
+        "package": "expo-apple-authentication",
+        "installed": "57.0.1",
+        "recommended": "~57.0.2"
+      },
+      {
+        "package": "expo-auth-session",
+        "installed": "57.0.5",
+        "recommended": "~57.0.13"
+      },
+      {
+        "package": "expo-crypto",
+        "installed": "57.0.1",
+        "recommended": "~57.0.3"
+      },
+      {
+        "package": "expo-dev-client",
+        "installed": "57.0.9",
+        "recommended": "~57.0.19"
+      },
+      {
+        "package": "expo-device",
+        "installed": "57.0.1",
+        "recommended": "~57.0.2"
+      },
+      {
+        "package": "expo-font",
+        "installed": "57.0.1",
+        "recommended": "~57.0.4"
+      },
+      {
+        "package": "expo-glass-effect",
+        "installed": "57.0.1",
+        "recommended": "~57.0.4"
+      },
+      {
+        "package": "expo-image",
+        "installed": "57.0.1",
+        "recommended": "~57.0.5"
+      },
+      {
+        "package": "expo-image-picker",
+        "installed": "57.0.6",
+        "recommended": "~57.0.20"
+      },
+      {
+        "package": "expo-linking",
+        "installed": "57.0.4",
+        "recommended": "~57.0.11"
+      },
+      {
+        "package": "expo-localization",
+        "installed": "57.0.1",
+        "recommended": "~57.0.2"
+      },
+      {
+        "package": "expo-location",
+        "installed": "57.0.7",
+        "recommended": "~57.0.20"
+      },
+      {
+        "package": "expo-router",
+        "installed": "57.0.8",
+        "recommended": "~57.0.24"
+      },
+      {
+        "package": "expo-secure-store",
+        "installed": "57.0.1",
+        "recommended": "~57.0.4"
+      },
+      {
+        "package": "expo-splash-screen",
+        "installed": "57.0.5",
+        "recommended": "~57.0.9"
+      },
+      {
+        "package": "expo-symbols",
+        "installed": "57.0.1",
+        "recommended": "~57.0.3"
+      },
+      {
+        "package": "expo-system-ui",
+        "installed": "57.0.1",
+        "recommended": "~57.0.4"
+      },
+      {
+        "package": "expo-task-manager",
+        "installed": "57.0.20",
+        "recommended": "~57.0.21"
+      },
+      {
+        "package": "expo-updates",
+        "installed": "57.0.23",
+        "recommended": "~57.0.24"
+      },
+      {
+        "package": "expo-web-browser",
+        "installed": "57.0.2",
+        "recommended": "~57.0.3"
+      },
+      {
+        "package": "react-native",
+        "installed": "0.86.0",
+        "recommended": "0.86.3"
+      },
+      {
+        "package": "react-native-reanimated",
+        "installed": "4.5.0",
+        "recommended": "4.5.1"
+      },
+      {
+        "package": "react-native-worklets",
+        "installed": "0.10.0",
+        "recommended": "0.10.1"
+      },
+      {
+        "package": "@types/jest",
+        "installed": "30.0.0",
+        "recommended": "29.5.14"
+      },
+      {
+        "package": "eslint-config-expo",
+        "installed": "57.0.0",
+        "recommended": "~57.0.2"
+      },
+      {
+        "package": "jest-expo",
+        "installed": "57.0.2",
+        "recommended": "~57.0.5"
+      }
+    ]
+  },
+  "npmAudit": {
+    "counts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 54,
+      "critical": 0,
+      "total": 57
+    },
+    "dependencyCounts": {
+      "prod": 858,
+      "dev": 353,
+      "optional": 48,
+      "peer": 17,
+      "peerOptional": 0,
+      "total": 1247
+    },
+    "uniqueAdvisories": [
+      {
+        "package": "braces",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "range": "<=3.0.3",
+        "installed": [
+          {
+            "path": "node_modules/braces",
+            "version": "3.0.3"
+          }
+        ]
+      },
+      {
+        "package": "decode-uri-component",
+        "title": "decode-uri-component: Denial of service via exponential decoding of malformed percent-encoded input",
+        "url": "https://github.com/advisories/GHSA-vcc3-ghjq-m6fr",
+        "severity": "moderate",
+        "range": "<=0.4.2",
+        "installed": [
+          {
+            "path": "node_modules/decode-uri-component",
+            "version": "0.2.2"
+          }
+        ]
+      },
+      {
+        "package": "image-size",
+        "title": "image-size: JXL and HEIF parsers allow denial of service through infinite loops",
+        "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
+        "severity": "high",
+        "range": ">=1.2.0 <=2.0.2",
+        "installed": [
+          {
+            "path": "node_modules/image-size",
+            "version": "1.2.1"
+          }
+        ]
+      },
+      {
+        "package": "image-size",
+        "title": "image-size: ICNS parser allows denial of service through an infinite loop",
+        "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
+        "severity": "high",
+        "range": ">=0.6.3 <=2.0.2",
+        "installed": [
+          {
+            "path": "node_modules/image-size",
+            "version": "1.2.1"
+          }
+        ]
+      },
+      {
+        "package": "node-forge",
+        "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements",
+        "url": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+        "severity": "high",
+        "range": "<=1.4.0",
+        "installed": [
+          {
+            "path": "node_modules/node-forge",
+            "version": "1.4.0"
+          }
+        ]
+      }
+    ],
+    "note": "Affected package entries include propagated findings. Runtime exploitability was not established for every advisory."
+  },
+  "reproductions": {
+    "crossAccountCache": {
+      "key": [
+        "loads",
+        "mine"
+      ],
+      "shownOwner": "account-A",
+      "requestedOwner": "account-B",
+      "networkFetches": 0,
+      "scope": "TanStack QueryClient reproduction, not phone E2E"
+    },
+    "nestedRetries": {
+      "mockStatus": 503,
+      "httpAttempts": 12,
+      "realNetwork": false,
+      "note": "Retry-After and query retry delay set to zero for reproduction; app policies otherwise retained"
+    }
+  },
+  "device": {
+    "os": "Android 16",
+    "api": 36,
+    "installedAppVersion": "1.1.0",
+    "sourceAppVersion": "1.2.0",
+    "installedMinSdk": 24,
+    "debuggable": false,
+    "processRunning": false,
+    "frameMeasurements": "unavailable",
+    "memoryMeasurements": "unavailable"
+  },
+  "notVerified": [
+    "current native release performance",
+    "iOS behavior",
+    "production migrations",
+    "production SQL query plans",
+    "full live device journeys"
+  ]
+}

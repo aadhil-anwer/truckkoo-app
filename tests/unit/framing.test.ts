@@ -193,15 +193,23 @@ describe('no screen hardcodes a framing', () => {
   /**
    * Every map screen used to pass framing="domestic", and every route that left
    * northern Oman was drawn off-screen. The picture must come from framingFor.
-   * Grep, because the failure is a literal someone types, not a behaviour.
+   * Scan source, because the failure is a literal someone types, not a behaviour.
    */
   it('passes no literal framing prop anywhere under src/app or src/components', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { execSync } = require('node:child_process');
-    const hits: string = execSync(
-      `grep -rnE "framing=\\"(domestic|regional)\\"" src/app src/components || true`,
-      { cwd: `${__dirname}/../..`, encoding: 'utf8' },
-    );
-    expect(hits.trim()).toBe('');
+    const fs = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('node:path') as typeof import('node:path');
+    const hits: string[] = [];
+    const scan = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) scan(file);
+        else if (/\.tsx?$/.test(entry.name) && /framing="(?:domestic|regional)"/.test(fs.readFileSync(file, 'utf8'))) hits.push(file);
+      }
+    };
+    scan(path.join(__dirname, '../../src/app'));
+    scan(path.join(__dirname, '../../src/components'));
+    expect(hits).toEqual([]);
   });
 });

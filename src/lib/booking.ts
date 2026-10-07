@@ -23,7 +23,11 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KEY = 'truckkoo.booking.draft.v1';
+import { greatCircleKm } from '@/map/distance';
+import { BIDDING } from './features';
+import { useSession } from './session';
+
+const KEY_PREFIX = 'truckkoo.booking.draft.v2.';
 
 /** ISO `YYYY-MM-DD`. Dates are days, not instants — a pickup has no timezone. */
 export type IsoDate = string;
@@ -51,6 +55,12 @@ export type BookingDraft = {
   /** Null when the shipper chose a city only — a real answer, not a gap. */
   originPlace: DraftPlace | null;
   destinationPlace: DraftPlace | null;
+  /**
+   * The most the shipper will pay in total, in baisa (0045). Optional; never
+   * shown to a driver. When bidding closes, the lowest bid at or under it is
+   * taken without asking again. Null is "I will choose myself".
+   */
+  targetTotalBaisa: number | null;
 };
 
 export const EMPTY_DRAFT: BookingDraft = {
@@ -63,12 +73,19 @@ export const EMPTY_DRAFT: BookingDraft = {
   weightKg: null,
   originPlace: null,
   destinationPlace: null,
+  targetTotalBaisa: null,
 };
 
-/** The six steps, in order. Used for the progress counter and for routing. */
-export const STEPS = ['origin', 'destination', 'date', 'cargo', 'truck', 'weight'] as const;
+/**
+ * The steps, in order. Used for the progress counter and for routing.
+ *
+ * `target` — "the most you will pay" — exists only for bid loads (0045), so it
+ * is last and counted only while BIDDING is on: six steps without it, seven
+ * with it.
+ */
+export const STEPS = ['origin', 'destination', 'date', 'cargo', 'truck', 'weight', 'target'] as const;
 export type Step = (typeof STEPS)[number];
-export const TOTAL_STEPS = STEPS.length;
+export const TOTAL_STEPS = BIDDING ? STEPS.length : STEPS.length - 1;
 
 export function stepNumber(step: Step): number {
   return STEPS.indexOf(step) + 1;
@@ -140,35 +157,133 @@ export function isComplete(draft: BookingDraft): boolean {
   );
 }
 
-export async function loadDraft(): Promise<BookingDraft> {
+function keyFor(ownerId: string): string {
+  return `${KEY_PREFIX}${encodeURIComponent(ownerId)}`;
+}
+
+const pendingWrites = new Map<string, Promise<void>>();
+
+function queueWrite(ownerId: string, write: () => Promise<void>): Promise<void> {
+  const previous = pendingWrites.get(ownerId) ?? Promise.resolve();
+  const pending = previous.catch(() => {}).then(write).catch(() => {});
+  pendingWrites.set(ownerId, pending);
+  void pending.then(() => {
+    if (pendingWrites.get(ownerId) === pending) pendingWrites.delete(ownerId);
+  });
+  return pending;
+}
+
+function placeFromStorage(value: unknown): DraftPlace | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.lat !== 'number' || !Number.isFinite(p.lat) || Math.abs(p.lat) > 90 ||
+      typeof p.lng !== 'number' || !Number.isFinite(p.lng) || Math.abs(p.lng) > 180) return null;
+  return {
+    lat: p.lat,
+    lng: p.lng,
+    placeName: typeof p.placeName === 'string' ? p.placeName : null,
+    note: typeof p.note === 'string' ? p.note : '',
+    contactName: typeof p.contactName === 'string' ? p.contactName : '',
+    contactPhone: typeof p.contactPhone === 'string' ? p.contactPhone : '',
+  };
+}
+
+function draftFromStorage(value: unknown): BookingDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return EMPTY_DRAFT;
+  const d = value as Record<string, unknown>;
+  const city = (x: unknown) => typeof x === 'number' && Number.isSafeInteger(x) && x > 0 ? x : null;
+  return {
+    originCityId: city(d.originCityId),
+    destinationCityId: city(d.destinationCityId),
+    destinationCountry: d.destinationCountry === 'AE' || d.destinationCountry === 'SA'
+      ? d.destinationCountry : 'OM',
+    collectionDate: typeof d.collectionDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.collectionDate)
+      ? d.collectionDate : null,
+    cargoDescription: typeof d.cargoDescription === 'string' ? d.cargoDescription : '',
+    truckPreference: typeof d.truckPreference === 'string' && d.truckPreference.length > 0
+      ? d.truckPreference : 'auto',
+    weightKg: typeof d.weightKg === 'number' && Number.isFinite(d.weightKg) && d.weightKg > 0
+      ? d.weightKg : null,
+    originPlace: placeFromStorage(d.originPlace),
+    destinationPlace: placeFromStorage(d.destinationPlace),
+    targetTotalBaisa: typeof d.targetTotalBaisa === 'number' && Number.isSafeInteger(d.targetTotalBaisa) &&
+      d.targetTotalBaisa >= 0 ? d.targetTotalBaisa : null,
+  };
+}
+
+export async function loadDraft(ownerId: string): Promise<BookingDraft> {
+  if (!ownerId) return EMPTY_DRAFT;
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    await pendingWrites.get(ownerId);
+    const raw = await AsyncStorage.getItem(keyFor(ownerId));
     if (!raw) return EMPTY_DRAFT;
-    // Spread over EMPTY_DRAFT so a draft written by an older build, missing a
-    // field added since, still opens instead of throwing halfway through a flow.
-    return { ...EMPTY_DRAFT, ...(JSON.parse(raw) as Partial<BookingDraft>) };
+    return draftFromStorage(JSON.parse(raw));
   } catch {
     return EMPTY_DRAFT;
   }
 }
 
-export async function saveDraft(draft: BookingDraft): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(draft));
-  } catch {
-    // A failed write costs the user their answers on a kill, which is bad but
-    // survivable. Throwing here would cost them the answer they just gave, which
-    // is worse — so this stays silent by design.
-  }
+export function saveDraft(draft: BookingDraft, ownerId: string): Promise<void> {
+  if (!ownerId) return Promise.resolve();
+  // Serialise writes: a slower earlier keystroke must not overwrite the last
+  // answer after navigation. Failure remains best effort for the live screen.
+  return queueWrite(ownerId, () => AsyncStorage.setItem(keyFor(ownerId), JSON.stringify(draft)));
 }
 
-export async function clearDraft(): Promise<void> {
-  if (shared != null) publish(EMPTY_DRAFT);
-  try {
-    await AsyncStorage.removeItem(KEY);
-  } catch {
-    // Nothing useful to do. The next post overwrites it.
+export function clearDraft(ownerId: string): Promise<void> {
+  if (!ownerId) return Promise.resolve();
+  if (sharedOwner === ownerId) {
+    generation += 1;
+    publish(EMPTY_DRAFT);
   }
+  return queueWrite(ownerId, () => AsyncStorage.removeItem(keyFor(ownerId)));
+}
+
+/**
+ * "Send this route again" (home, T5): a fresh draft from a load the shipper has
+ * already sent.
+ *
+ * The route, the cargo, the truck and the weight carry over — a repeat shipment
+ * is usually the same goods on the same road. The date does not: it is the one
+ * answer that is always new, which is why the flow opens on it. Places and the
+ * price limit do not carry over either; a gate or a budget from last time is a
+ * guess this time, and every step still shows its answer before review.
+ *
+ * Starts from EMPTY_DRAFT rather than merging into whatever was half-typed: the
+ * shipper asked for that load again, not a mixture of it and another.
+ */
+export function draftFromLoad(load: {
+  origin_city: number;
+  dest_city: number;
+  goods_description: string;
+  truck_type_code: string | null;
+  weight_kg: number | null;
+  /** The destination city's country, so the destination step opens on its list. */
+  destCountry?: string | null;
+}): BookingDraft {
+  const country = load.destCountry === 'AE' || load.destCountry === 'SA' ? load.destCountry : 'OM';
+  return {
+    ...EMPTY_DRAFT,
+    originCityId: load.origin_city,
+    destinationCityId: load.dest_city,
+    destinationCountry: country,
+    cargoDescription: load.goods_description,
+    // NULL stays "advise me" — never turned into a guessed code.
+    truckPreference: load.truck_type_code ?? 'auto',
+    weightKg: load.weight_kg,
+  };
+}
+
+/**
+ * Replace the draft and wait until it is stored, so the screen pushed next
+ * reads it rather than racing the write.
+ */
+export async function startDraft(draft: BookingDraft, ownerId: string): Promise<void> {
+  if (sharedOwner === ownerId) {
+    generation += 1;
+    publish(draft);
+  }
+  await saveDraft(draft, ownerId);
 }
 
 /**
@@ -185,6 +300,8 @@ export async function clearDraft(): Promise<void> {
  * it is dropped, and the next reads storage again.
  */
 let shared: BookingDraft | null = null;
+let sharedOwner: string | null = null;
+let generation = 0;
 let mounted = 0;
 const listeners = new Set<() => void>();
 
@@ -200,8 +317,6 @@ function subscribe(listener: () => void) {
   };
 }
 
-const snapshot = () => shared;
-
 /**
  * Read/write the draft with persistence handled.
  *
@@ -210,32 +325,66 @@ const snapshot = () => shared;
  * blank fields at a user who has answers.
  */
 export function useBookingDraft() {
+  const { session } = useSession();
+  const ownerId = session?.user.id ?? null;
+  const snapshot = () => sharedOwner === ownerId ? shared : null;
   const current = useSyncExternalStore(subscribe, snapshot, snapshot);
 
   useEffect(() => {
+    if (!ownerId) return;
     mounted += 1;
+    if (sharedOwner !== ownerId) {
+      sharedOwner = ownerId;
+      publish(null);
+    }
     if (shared == null) {
-      loadDraft().then((d) => {
+      const ticket = ++generation;
+      loadDraft(ownerId).then((d) => {
         // A screen may have written while storage was being read; its answer wins.
-        if (shared == null && mounted > 0) publish(d);
+        if (sharedOwner === ownerId && generation === ticket && shared == null && mounted > 0) publish(d);
       });
     }
     return () => {
       mounted -= 1;
-      if (mounted === 0) shared = null;
+      if (mounted === 0) {
+        shared = null;
+        sharedOwner = null;
+        generation += 1;
+      }
     };
-  }, []);
+  }, [ownerId]);
 
   const update = useCallback((patch: Partial<BookingDraft>) => {
-    const next = { ...(shared ?? EMPTY_DRAFT), ...patch };
-    void saveDraft(next);
-    publish(next);
-  }, []);
+    if (!ownerId) return;
+    const next = { ...((sharedOwner === ownerId ? shared : null) ?? EMPTY_DRAFT), ...patch };
+    void saveDraft(next, ownerId);
+    if (sharedOwner === ownerId) {
+      generation += 1;
+      publish(next);
+    }
+  }, [ownerId]);
 
   const reset = useCallback(() => {
-    void clearDraft();
-    publish(EMPTY_DRAFT);
-  }, []);
+    if (ownerId) void clearDraft(ownerId);
+  }, [ownerId]);
 
   return { draft: current ?? EMPTY_DRAFT, update, reset, ready: current != null };
+}
+
+/**
+ * A job inside one town (0069) needs both pins, far enough apart to be a job.
+ * The same rule `check_same_city` applies on the server, which decides; this
+ * only lets the pin screen say so before the shipper gets to the price.
+ * 300 m mirrors the server's default `same_city_min_m`.
+ */
+export const SAME_TOWN_MIN_M = 300;
+export function sameTownProblem(
+  originCityId: number | null,
+  destCityId: number | null,
+  originPin: { lat: number; lng: number } | null,
+  destPin: { lat: number; lng: number } | null,
+): 'needsPickupPin' | 'tooClose' | null {
+  if (originCityId == null || destCityId == null || originCityId !== destCityId) return null;
+  if (!originPin || !destPin) return 'needsPickupPin';
+  return greatCircleKm(originPin, destPin) * 1000 < SAME_TOWN_MIN_M ? 'tooClose' : null;
 }

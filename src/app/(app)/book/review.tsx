@@ -17,7 +17,15 @@
  *
  * NOTHING IS CHARGED HERE. Showing a price is fine; taking one is not, ever
  * (#3). The reassurance strip says so out loud.
+ *
+ * UNDER BIDDING (0045, `BIDDING`) there is no price yet, by design: drivers name
+ * theirs after this screen. The price card becomes how-it-is-priced, the target
+ * the shipper gave (or "You choose") is a row in the summary, and the button
+ * posts through `post_bid_load`, which takes no price from the client at all.
+ * The rate-card lookup is not made — it would spend a rate-limited call on a
+ * number this flow never shows.
  */
+import { randomUUID } from 'expo-crypto';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,21 +42,39 @@ import {
   useBookingDraft,
   type DraftPlace,
 } from '@/lib/booking';
-import { cityIndex, useBookLoad, useCities, useRoutePrice, useTruckTypes } from '@/lib/queries';
+import {
+  cityIndex,
+  useBookLoad,
+  useCities,
+  usePostBidLoad,
+  useRoutePrice,
+  useTruckTypes,
+} from '@/lib/queries';
+import { BIDDING } from '@/lib/features';
 import { formatMoney, type Currency } from '@/lib/money';
 import { formatLongDay } from '@/lib/format';
 import { align, formatNumber, localized, t } from '@/i18n';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { ltrIsolate, safeText } from '@/lib/safe-text';
+import { useSession } from '@/lib/session';
 import { alpha, color, font, hairline, space } from '@/theme/tokens';
 
 export default function Review() {
   const router = useRouter();
+  const { session } = useSession();
   const insets = useSafeAreaInsets();
   const { draft, ready } = useBookingDraft();
-  const { data: cities } = useCities();
+  const citiesQuery = useCities();
+  const cities = citiesQuery.data;
   const { data: truckTypes } = useTruckTypes();
   const [error, setError] = useState<string | null>(null);
+  // One per visit to this screen, sent on every tap of Book. A tap that timed
+  // out may still have booked; the next tap gets that load back (0047).
+  const [requestId] = useState(randomUUID);
+  // Set the moment a booking lands. Clearing the draft empties it at once, and
+  // without this the screen would flash "Finish these answers" — with a live
+  // button — while the navigation to the load is still under way.
+  const [booked, setBooked] = useState(false);
 
   const index = cityIndex(cities);
   const origin = draft.originCityId != null ? index.get(draft.originCityId) : undefined;
@@ -60,18 +86,54 @@ export default function Review() {
 
   const requested = truckTypeForPost(draft);
   const price = useRoutePrice({
-    originCity: ready ? draft.originCityId : null,
+    originCity: ready && !BIDDING ? draft.originCityId : null,
     destCity: ready ? draft.destinationCityId : null,
     truckTypeCode: requested,
     weightKg: draft.weightKg,
+    // 0069: priced between the pins when both are set — the same measure book_load uses.
+    originPin: draft.originPlace ? { lat: draft.originPlace.lat, lng: draft.originPlace.lng } : null,
+    destPin: draft.destinationPlace ? { lat: draft.destinationPlace.lat, lng: draft.destinationPlace.lng } : null,
   });
   const quote = price.data;
   const priced = quote?.outcome === 'quoted' && quote.price_baisa != null;
   const amount = priced ? formatMoney(quote!.price_baisa!, quote!.currency as Currency) : null;
 
   const book = useBookLoad();
+  const postBid = usePostBidLoad();
+  const posting = BIDDING ? postBid.isPending : book.isPending;
 
-  if (!ready || !origin || !dest) return null;
+  if (booked || !ready || (citiesQuery.isPending && !cities)) {
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('book.review.title')}</Text>
+        <Card><Skeleton height={160} /></Card>
+      </View>
+    );
+  }
+
+  if (citiesQuery.isError && !cities) {
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('common.error.title')}</Text>
+        <Notice icon="info">{t('common.error.explain')}</Notice>
+        <PrimaryButton label={t('common.retry')} onPress={() => { void citiesQuery.refetch(); }} />
+        <TertiaryButton label={t('book.review.home')} onPress={() => router.replace('/customer')} />
+      </View>
+    );
+  }
+
+  if (!origin || !dest || !draft.collectionDate || !draft.cargoDescription.trim()) {
+    const repairPath = !origin ? '/book/origin' : !dest ? '/book/destination'
+      : !draft.collectionDate ? '/book/date' : '/book/cargo';
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.title}>{t('book.review.title')}</Text>
+        <Notice icon="info">{t('book.review.incomplete')}</Notice>
+        <PrimaryButton label={t('book.review.continue')} onPress={() => router.replace(repairPath)} />
+        <TertiaryButton label={t('book.review.home')} onPress={() => router.replace('/customer')} />
+      </View>
+    );
+  }
 
   // What the truck row says. An explicit choice by its name, never its code
   // ("10t" is a database key, not something a shipper reads). "Let us choose"
@@ -86,8 +148,38 @@ export default function Review() {
           })
         : t('book.review.weWillChoose');
 
+  const target =
+    draft.targetTotalBaisa == null ? t('book.review.noTarget') : formatMoney(draft.targetTotalBaisa, 'OMR')!;
+
   function submit() {
     setError(null);
+    if (BIDDING) {
+      postBid.mutate(
+        {
+          originCity: draft.originCityId!,
+          destCity: draft.destinationCityId!,
+          collectionDate: draft.collectionDate!,
+          goods: draft.cargoDescription.trim(),
+          weightKg: draft.weightKg,
+          // NULL means "advise me". Never a guessed code.
+          truckTypeCode: requested,
+          originPlace: toPlacePayload(draft.originPlace),
+          destPlace: toPlacePayload(draft.destinationPlace),
+          targetTotalBaisa: draft.targetTotalBaisa,
+          requestId,
+        },
+        {
+          onSuccess: ({ loadId }) => {
+            setBooked(true);
+            // The load screen is where the prices arrive.
+            router.replace(`/load/${loadId}`);
+            clearDraft(session?.user.id ?? '').catch(() => {});
+          },
+          onError: () => setError(t('book.failed')),
+        },
+      );
+      return;
+    }
     book.mutate(
       {
         originCity: draft.originCityId!,
@@ -100,13 +192,15 @@ export default function Review() {
         seenPriceBaisa: priced ? quote!.price_baisa : null,
         originPlace: toPlacePayload(draft.originPlace),
         destPlace: toPlacePayload(draft.destinationPlace),
+        requestId,
       },
       {
-        onSuccess: async ({ loadId }) => {
-          await clearDraft();
+        onSuccess: ({ loadId }) => {
+          setBooked(true);
           // Matched or not, the load screen shows the truth: a truck being
           // found, or — if the price moved — the real price to accept.
           router.replace(`/load/${loadId}`);
+          clearDraft(session?.user.id ?? '').catch(() => {});
         },
         onError: () => setError(t('book.failed')),
       },
@@ -134,19 +228,34 @@ export default function Review() {
                   ? t('book.review.notSaid')
                   : t('book.weight.value', { weight: formatNumber(draft.weightKg) })
               }
-              last
+              last={!BIDDING}
             />
+            {BIDDING && <Fact label={t('book.review.target')} value={target} last />}
           </View>
         </Card>
 
         <Card tone="raised" style={styles.estimate}>
-          {price.isPending ? (
+          {BIDDING ? (
+            <>
+              <SectionLabel>{t('book.review.bidLabel')}</SectionLabel>
+              <Text style={styles.estimateWhy}>{t('book.review.bidWhy')}</Text>
+            </>
+          ) : price.isPending ? (
             <Skeleton height={64} />
           ) : priced ? (
             <>
               <SectionLabel>{t('book.review.priceLabel')}</SectionLabel>
               <Text style={styles.rangeValue}>{amount}</Text>
               <Text style={styles.estimateWhy}>{t('book.review.priceWhy')}</Text>
+              {/* 0069: waiting comes with the price, so it is said before booking. */}
+              {quote?.wait_free_minutes != null && quote.wait_per_15min_baisa != null && (
+                <Text style={styles.estimateWhy}>
+                  {t('wait.terms', {
+                    free: formatNumber(quote.wait_free_minutes),
+                    rate: formatMoney(quote.wait_per_15min_baisa, quote.currency as Currency) ?? '',
+                  })}
+                </Text>
+              )}
             </>
           ) : (
             <>
@@ -173,12 +282,19 @@ export default function Review() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
         <TertiaryButton label={t('book.review.change')} onPress={() => router.back()} />
         <PrimaryButton
-          label={amount ? t('book.review.bookFor', { price: amount }) : t('book.review.cta')}
+          label={
+            BIDDING
+              ? t('book.review.bidCta')
+              : amount
+                ? t('book.review.bookFor', { price: amount })
+                : t('book.review.cta')
+          }
           onPress={submit}
           // Never book while the price is still arriving: the button would
-          // commit to a number the shipper has not seen yet.
-          disabled={price.isPending}
-          loading={book.isPending}
+          // commit to a number the shipper has not seen yet. (No price is
+          // fetched under bidding, so there is nothing to wait for.)
+          disabled={!BIDDING && price.isPending}
+          loading={posting}
         />
       </View>
     </View>
@@ -223,6 +339,13 @@ function Fact({ label, value, last }: { label: string; value: string; last?: boo
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.ink },
+  recovery: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+    gap: space.lg,
+    backgroundColor: color.ink,
+  },
   scroll: { padding: space.xl, paddingTop: space.huge, gap: space.lg },
   title: { ...arabicIfNeeded(font.title), color: color.lightText, textAlign: align.start },
   place: { marginTop: space.md, gap: 2 },

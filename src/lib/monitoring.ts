@@ -59,3 +59,27 @@ export function reportError(error: unknown) {
 }
 
 export const wrapRoot = Sentry.wrap;
+
+/**
+ * A failure the app handled — the user saw "We could not post that", not a
+ * crash — reported so a person learns about it without being told.
+ *
+ * Grouped by flow and error code, so Sentry opens one issue per kind of
+ * failure (and emails once), not one per tap. Only the message and code are
+ * sent: a Postgres error's `details` echoes the failing row ("Failing row
+ * contains (…)"), which is a shipper's cargo and phone, so it never leaves.
+ */
+export function reportFailure(flow: string, error: unknown) {
+  const raw = (error ?? {}) as { message?: unknown; code?: unknown; status?: unknown; name?: unknown };
+  const code = typeof raw.code === 'string' && raw.code ? raw.code
+    : typeof raw.status === 'number' ? `http_${raw.status}`
+    : typeof raw.name === 'string' && raw.name ? raw.name : 'unknown';
+  const message = typeof raw.message === 'string' ? raw.message : String(error);
+  const wrapped = new Error(scrub(`${flow}: ${message}`));
+  wrapped.name = `Handled ${code}`;
+  Sentry.captureException(wrapped, {
+    level: 'warning',
+    tags: { flow, code, handled: 'yes' },
+    fingerprint: ['handled', flow, code],
+  });
+}

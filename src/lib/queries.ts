@@ -12,7 +12,35 @@ import type { PlacePayload } from './booking';
 
 /** One literal string. Supabase derives row types from it, so it cannot be built by concatenation. */
 const LOAD_COLUMNS =
-  "id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description, status, price_baisa, currency, created_at";
+  "id, origin_city, dest_city, pickup_from, pickup_to, weight_kg, truck_type_code, goods_description, status, price_baisa, currency, created_at, pricing_mode, bid_deadline";
+
+export type DriverDocumentStatus = {
+  kind: 'id_front' | 'id_back' | 'mulkiya' | 'truck_photo';
+  status: 'pending' | 'approved' | 'rejected';
+  review_note: string | null;
+};
+
+/** A driver's own review state. The query key includes the account because the
+ * root QueryClient survives sign-out and another driver may use this phone. */
+export function useDriverVerification() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['driver', 'verification', profile?.id],
+    enabled: profile?.role === 'driver',
+    queryFn: async () => {
+      const [driver, documents] = await Promise.all([
+        supabase.from('drivers').select('verified_at').eq('profile_id', profile!.id).maybeSingle(),
+        supabase.rpc('driver_document_status'),
+      ]);
+      if (driver.error) throw driver.error;
+      if (documents.error) throw documents.error;
+      return {
+        verified: !!driver.data?.verified_at,
+        documents: (documents.data ?? []) as DriverDocumentStatus[],
+      };
+    },
+  });
+}
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 
@@ -68,6 +96,14 @@ export type Load = {
   price_baisa: number | null;
   currency: string;
   created_at: string;
+  /**
+   * `bid` loads (0045) are priced by drivers' bids. Their `price_baisa` stays
+   * NULL until a bid is accepted, so a bid load's screens read the bids through
+   * `shipper_load_bids` / `shipper_bid_status`, never this column.
+   */
+  pricing_mode: 'fixed' | 'bid';
+  /** When bidding closes. NULL on a fixed-price load. */
+  bid_deadline: string | null;
 };
 
 export type Leg = {
@@ -122,6 +158,15 @@ export type Trip = {
  * picker rendered zero options while validation still demanded a truck size — an
  * unsatisfiable form at the last step of creating an account.
  */
+/**
+ * While a reference-data fetch is failing, try again every 30 s. Focus and
+ * pull-to-refresh recover only if the user does something; a driver who opened
+ * the app in a dead zone and keeps it open would otherwise read "—" for every
+ * city until they did. Stops the moment a fetch succeeds.
+ */
+const RETRY_WHILE_FAILED = (query: { state: { status: string } }) =>
+  query.state.status === 'error' ? 30_000 : false;
+
 export function useCities() {
   const { session } = useSession();
   return useQuery({
@@ -136,6 +181,7 @@ export function useCities() {
     // `focusManager` wired to `AppState` (done once, in _layout.tsx) — RN has
     // no window-focus event for react-query's default listener to hear.
     refetchOnWindowFocus: true,
+    refetchInterval: RETRY_WHILE_FAILED,
     queryFn: async (): Promise<City[]> => {
       const { data, error } = await supabase
         .from('cities')
@@ -157,6 +203,7 @@ export function useTruckTypes() {
     staleTime: Infinity,
     // See useCities just above — same failure mode, same fix.
     refetchOnWindowFocus: true,
+    refetchInterval: RETRY_WHILE_FAILED,
     queryFn: async (): Promise<TruckType[]> => {
       const { data, error } = await supabase
         .from('truck_types')
@@ -186,38 +233,6 @@ export function useMyLoads() {
       if (error) throw error;
       return data ?? [];
     },
-  });
-}
-
-export type PostLoadInput = {
-  originCity: number;
-  destCity: number;
-  pickupFrom: string;
-  pickupTo: string;
-  goods: string;
-  weightKg?: number | null;
-  /** null means "Not sure — advise me". Never coerce this to a default. */
-  truckTypeCode?: string | null;
-};
-
-export function usePostLoad() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: PostLoadInput): Promise<string> => {
-      // RPC, not an insert: status is server-owned and the call is rate-limited.
-      const { data, error } = await supabase.rpc('post_load', {
-        p_origin_city: input.originCity,
-        p_dest_city: input.destCity,
-        p_pickup_from: input.pickupFrom,
-        p_pickup_to: input.pickupTo,
-        p_goods: input.goods,
-        p_weight_kg: input.weightKg ?? null,
-        p_truck_type_code: input.truckTypeCode ?? null,
-      });
-      if (error) throw error;
-      return data as string;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['loads', 'mine'] }),
   });
 }
 
@@ -270,31 +285,6 @@ export function useCurrentQuote(loadId: string | undefined) {
   });
 }
 
-/**
- * Price a route *before* committing to it — the estimate on the post-load review
- * step. Writes nothing: no load, no quote row. The binding quote is issued by
- * `quote_load` at post time, from the same rate card via the same
- * `private.price_for`, so the number reviewed is the number received.
- */
-export function useQuoteRoute() {
-  return useMutation({
-    mutationFn: async (input: {
-      originCity: number;
-      destCity: number;
-      truckTypeCode?: string | null;
-      weightKg?: number | null;
-    }): Promise<Quote | null> => {
-      const { data, error } = await supabase.rpc('quote_route', {
-        p_origin_city: input.originCity,
-        p_dest_city: input.destCity,
-        p_truck_type_code: input.truckTypeCode ?? null,
-        p_weight_kg: input.weightKg ?? null,
-      });
-      if (error) throw error;
-      return ((data ?? []) as Quote[])[0] ?? null;
-    },
-  });
-}
 
 /** The exact price for a route before booking, and the truck it is for. */
 export type RoutePrice = {
@@ -304,10 +294,17 @@ export type RoutePrice = {
   outcome: QuoteOutcome;
   /** The truck the price is for — the resolved one when the shipper said "let us choose". */
   truck_type_code: string | null;
+  /** 0069: the road distance the price was measured on — between the pins when both are set. */
+  km?: number | null;
+  /** 0069: waiting terms that come with this price; null when the band charges none. */
+  wait_free_minutes?: number | null;
+  wait_per_15min_baisa?: number | null;
 };
 
 /**
- * The review screen's price. The same `quote_route` the server books against,
+ * The review screen's price. The same measure the server books against (0069
+ * `quote_trip`: between the pins when both are set, so a job inside one town
+ * has a distance),
  * so the number shown is the number booked: `useBookLoad` sends it back and the
  * server refuses to auto-accept anything else. `bigint` arrives from PostgREST
  * as a string, and a string price concatenates — it is made a number here.
@@ -317,19 +314,26 @@ export function useRoutePrice(input: {
   destCity: number | null;
   truckTypeCode: string | null;
   weightKg: number | null;
+  originPin?: { lat: number; lng: number } | null;
+  destPin?: { lat: number; lng: number } | null;
 }) {
   return useQuery({
-    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg],
+    queryKey: ['routePrice', input.originCity, input.destCity, input.truckTypeCode, input.weightKg,
+      input.originPin?.lat, input.originPin?.lng, input.destPin?.lat, input.destPin?.lng],
     enabled: input.originCity != null && input.destCity != null,
     // Rate-limited server-side (30 an hour); a review screen re-rendering must
     // not spend them.
     staleTime: 60_000,
     queryFn: async (): Promise<RoutePrice | null> => {
-      const { data, error } = await supabase.rpc('quote_route', {
+      const { data, error } = await supabase.rpc('quote_trip', {
         p_origin_city: input.originCity,
         p_dest_city: input.destCity,
         p_truck_type_code: input.truckTypeCode,
         p_weight_kg: input.weightKg,
+        p_origin_lat: input.originPin?.lat ?? null,
+        p_origin_lng: input.originPin?.lng ?? null,
+        p_dest_lat: input.destPin?.lat ?? null,
+        p_dest_lng: input.destPin?.lng ?? null,
       });
       if (error) throw error;
       const row = ((data ?? []) as Record<string, unknown>[])[0];
@@ -339,6 +343,76 @@ export function useRoutePrice(input: {
         currency: String(row.currency ?? 'OMR'),
         outcome: row.outcome as QuoteOutcome,
         truck_type_code: (row.truck_type_code as string | null) ?? null,
+        km: row.km == null ? null : Number(row.km),
+        wait_free_minutes: row.wait_free_minutes == null ? null : Number(row.wait_free_minutes),
+        wait_per_15min_baisa: row.wait_per_15min_baisa == null ? null : Number(row.wait_per_15min_baisa),
+      };
+    },
+  });
+}
+
+/** One stop's waiting, as the database computed it (0069 `private.trip_wait`). */
+export type WaitStop = {
+  stop: 'pickup' | 'drop';
+  arrived_at: string | null;
+  ended_at: string | null;
+  running: boolean;
+  minutes: number;
+  free_minutes: number;
+  per_15min_baisa: number;
+  cap_minutes: number;
+  capped: boolean;
+  waived: boolean;
+  /** "Driver isn't here": charged nothing until a person at Truckkoo checks. */
+  held: boolean;
+  charge_baisa: number;
+};
+export type TripWaiting = {
+  terms: { free_minutes: number; per_15min_baisa: number; cap_minutes: number } | null;
+  stops: WaitStop[];
+  waiting_baisa: number;
+  price_baisa: number | null;
+  /** Price + waiting: what the shipper pays and the driver collects. */
+  total_baisa: number | null;
+  /** The driver's own earnings on the trip; null for the shipper, always. */
+  payout_baisa: number | null;
+};
+
+/**
+ * A trip's waiting charge and totals, for its driver or its shipper. Every
+ * amount is computed in SQL; nothing here adds money up. Refreshes while a
+ * clock may be running.
+ */
+export function useTripWaiting(tripId: string | null | undefined, live: boolean) {
+  return useQuery({
+    queryKey: ['tripWaiting', tripId],
+    enabled: !!tripId,
+    refetchInterval: live ? 60_000 : false,
+    queryFn: async (): Promise<TripWaiting> => {
+      const { data, error } = await supabase.rpc('trip_waiting', { p_trip_id: tripId });
+      if (error) throw error;
+      const w = (data ?? {}) as Record<string, unknown>;
+      const num = (v: unknown) => (v == null ? null : Number(v));
+      return {
+        terms: (w.terms as TripWaiting['terms']) ?? null,
+        stops: ((w.stops as Record<string, unknown>[] | undefined) ?? []).map((s) => ({
+          stop: s.stop as WaitStop['stop'],
+          arrived_at: (s.arrived_at as string | null) ?? null,
+          ended_at: (s.ended_at as string | null) ?? null,
+          running: s.running === true,
+          minutes: Number(s.minutes ?? 0),
+          free_minutes: Number(s.free_minutes ?? 0),
+          per_15min_baisa: Number(s.per_15min_baisa ?? 0),
+          cap_minutes: Number(s.cap_minutes ?? 0),
+          capped: s.capped === true,
+          waived: s.waived === true,
+          held: s.held === true,
+          charge_baisa: Number(s.charge_baisa ?? 0),
+        })),
+        waiting_baisa: Number(w.waiting_baisa ?? 0),
+        price_baisa: num(w.price_baisa),
+        total_baisa: num(w.total_baisa),
+        payout_baisa: num(w.payout_baisa),
       };
     },
   });
@@ -356,6 +430,12 @@ export type BookInput = {
   /** Exact places (0041); null when the shipper chose a city only. */
   originPlace: PlacePayload | null;
   destPlace: PlacePayload | null;
+  /**
+   * One per booking attempt, the same on every retry of it (0047). A call that
+   * timed out on the phone may have booked on the server; the retry then gets
+   * that load back instead of posting a second one.
+   */
+  requestId: string;
 };
 
 /**
@@ -367,6 +447,7 @@ export type BookInput = {
 export function useBookLoad() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'book_load' },
     mutationFn: async (input: BookInput) => {
       const { data, error } = await supabase.rpc('book_load', {
         p_origin_city: input.originCity,
@@ -379,6 +460,7 @@ export function useBookLoad() {
         p_seen_price_baisa: input.seenPriceBaisa,
         p_origin_place: input.originPlace,
         p_dest_place: input.destPlace,
+        p_request_id: input.requestId,
       });
       if (error) throw error;
       const row = ((data ?? []) as Record<string, unknown>[])[0];
@@ -395,6 +477,7 @@ export function useBookLoad() {
 export function useQuoteLoad() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'quote_load' },
     mutationFn: async (loadId: string): Promise<Quote | null> => {
       const { data, error } = await supabase.rpc('quote_load', { p_load_id: loadId });
       if (error) throw error;
@@ -424,6 +507,7 @@ export function useQuoteLoad() {
 export function useAcceptQuote() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'accept_quote' },
     mutationFn: async (loadId: string): Promise<LoadStatus> => {
       const { data, error } = await supabase.rpc('accept_quote', { p_load_id: loadId });
       if (error) throw error;
@@ -435,6 +519,201 @@ export function useAcceptQuote() {
       // Acceptance is what triggers dispatch, so a trip can appear moments later.
       qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
     },
+  });
+}
+
+/* ─── bidding · the shipper (0045) ───────────────────────────────────────── */
+
+/** Bids arrive while the shipper watches; poll as offers do, until push lands. */
+const BID_POLL_MS = 15_000;
+
+export type PostBidLoadInput = {
+  originCity: number;
+  destCity: number;
+  collectionDate: string;
+  goods: string;
+  weightKg: number | null;
+  /** NULL means "advise me". Never a guessed code. */
+  truckTypeCode: string | null;
+  originPlace: PlacePayload | null;
+  destPlace: PlacePayload | null;
+  /** The most the shipper will pay in total; null is "I will choose myself". */
+  targetTotalBaisa: number | null;
+  /** As on BookInput: one per attempt, so a retry cannot post twice (0047). */
+  requestId: string;
+};
+
+/**
+ * Post a load for drivers to bid on. No price goes up — there is none yet, and
+ * the server never takes one from a client. The fee is the server's, snapshotted
+ * at posting.
+ */
+export function usePostBidLoad() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'post_bid_load' },
+    mutationFn: async (input: PostBidLoadInput): Promise<{ loadId: string }> => {
+      const { data, error } = await supabase.rpc('post_bid_load', {
+        p_origin_city: input.originCity,
+        p_dest_city: input.destCity,
+        p_pickup_from: input.collectionDate,
+        p_pickup_to: input.collectionDate,
+        p_goods: input.goods,
+        p_weight_kg: input.weightKg,
+        p_truck_type_code: input.truckTypeCode,
+        p_origin_place: input.originPlace,
+        p_dest_place: input.destPlace,
+        p_target_total_baisa: input.targetTotalBaisa,
+        p_request_id: input.requestId,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('post_bid_load returned no load');
+      return { loadId: String(data) };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
+    },
+  });
+}
+
+/**
+ * One bid, as the shipper sees it: a total with the fee in it, never the
+ * driver's payout (total minus payout is the fee — SENSITIVE_FIELDS.md).
+ */
+export type ShipperBid = {
+  bid_id: string;
+  driver_name: string;
+  truck_type: string | null;
+  total_baisa: number;
+  submitted_at: string;
+  selected: boolean;
+  /** False once the driver went offline or took another job. */
+  eligible: boolean;
+};
+
+export function useShipperLoadBids(loadId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['bids', 'shipper', loadId],
+    enabled: !!loadId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<ShipperBid[]> => {
+      const { data, error } = await supabase.rpc('shipper_load_bids', { p_load_id: loadId });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        bid_id: String(r.bid_id),
+        driver_name: String(r.driver_name ?? ''),
+        truck_type: (r.truck_type as string | null) ?? null,
+        total_baisa: Number(r.total_baisa),
+        submitted_at: String(r.submitted_at),
+        selected: r.selected === true,
+        eligible: r.eligible === true,
+      }));
+    },
+  });
+}
+
+export type ShipperBidStatus = {
+  bid_deadline: string;
+  target_total_baisa: number | null;
+  selected_bid_id: string | null;
+  /** The proposed bid's total. Not on `loads` until a bid is accepted. */
+  selected_total_baisa: number | null;
+  bid_count: number;
+};
+
+export function useShipperBidStatus(loadId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['bids', 'status', loadId],
+    enabled: !!loadId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<ShipperBidStatus | null> => {
+      const { data, error } = await supabase.rpc('shipper_bid_status', { p_load_id: loadId });
+      if (error) throw error;
+      const r = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!r) return null;
+      const num = (v: unknown) => (v == null ? null : Number(v));
+      return {
+        bid_deadline: String(r.bid_deadline),
+        target_total_baisa: num(r.target_total_baisa),
+        selected_bid_id: (r.selected_bid_id as string | null) ?? null,
+        selected_total_baisa: num(r.selected_total_baisa),
+        bid_count: Number(r.bid_count ?? 0),
+      };
+    },
+  });
+}
+
+/** Everything a bid decision moves: the bids, the load, and the trip it makes. */
+function invalidateBidding(qc: ReturnType<typeof useQueryClient>, loadId: string) {
+  qc.invalidateQueries({ queryKey: ['bids', 'shipper', loadId] });
+  qc.invalidateQueries({ queryKey: ['bids', 'status', loadId] });
+  qc.invalidateQueries({ queryKey: ['loads', 'mine'] });
+  qc.invalidateQueries({ queryKey: ['trips', 'mine'] });
+}
+
+/**
+ * Take a bid. Returns the trip, or NULL when the bid went stale after bidding
+ * closed and the server proposed the next one instead. While bidding is open a
+ * stale bid is refused ("bid no longer available") and nothing changes.
+ */
+export function useAcceptDriverBid() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'accept_driver_bid' },
+    mutationFn: async ({ loadId, bidId }: { loadId: string; bidId: string }) => {
+      const { data, error } = await supabase.rpc('accept_driver_bid', {
+        p_load_id: loadId,
+        p_bid_id: bidId,
+      });
+      if (error) throw error;
+      return (data as string | null) ?? null;
+    },
+    onSettled: (_d, _e, { loadId }) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** End bidding now: the lowest bid is proposed, or taken if it is within the target. */
+export function useCloseBidding() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'close_bidding' },
+    mutationFn: async (loadId: string) => {
+      const { error } = await supabase.rpc('close_bidding', { p_load_id: loadId });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, loadId) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** Set, change or clear the most the shipper will pay, while bidding is open. */
+export function useSetBidTarget() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'set_bid_target' },
+    mutationFn: async ({ loadId, targetBaisa }: { loadId: string; targetBaisa: number | null }) => {
+      const { error } = await supabase.rpc('set_bid_target', {
+        p_load_id: loadId,
+        p_target_total_baisa: targetBaisa,
+      });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, { loadId }) => invalidateBidding(qc, loadId),
+  });
+}
+
+/** Give invited drivers another 30 minutes, within the server's hard deadline. */
+export function useExtendBidding() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'extend_bidding' },
+    mutationFn: async (loadId: string) => {
+      const { error } = await supabase.rpc('extend_bidding', {
+        p_load_id: loadId,
+        p_minutes: 30,
+      });
+      if (error) throw error;
+    },
+    onSettled: (_d, _e, loadId) => invalidateBidding(qc, loadId),
   });
 }
 
@@ -531,6 +810,138 @@ export function useDriverOffers() {
   });
 }
 
+/* ─── bidding · the driver (0045) ────────────────────────────────────────── */
+
+/**
+ * A load this driver is invited to bid on. The pins and notes are here so the
+ * trip can be priced; the contact's name and phone are NOT — far more drivers
+ * are invited to bid than to a wave, and the winner gets them from
+ * `driver_trip()`.
+ */
+export type BidInvite = {
+  offer_id: string;
+  load_id: string;
+  bid_deadline: string;
+  origin_city: number;
+  dest_city: number;
+  pickup_from: string;
+  pickup_to: string;
+  goods: string;
+  weight_kg: number | null;
+  truck_type_code: string | null;
+  /** What this driver asked to keep; null until they bid. */
+  own_bid_baisa: number | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_name: string | null;
+  pickup_note: string | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  drop_name: string | null;
+  drop_note: string | null;
+};
+
+export function useDriverBidInvites() {
+  return useQuery({
+    queryKey: ['driver', 'bids'],
+    // Same reason as useDriverOffers: until push lands, an invitation has to
+    // appear while the driver is looking.
+    refetchInterval: BID_POLL_MS,
+    queryFn: async (): Promise<BidInvite[]> => {
+      const { data, error } = await supabase.rpc('driver_bid_invites');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(toBidInvite);
+    },
+  });
+}
+
+function toBidInvite(r: Record<string, unknown>): BidInvite {
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    offer_id: String(r.offer_id),
+    load_id: String(r.load_id),
+    bid_deadline: String(r.bid_deadline),
+    origin_city: Number(r.origin_city),
+    dest_city: Number(r.dest_city),
+    pickup_from: String(r.pickup_from),
+    pickup_to: String(r.pickup_to),
+    goods: String(r.goods ?? ''),
+    weight_kg: num(r.weight_kg),
+    truck_type_code: (r.truck_type_code as string | null) ?? null,
+    own_bid_baisa: num(r.own_bid_baisa),
+    pickup_lat: num(r.pickup_lat),
+    pickup_lng: num(r.pickup_lng),
+    pickup_name: (r.pickup_name as string | null) ?? null,
+    pickup_note: (r.pickup_note as string | null) ?? null,
+    drop_lat: num(r.drop_lat),
+    drop_lng: num(r.drop_lng),
+    drop_name: (r.drop_name as string | null) ?? null,
+    drop_note: (r.drop_note as string | null) ?? null,
+  };
+}
+
+/**
+ * One invitation, by OFFER id — never by load id, for the reason
+ * useDriverOffer gives. Read from the same list the offers tab polls, so the
+ * two cannot disagree about whether bidding is still open.
+ */
+export function useDriverBidInvite(offerId: string | undefined) {
+  const invites = useDriverBidInvites();
+  return {
+    ...invites,
+    data: invites.data ? (invites.data.find((i) => i.offer_id === offerId) ?? null) : undefined,
+  };
+}
+
+/**
+ * The competing bids, semi-anonymised: a bidder number, a truck type, and the
+ * amount each driver keeps. Never a name, a phone or a shipper total.
+ */
+export type CompetingBid = {
+  bidder_no: number;
+  truck_type: string | null;
+  payout_baisa: number;
+  updated_at: string;
+  is_you: boolean;
+};
+
+export function useDriverLoadBids(offerId: string | undefined, { live = true } = {}) {
+  return useQuery({
+    queryKey: ['driver', 'bids', offerId],
+    enabled: !!offerId,
+    refetchInterval: live ? BID_POLL_MS : false,
+    queryFn: async (): Promise<CompetingBid[]> => {
+      const { data, error } = await supabase.rpc('driver_load_bids', { p_offer_id: offerId });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        bidder_no: Number(r.bidder_no),
+        truck_type: (r.truck_type as string | null) ?? null,
+        payout_baisa: Number(r.payout_baisa),
+        updated_at: String(r.updated_at),
+        is_you: r.is_you === true,
+      }));
+    },
+  });
+}
+
+/** Bid, or change a bid. The amount is what the driver keeps, in baisa. */
+export function usePlaceDriverBid() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { flow: 'place_driver_bid' },
+    mutationFn: async ({ offerId, payoutBaisa }: { offerId: string; payoutBaisa: number }) => {
+      const { error } = await supabase.rpc('place_driver_bid', {
+        p_offer_id: offerId,
+        p_payout_baisa: payoutBaisa,
+      });
+      if (error) throw error;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['driver', 'bids'] });
+    },
+  });
+}
+
 export type Availability = {
   available: boolean;
   city_id: number | null;
@@ -566,6 +977,7 @@ export function useMyAvailability() {
 export function useSetAvailable() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'set_available' },
     mutationFn: async (input: { available: boolean; lat?: number; lng?: number }) => {
       const { error } = await supabase.rpc('set_available', {
         p_available: input.available,
@@ -842,6 +1254,7 @@ export function useMyTrips() {
 export function useRespondToOffer() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'respond_to_offer' },
     mutationFn: async ({ offerId, accept }: { offerId: string; accept: boolean }) => {
       const { data, error } = await supabase.rpc('respond_to_offer', {
         p_offer_id: offerId,
@@ -881,6 +1294,7 @@ export type PostLegInput = {
 export function usePostLeg() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'post_leg' },
     mutationFn: async (input: PostLegInput): Promise<string> => {
       const { data, error } = await supabase.rpc('post_leg', {
         p_origin_city: input.originCity,
@@ -901,6 +1315,7 @@ export function usePostLeg() {
 export function useAdvanceTrip() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'advance_trip' },
     mutationFn: async ({
       tripId,
       to,
@@ -1008,6 +1423,7 @@ export function useDriverSummary(driverId: string | null | undefined) {
 export function useRateTrip() {
   const qc = useQueryClient();
   return useMutation({
+    meta: { flow: 'rate_trip' },
     mutationFn: async ({ tripId, stars }: { tripId: string; stars: number }) => {
       const { error } = await supabase.rpc('rate_trip', { p_trip_id: tripId, p_stars: stars });
       if (error) throw error;
@@ -1064,6 +1480,83 @@ export function usePodUrl(photoPath: string | null | undefined) {
         .createSignedUrl(photoPath!, 60);
       if (error) throw error;
       return data?.signedUrl ?? null;
+    },
+  });
+}
+
+/* ─── support (0063, 0065) ───────────────────────────────────────────────── */
+
+/** A message from Truckkoo staff (0065). The push only says one exists. */
+export type StaffMessage = { id: string; body: string; case_id: string | null; created_at: string; read_at: string | null };
+
+/** The query key includes the account: the root QueryClient survives sign-out. */
+export function useMyMessages() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['messages', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<StaffMessage[]> => {
+      const { data, error } = await supabase.rpc('my_messages', { p_limit: 50 });
+      if (error) throw error;
+      return (data ?? []) as StaffMessage[];
+    },
+  });
+}
+
+/** One of the driver's own decided strikes (0063). Never the internal reason. */
+export type MyStrike = {
+  id: string;
+  kind: string;
+  weight: number;
+  state: 'confirmed' | 'voided';
+  trip_id: string | null;
+  trip_route: string | null;
+  created_at: string;
+  decided_at: string | null;
+  appeal_open: boolean;
+};
+
+export function useMyRecord() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['record', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<MyStrike[]> => {
+      const { data, error } = await supabase.rpc('my_record');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        kind: String(r.kind),
+        weight: Number(r.weight),
+        state: r.state === 'voided' ? 'voided' : 'confirmed',
+        trip_id: (r.trip_id as string | null) ?? null,
+        trip_route: (r.trip_route as string | null) ?? null,
+        created_at: String(r.created_at),
+        decided_at: (r.decided_at as string | null) ?? null,
+        appeal_open: r.appeal_open === true,
+      }));
+    },
+  });
+}
+
+/** What the person reported, and where it stands (0065). Never staff notes. */
+export type MyReport = { id: string; kind: string; status: string; created_at: string; route: string | null };
+
+export function useMyCases() {
+  const { profile } = useSession();
+  return useQuery({
+    queryKey: ['reports', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<MyReport[]> => {
+      const { data, error } = await supabase.rpc('my_cases');
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+        id: String(r.id),
+        kind: String(r.kind),
+        status: String(r.status),
+        created_at: String(r.created_at),
+        route: (r.route as string | null) ?? null,
+      }));
     },
   });
 }

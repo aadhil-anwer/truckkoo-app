@@ -11,19 +11,20 @@
  * so here beats failing on the review screen.
  */
 import { useEffect, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinAdjustMap } from '@/components/booking/PinAdjustMap';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { BackButton, PrimaryButton, SecondaryButton, TertiaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { Notice, QuestionHeading } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
-import { useBookingDraft } from '@/lib/booking';
+import { sameTownProblem, useBookingDraft } from '@/lib/booking';
 import { cityNear, nameAt } from '@/lib/places';
 import { cityIndex, useCities } from '@/lib/queries';
-import { safeText, whatsappLink } from '@/lib/safe-text';
+import { safeText } from '@/lib/safe-text';
 import { alpha, color, font, radius, space } from '@/theme/tokens';
 
 const SETTLE_MS = 400;
@@ -84,10 +85,16 @@ export default function Pin() {
     if (missing) router.replace(pickup ? '/book/origin' : '/book/destination');
   }, [missing, pickup, router]);
 
-  if (!ready || !place) return null;
+  if (!ready || !place) return <BookingPending />;
 
   const city = cityId != null ? index.get(cityId) : undefined;
-  const sameCity = cityId != null && cityId === otherCityId;
+  // 0069: a job inside one town is fine with both pins, far enough apart.
+  const otherPin = pickup ? draft.destinationPlace : draft.originPlace;
+  const townProblem = centre
+    ? sameTownProblem(
+        pickup ? cityId : otherCityId, pickup ? otherCityId : cityId,
+        pickup ? centre : otherPin, pickup ? otherPin : centre)
+    : null;
   const unchecked = !checking && cityId == null;
 
   function confirm() {
@@ -120,14 +127,15 @@ export default function Pin() {
         <Text style={styles.name} numberOfLines={2}>{name ? safeText(name) : t('places.pin.unnamed')}</Text>
         {city && <Text style={styles.near}>{t('places.pin.near', { city: localized(city) })}</Text>}
 
-        {sameCity && city && (
+        {townProblem === 'needsPickupPin' && city && (
           <View style={styles.gap}>
-            <Notice icon="info">{t('places.pin.sameCity', { city: localized(city) })}</Notice>
-            <SecondaryButton
-              label={t('whatsapp.action')}
-              icon="whatsapp"
-              onPress={() => Linking.openURL(whatsappLink()).catch(() => {})}
-            />
+            <Notice icon="info">{t(pickup ? 'places.pin.needDrop' : 'places.pin.needPickup', { city: localized(city) })}</Notice>
+            {!pickup && <SecondaryButton label={t('places.pin.setPickup')} onPress={() => router.push('/book/origin')} />}
+          </View>
+        )}
+        {townProblem === 'tooClose' && (
+          <View style={styles.gap}>
+            <Notice icon="info">{t('places.pin.tooClose')}</Notice>
           </View>
         )}
         {unchecked && (
@@ -141,7 +149,7 @@ export default function Pin() {
           <PrimaryButton
             label={pickup ? t('places.pin.confirmPickup') : t('places.pin.confirmDrop')}
             onPress={confirm}
-            disabled={checking || cityId == null || sameCity}
+            disabled={checking || cityId == null || townProblem != null}
           />
         </View>
       </View>

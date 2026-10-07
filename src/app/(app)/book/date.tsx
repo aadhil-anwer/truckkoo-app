@@ -14,6 +14,7 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { SelectRow, TertiaryButton } from '@/components/primitives';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
 import { formatLongDay, isoToday } from '@/lib/format';
@@ -28,7 +29,7 @@ export default function CollectionDate() {
   const { draft, update, ready } = useBookingDraft();
   const [expanded, setExpanded] = useState(false);
 
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   const count = expanded ? FAR : NEAR;
   const days = Array.from({ length: count }, (_, i) => isoToday(i));

@@ -12,6 +12,10 @@
  * stays — both answers on every card, because accepting is a commitment made in
  * a moving vehicle against a clock and nobody should have to scroll to find out
  * what they are agreeing to, or tap twice to say no.
+ *
+ * BID INVITATIONS (0045) come first: loads waiting for this driver to name a
+ * price. They have a deadline and no pay yet, so they are a different card,
+ * but the same book — one tab, one badge (the badge counts both already).
  */
 
 import { useMemo, useState } from 'react';
@@ -19,13 +23,20 @@ import { useRouter } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BidInviteCard } from '@/components/driver/BidInviteCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
 import { QuestionHeading, SectionLabel, Skeleton } from '@/components/ui';
 import { align, localized, t } from '@/i18n';
 import { DECLARED_TRIPS } from '@/lib/features';
-import { cityIndex, useCities, useDriverOffers, useRespondToOffer } from '@/lib/queries';
+import {
+  cityIndex,
+  useCities,
+  useDriverBidInvites,
+  useDriverOffers,
+  useRespondToOffer,
+} from '@/lib/queries';
 import { offerErrorMessage } from '@/lib/offer-errors';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
@@ -44,6 +55,7 @@ export default function OffersTab() {
   const insets = useSafeAreaInsets();
   const cities = useCities();
   const offers = useDriverOffers();
+  const invites = useDriverBidInvites();
   const respond = useRespondToOffer();
   const [error, setError] = useState<string | null>(null);
 
@@ -54,10 +66,12 @@ export default function OffersTab() {
   };
 
   const pending = offers.data ?? [];
+  const asks = invites.data ?? [];
   useAnnounceOnError(offers.isError, t('common.error.title'));
 
   function refetchAll() {
     offers.refetch();
+    invites.refetch();
     cities.refetch();
   }
 
@@ -116,7 +130,7 @@ export default function OffersTab() {
           </PressableSurface>
         )}
 
-        {!offers.isPending && !offers.isError && pending.length === 0 && (
+        {!offers.isPending && !offers.isError && pending.length === 0 && asks.length === 0 && (
           <View style={styles.empty}>
             {/* The same argument D3 makes, because it is the same problem: an
                 empty book is an empty truck, and only a declared route fills it. */}
@@ -128,6 +142,17 @@ export default function OffersTab() {
             </Text>
           </View>
         )}
+
+        {asks.map((invite) => (
+          <BidInviteCard
+            key={invite.offer_id}
+            invite={invite}
+            origin={cityName(invite.origin_city)}
+            destination={cityName(invite.dest_city)}
+            compact
+            onOpen={() => router.push(`/bid/${invite.offer_id}`)}
+          />
+        ))}
 
         {pending.map((offer) => (
           <OfferCard

@@ -34,7 +34,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useObserve } from 'expo-observe';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/icon';
 import { AvailabilityCard } from '@/components/driver/Availability';
 import { JobCard } from '@/components/driver/JobCard';
+import { BidInviteCard } from '@/components/driver/BidInviteCard';
 import { OfferCard } from '@/components/driver/OfferCard';
 import { PressableSurface, PrimaryButton } from '@/components/primitives';
 import { arabicIfNeeded } from '@/components/text-direction';
@@ -50,6 +51,7 @@ import { align, formatNumber, localized, t, type StringKey } from '@/i18n';
 import { currentFix } from '@/lib/background-location';
 import { formatAge } from '@/lib/format';
 import { useLocationAccess } from '@/lib/location-tracking';
+import { usePush } from '@/lib/push-context';
 import { claimLocationPrompt } from '@/lib/location-prompt';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
@@ -59,6 +61,8 @@ import {
   cityIndex,
   useCities,
   useDriverEarnings,
+  useDriverBidInvites,
+  useDriverVerification,
   useDriverOffers,
   useDriverTrip,
   useMyAvailability,
@@ -82,17 +86,23 @@ export default function DriverHome() {
   const insets = useSafeAreaInsets();
   const cities = useCities();
   const offers = useDriverOffers();
+  // Loads waiting for this driver to name a price (0045).
+  const invites = useDriverBidInvites();
   const earnings = useDriverEarnings();
+  const verification = useDriverVerification();
   const trips = useMyTrips();
   const respond = useRespondToOffer();
   const availability = useMyAvailability();
   const setAvailable = useSetAvailable();
   const location = useLocationAccess();
+  const push = usePush();
 
   // Online without "Allow all the time": explain, once per launch, then let the
   // disclosure screen ask. Never the OS prompt straight from here.
   useEffect(() => {
     if (
+      // One permission screen at a time: the notification question first.
+      push.settled &&
       availability.data?.available &&
       location.access !== null &&
       location.access !== 'always' &&
@@ -100,7 +110,7 @@ export default function DriverHome() {
     ) {
       router.push('/location-permission');
     }
-  }, [availability.data?.available, location.access, router]);
+  }, [push.settled, availability.data?.available, location.access, router]);
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
@@ -110,6 +120,7 @@ export default function DriverHome() {
   };
 
   const pending = offers.data ?? [];
+  const asks = invites.data ?? [];
   const week = earnings.data;
   const weekAmount = week ? formatMoney(week.week_baisa, 'OMR') : null;
   // Newest first — `useMyTrips` orders by created_at desc — so the job just
@@ -158,7 +169,9 @@ export default function DriverHome() {
   function refetchAll() {
     availability.refetch();
     offers.refetch();
+    invites.refetch();
     earnings.refetch();
+    verification.refetch();
     trips.refetch();
     cities.refetch();
     // The job card has its own query. Leaving it out made pull-to-refresh
@@ -215,6 +228,23 @@ export default function DriverHome() {
         <Text style={styles.greeting} numberOfLines={2}>
           {greeting}
         </Text>
+
+        {verification.data && !verification.data.verified && (
+          <PressableSurface
+            onPress={() => router.push('/verification' as Href)}
+            accessibilityLabel={t('drv.verify.open')}
+            style={styles.review}
+          >
+            <Icon name="info" size={22} tint={color.lightText} />
+            <View style={styles.reviewCopy}>
+              <Text style={styles.retryText}>{t(verification.data.documents.length < 4 ||
+                verification.data.documents.some((d) => d.status === 'rejected')
+                  ? 'drv.verify.finish' : 'drv.verify.pending')}</Text>
+              <Text style={styles.body}>{t('drv.verify.open')}</Text>
+            </View>
+            <Icon name="chevron" size={18} tint={alpha.onInk.tertiary} />
+          </PressableSurface>
+        )}
 
         {/* Only once it is real, and only once it formats. `formatMoney` returns
             null for a currency it does not know, and a week's earnings rendered
@@ -299,7 +329,7 @@ export default function DriverHome() {
           </PressableSurface>
         )}
 
-        {!busy && !failed && !lead && pending.length === 0 && (
+        {!busy && !failed && !lead && pending.length === 0 && asks.length === 0 && (
           <View style={styles.empty}>
             <QuestionHeading ground="ink" size="question">
               {DECLARED_TRIPS ? t('drv.none.title') : t('drv.waiting.title')}
@@ -309,6 +339,17 @@ export default function DriverHome() {
             </Text>
           </View>
         )}
+
+        {!lead &&
+          asks.map((invite) => (
+            <BidInviteCard
+              key={invite.offer_id}
+              invite={invite}
+              origin={cityName(invite.origin_city)}
+              destination={cityName(invite.dest_city)}
+              onOpen={() => router.push(`/bid/${invite.offer_id}`)}
+            />
+          ))}
 
         {!lead &&
           pending.map((offer) => (
@@ -382,6 +423,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: hairline.card,
   },
+  review: {
+    flexDirection: 'row', alignItems: 'center', gap: space.md,
+    minHeight: 76, padding: space.lg, borderRadius: radius.row,
+    backgroundColor: color.surface,
+  },
+  reviewCopy: { flex: 1, gap: space.xs },
   jobText: { flex: 1, alignItems: 'flex-start' },
 
   empty: { gap: space.sm, marginTop: space.xl, maxWidth: 320 },

@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { QuestionShell } from '@/components/booking/shells';
+import { BookingPending } from '@/components/booking/BookingPending';
 import { SelectCard, SelectRow } from '@/components/primitives';
 import { SectionLabel } from '@/components/ui';
 import { TOTAL_STEPS, stepNumber, useBookingDraft } from '@/lib/booking';
@@ -23,7 +24,7 @@ export default function TruckSize() {
   const { draft, update, ready } = useBookingDraft();
   const { data: types } = useTruckTypes();
 
-  if (!ready) return null;
+  if (!ready) return <BookingPending />;
 
   return (
     <QuestionShell

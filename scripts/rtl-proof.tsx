@@ -35,12 +35,18 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Getting in (N1–N6) — deferred with P2, still shipped copy', prefixes: ['auth.', 'error.', 'role.'] },
   { title: 'Shipper home (S1, S2)', prefixes: ['home.', 'cust.'] },
   { title: 'Booking (S3–S9)', prefixes: ['book.', 'post.', 'step.', 'load.', 'review.'] },
+  { title: 'Bidding — shipper and driver price screens (0045)', prefixes: ['bid.', 'money.'] },
   { title: 'Price and tracking (T1–T5)', prefixes: ['price.', 'track.', 'pos.', 'trip.', 'event.', 'note.'] },
   { title: 'Driver (D1–D7)', prefixes: ['drv.', 'driver.', 'leg.', 'loc.'] },
   { title: 'Loads list (X1)', prefixes: ['loads.', 'status.'] },
   { title: 'Account (X2)', prefixes: ['account.', 'whatsapp.'] },
+  { title: 'Notifications — permission and account (0046)', prefixes: ['push.'] },
+  { title: 'Shipment reports and cancellation (0052)', prefixes: ['case.'] },
+  { title: 'Support desk — release a job, my record and appeals, my reports, messages (0063–0065)',
+    prefixes: ['support.', 'record.', 'appeal.', 'reports.', 'messages.'] },
   // Search, pin and details in booking; the same place lines on review, T3/T4, D5 and D7.
   { title: 'Places — booking, review, and the driver at the gate (0041)', prefixes: ['places.'] },
+  { title: 'Waiting at the pickup and drop-off, and "Driver isn\'t here" (0069)', prefixes: ['wait.'] },
   { title: 'Map labels — seas and countries, every drawn map', prefixes: ['map.'] },
   {
     title: 'Shared chrome',
@@ -109,4 +115,27 @@ it('writes the Arabic proof-sheet', () => {
   // Fails the run rather than quietly writing an incomplete sheet.
   expect(ungrouped).toEqual([]);
   initLanguage('en');
+});
+
+it('writes the Urdu proof-sheet with every translated key', () => {
+  const lines = ['# Urdu proof-sheet', '',
+    'All copy is draft and requires a native Urdu reader. This checks copy coverage, not device layout.', ''];
+  const seen = new Set<string>();
+  const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  for (const group of GROUPS) {
+    const keys = Object.keys(dictionaries.en)
+      .filter((key) => group.prefixes.some((prefix) => key.startsWith(prefix)) && !seen.has(key)).sort();
+    if (!keys.length) continue;
+    lines.push(`## ${group.title}`, '', '| key | English | اردو |', '|---|---|---|');
+    for (const key of keys) {
+      seen.add(key);
+      const k = key as keyof typeof dictionaries.en;
+      expect(dictionaries.ur[k]?.trim()).toBeTruthy();
+      lines.push(`| \`${key}\` | ${cell(dictionaries.en[k])} | ${cell(dictionaries.ur[k] ?? '—')} |`);
+    }
+    lines.push('');
+  }
+  expect(Object.keys(dictionaries.en).filter((key) => !seen.has(key))).toEqual([]);
+  mkdirSync(resolve('.superpowers'), { recursive: true });
+  writeFileSync(resolve('.superpowers/urdu-proof.md'), lines.join('\n'), 'utf8');
 });

@@ -6,13 +6,13 @@
  * users do not want to watch it arrive.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, AppState, I18nManager, Platform, StyleSheet, View } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, AppState, I18nManager, Platform, StyleSheet, Text, View } from 'react-native';
+import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager } from '@tanstack/react-query';
 import {
   SafeAreaInsetsContext,
   SafeAreaProvider,
@@ -20,10 +20,12 @@ import {
 } from 'react-native-safe-area-context';
 
 import { AppErrorBoundary } from '@/components/app-error-boundary';
-import { Notice } from '@/components/ui';
+import { PrimaryButton } from '@/components/primitives';
+import { Notice, QuestionHeading } from '@/components/ui';
+import { AccountQueryProvider } from '@/lib/account-query-provider';
 import { t } from '@/i18n';
 import { loadLanguage, restartPending } from '@/lib/language';
-import { initMonitoring, wrapRoot } from '@/lib/monitoring';
+import { initMonitoring, reportError, wrapRoot } from '@/lib/monitoring';
 import { Observe, ObserveRoot } from 'expo-observe';
 import { SessionProvider, useSession } from '@/lib/session';
 import { color, space } from '@/theme/tokens';
@@ -60,17 +62,6 @@ Observe.configure({
 // silently doing nothing at all.
 I18nManager.allowRTL(true);
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Drivers are on patchy signal: retry, but do not hammer.
-      retry: 2,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
 /**
  * react-query's default "window focus" listener is a browser `focus` event —
  * it does not exist here, so `refetchOnWindowFocus: true` on a query (used by
@@ -92,8 +83,15 @@ export { AppErrorBoundary as ErrorBoundary };
 export default wrapRoot(ObserveRoot.wrap(RootLayout));
 
 function RootLayout() {
-  const [fontsLoaded] = useFonts(FONT_ASSETS);
+  const [attempt, setAttempt] = useState(0);
+  return <Startup key={attempt} retry={() => setAttempt((value) => value + 1)} />;
+}
+
+function Startup({ retry }: { retry: () => void }) {
+  const [fontsLoaded, fontError] = useFonts(FONT_ASSETS);
   const [languageReady, setLanguageReady] = useState(false);
+  const [fontTimedOut, setFontTimedOut] = useState(false);
+  const reportedFontFailure = useRef(false);
 
   // Before first render, not in a layout effect: a screen that renders
   // left-to-right and then flips is worse than one that waits. Fonts already
@@ -107,21 +105,48 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded && languageReady) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded, languageReady]);
+    if (fontsLoaded || fontError) return;
+    const timer = setTimeout(() => setFontTimedOut(true), 6_000);
+    return () => clearTimeout(timer);
+  }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded || !languageReady) return null;
+  // A timeout is a guess, not a verdict: fonts that arrive late still win.
+  const fontFailed = !!fontError || (fontTimedOut && !fontsLoaded);
+
+  useEffect(() => {
+    if (!fontFailed || reportedFontFailure.current) return;
+    reportedFontFailure.current = true;
+    reportError(fontError ?? new Error('Bundled font load timed out'));
+  }, [fontFailed, fontError]);
+
+  useEffect(() => {
+    if (languageReady && (fontsLoaded || fontFailed)) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded, fontFailed, languageReady]);
+
+  if (!languageReady) return null;
+  if (fontFailed) {
+    // Use system text on this emergency surface: the brand faces are the part
+    // that failed to load. A button still lets the user retry in this session.
+    return (
+      <View style={styles.recovery}>
+        <Text style={styles.fallbackTitle}>{t('common.error.title')}</Text>
+        <Text style={styles.fallbackBody}>{t('common.error.explain')}</Text>
+        <PrimaryButton label={t('common.retry')} onPress={retry} />
+      </View>
+    );
+  }
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider>
+      <SessionProvider>
+        <AccountQueryProvider>
           <StatusBar style="dark" />
           <WrongDirection>
             <Gate />
           </WrongDirection>
-        </SessionProvider>
-      </QueryClientProvider>
+        </AccountQueryProvider>
+      </SessionProvider>
     </SafeAreaProvider>
   );
 }
@@ -163,7 +188,7 @@ function WrongDirection({ children }: { children: ReactNode }) {
  * data layer (SECURITY.md §3), because hiding a route protects nothing.
  */
 function Gate() {
-  const { session, profile, loading } = useSession();
+  const { session, profile, loading, error, retry } = useSession();
   // Widened to `string[]` on purpose. `useSegments()` is typed from expo-router's
   // generated route union, which is regenerated on config changes — comparing
   // against it directly makes this gate fail to compile whenever routing changes
@@ -174,7 +199,7 @@ function Gate() {
   const group = segments[0];
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || error) return;
 
     const inAuth = group === '(auth)';
 
@@ -202,8 +227,16 @@ function Gate() {
     // Once on the setup questions themselves, the screens walk forward alone.
     if (!profile) {
       const atEntry =
-        segments.includes('welcome') || segments.includes('email') || segments.includes('password');
+        segments.includes('welcome') || segments.includes('email') || segments.includes('password') ||
+        segments.includes('otp-phone') || segments.includes('otp-code');
       if (!inAuth || atEntry) router.replace('/role');
+      return;
+    }
+
+    if (inAuth && profile.role === 'driver' && segments.includes('plate')) {
+      // Profile refresh and the last signup step can complete in either order.
+      // Both paths must open documents rather than racing to the home screen.
+      router.replace('/verification' as Href);
       return;
     }
 
@@ -213,12 +246,22 @@ function Gate() {
       // profiles.role names — which is the intended behaviour, not a gap.
       router.replace('/');
     }
-  }, [loading, session, profile, group, segments, router]);
+  }, [loading, error, session, profile, group, segments, router]);
 
   if (loading) {
     return (
       <View style={styles.boot}>
         <ActivityIndicator color={color.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.recovery}>
+        <QuestionHeading ground="cream" size="question">{t('common.error.title')}</QuestionHeading>
+        <Notice icon="info">{t('common.error.explain')}</Notice>
+        <PrimaryButton label={t('common.retry')} onPress={retry} />
       </View>
     );
   }
@@ -247,4 +290,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: color.creamCard,
   },
+  recovery: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: space.lg,
+    paddingHorizontal: space.lg,
+    backgroundColor: color.creamCard,
+  },
+  fallbackTitle: { fontSize: 28, color: color.ink },
+  fallbackBody: { fontSize: 18, color: color.ink },
 });

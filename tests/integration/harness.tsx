@@ -11,7 +11,16 @@
  * module for a test that also imports the screen under test.
  */
 
-import type { City, DriverOffer, DriverTrip, Load, TripPosition, TruckType } from '@/lib/queries';
+import type {
+  BidInvite,
+  City,
+  DriverOffer,
+  DriverTrip,
+  Load,
+  ShipperBid,
+  TripPosition,
+  TruckType,
+} from '@/lib/queries';
 
 /**
  * An explicit safe-area mock rather than the library's shipped one.
@@ -73,6 +82,9 @@ jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
 
 export const mockSetAvailableMutate = jest.fn();
 export const mockBookMutate = jest.fn();
+export const mockPostBidMutate = jest.fn();
+export const mockAcceptBidMutate = jest.fn();
+export const mockPlaceBidMutate = jest.fn();
 
 jest.mock('@/lib/session', () => ({
   useSession: () => ({
@@ -88,6 +100,7 @@ jest.mock('@/lib/queries', () => {
   return {
     ...actual,
     useCities: jest.fn(),
+    useDriverVerification: jest.fn(),
     useTruckTypes: jest.fn(),
     useMyLoads: jest.fn(),
     useMyLegs: jest.fn(),
@@ -128,6 +141,25 @@ jest.mock('@/lib/queries', () => {
     useBookLoad: jest.fn(),
     // 0041. The shipper's own places, on T3/T4.
     useLoadPlaces: jest.fn(),
+    // 0045. Bidding, both sides. `useDriverBidInvite` is mocked as well as the
+    // list it reads: inside the module it calls the real list hook, which a
+    // mock of the export does not reach.
+    usePostBidLoad: jest.fn(),
+    useShipperLoadBids: jest.fn(),
+    useShipperBidStatus: jest.fn(),
+    useAcceptDriverBid: jest.fn(),
+    useCloseBidding: jest.fn(),
+    useExtendBidding: jest.fn(),
+    useSetBidTarget: jest.fn(),
+    useDriverBidInvites: jest.fn(),
+    useDriverBidInvite: jest.fn(),
+    useDriverLoadBids: jest.fn(),
+    usePlaceDriverBid: jest.fn(),
+    useMyMessages: jest.fn(),
+    // 0069. A trip's waiting charge.
+    useTripWaiting: jest.fn(),
+    useMyRecord: jest.fn(),
+    useMyCases: jest.fn(),
   };
 });
 
@@ -359,6 +391,10 @@ export function resetQueries(queries: Record<string, unknown>) {
   m('useDriverPastTrips').mockReturnValue(ok([]));
   m('usePostLeg').mockReturnValue({ mutateAsync: mockPostLegMutate, isPending: false });
   m('useDriverTrip').mockReturnValue(ok(null));
+  m('useMyMessages').mockReturnValue(ok([]));
+  m('useTripWaiting').mockReturnValue(ok({ terms: null, stops: [], waiting_baisa: 0, price_baisa: null, total_baisa: null, payout_baisa: null }));
+  m('useMyRecord').mockReturnValue(ok([]));
+  m('useMyCases').mockReturnValue(ok([]));
   // DEFAULT: NO FIX. A trip nobody has reported on is the state every trip
   // starts in, so it is what a fresh test renders.
   m('useTripPosition').mockReturnValue(ok(null));
@@ -408,4 +444,62 @@ export function resetQueries(queries: Record<string, unknown>) {
   // actually starts in, so it is the default here — a fixture that hands every
   // test "4.9 · 212 trips" would let the absent-rating rule rot untested.
   m('useDriverSummary').mockReturnValue(ok(null));
+  m('useDriverVerification').mockReturnValue(ok(null));
+
+  // 0045. DEFAULT: NO AUCTION ANYWHERE — no prices on any load, no invitation
+  // for any driver. A test about bidding sets the one it is about.
+  mockPostBidMutate.mockReset();
+  mockAcceptBidMutate.mockReset();
+  mockPlaceBidMutate.mockReset();
+  m('usePostBidLoad').mockReturnValue({ mutate: mockPostBidMutate, isPending: false });
+  m('useShipperLoadBids').mockReturnValue(ok([]));
+  m('useShipperBidStatus').mockReturnValue(ok(null));
+  m('useAcceptDriverBid').mockReturnValue({ mutate: mockAcceptBidMutate, isPending: false });
+  m('useCloseBidding').mockReturnValue({ mutate: jest.fn(), isPending: false });
+  m('useExtendBidding').mockReturnValue({ mutate: jest.fn(), isPending: false });
+  m('useSetBidTarget').mockReturnValue({ mutate: jest.fn(), isPending: false });
+  m('useDriverBidInvites').mockReturnValue(ok([]));
+  m('useDriverBidInvite').mockReturnValue(ok(null));
+  m('useDriverLoadBids').mockReturnValue(ok([]));
+  m('usePlaceDriverBid').mockReturnValue({ mutate: mockPlaceBidMutate, isPending: false });
+}
+
+/** One bid invitation, as `driver_bid_invites()` composes it. No contact, by design. */
+export function bidInvite(over: Partial<BidInvite> = {}): BidInvite {
+  return {
+    offer_id: OFFER_ID,
+    load_id: LOAD_ID,
+    bid_deadline: new Date(Date.now() + 40 * 60_000).toISOString(),
+    origin_city: 1,
+    dest_city: 2,
+    pickup_from: '2026-08-01',
+    pickup_to: '2026-08-01',
+    goods: 'Building materials',
+    weight_kg: 8000,
+    truck_type_code: '10t',
+    own_bid_baisa: null,
+    pickup_lat: null,
+    pickup_lng: null,
+    pickup_name: null,
+    pickup_note: null,
+    drop_lat: null,
+    drop_lng: null,
+    drop_name: null,
+    drop_note: null,
+    ...over,
+  };
+}
+
+/** One price as the shipper sees it: a total, never the driver's share. */
+export function shipperBid(over: Partial<ShipperBid> = {}): ShipperBid {
+  return {
+    bid_id: 'bid-1',
+    driver_name: 'Salim Al Harthy',
+    truck_type: '10t',
+    total_baisa: 110000,
+    submitted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    selected: false,
+    eligible: true,
+    ...over,
+  };
 }

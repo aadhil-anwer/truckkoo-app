@@ -2,7 +2,8 @@
  * When the driver's location is reported — the policy half of
  * `background-location.ts`.
  *
- * Tracked while ONLINE or CARRYING A LOAD, never otherwise, never a shipper.
+ * Tracked while ONLINE or ON A JOB (heading to the pickup or carrying the load),
+ * never otherwise, never a shipper.
  * With "Allow all the time" the OS task does it; with while-using only, one fix
  * on opening the app and every five minutes it stays open; with nothing, the
  * server ranks by town. Mounted once, in the (app) layout.
@@ -30,7 +31,9 @@ export function trackingMode(
   trips: { status: string }[] | undefined,
 ): TrackingMode | null {
   if (role !== 'driver') return null;
-  if ((trips ?? []).some((tr) => tr.status === 'in_transit')) return 'trip';
+  // Heading to the pickup counts as on a trip (0069): the server notices the
+  // driver reaching the pin from these reports, so they must be close together.
+  if ((trips ?? []).some((tr) => tr.status === 'in_transit' || tr.status === 'assigned')) return 'trip';
   return available ? 'online' : null;
 }
 

@@ -15,7 +15,7 @@
 
 export type AuthMode = 'signUp' | 'signIn';
 export type Role = 'shipper' | 'driver';
-export type AuthStep = 'email' | 'password' | 'role' | 'name' | 'phone' | 'truck';
+export type AuthStep = 'email' | 'password' | 'otp-phone' | 'otp-code' | 'role' | 'name' | 'phone' | 'truck' | 'capacity' | 'plate';
 
 export type AuthDraft = {
   mode: AuthMode;
@@ -26,21 +26,27 @@ export type AuthDraft = {
    * and a counter reading "3 / 6" on the first screen they see is a lie.
    */
   viaEmail: boolean;
+  viaWhatsApp: boolean;
   role: Role | null;
   name: string;
   /** The 8 local digits. The +968 is drawn, not typed. */
   phone: string;
   truckType: string | null;
+  capacityKg: number | null;
+  plate: string;
 };
 
 const EMPTY: AuthDraft = {
   mode: 'signUp',
   email: '',
   viaEmail: false,
+  viaWhatsApp: false,
   role: null,
   name: '',
   phone: '',
   truckType: null,
+  capacityKg: null,
+  plate: '',
 };
 
 let draft: AuthDraft = { ...EMPTY };
@@ -55,8 +61,8 @@ export function updateAuthDraft(patch: Partial<AuthDraft>): AuthDraft {
 }
 
 /** Start a fresh sitting from N1. */
-export function startAuthDraft(mode: AuthMode): AuthDraft {
-  draft = { ...EMPTY, mode, viaEmail: true };
+export function startAuthDraft(mode: AuthMode, viaWhatsApp = false): AuthDraft {
+  draft = { ...EMPTY, mode, viaEmail: !viaWhatsApp, viaWhatsApp };
   return draft;
 }
 
@@ -72,10 +78,10 @@ export function clearAuthDraft(): void {
  * assumed, so the counter can only get shorter — never longer — under a thumb.
  */
 export function stepsFor(d: AuthDraft): AuthStep[] {
-  if (d.mode === 'signIn') return ['email', 'password'];
-  const account: AuthStep[] = d.viaEmail ? ['email', 'password'] : [];
+  if (d.mode === 'signIn') return d.viaWhatsApp ? ['otp-phone', 'otp-code'] : ['email', 'password'];
+  const account: AuthStep[] = d.viaWhatsApp ? ['otp-phone', 'otp-code'] : d.viaEmail ? ['email', 'password'] : [];
   const profile: AuthStep[] = ['role', 'name', 'phone'];
-  return d.role === 'shipper' ? [...account, ...profile] : [...account, ...profile, 'truck'];
+  return d.role === 'shipper' ? [...account, ...profile] : [...account, ...profile, 'truck', 'capacity', 'plate'];
 }
 
 export function stepPosition(d: AuthDraft, step: AuthStep): { step: number; total: number } {
@@ -83,10 +89,12 @@ export function stepPosition(d: AuthDraft, step: AuthStep): { step: number; tota
   // in to an account that never finished setup — can hold a draft whose path
   // does not contain it. The account steps then count as a fresh email sitting;
   // the setup steps as setup from its own first question. Never "0 / 4".
-  const account = step === 'email' || step === 'password';
+  const account = step === 'email' || step === 'password' || step === 'otp-phone' || step === 'otp-code';
+  const whatsapp = step === 'otp-phone' || step === 'otp-code';
   const steps = stepsFor(d).includes(step)
     ? stepsFor(d)
-    : stepsFor(account ? { ...d, viaEmail: true } : { ...d, mode: 'signUp', viaEmail: false });
+    : stepsFor(account ? { ...d, viaEmail: !whatsapp, viaWhatsApp: whatsapp }
+      : { ...d, mode: 'signUp', viaEmail: false, viaWhatsApp: false });
   return { step: steps.indexOf(step) + 1, total: steps.length };
 }
 

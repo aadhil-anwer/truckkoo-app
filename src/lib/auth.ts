@@ -14,8 +14,10 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
 import { t } from '@/i18n';
-import { stopTracking } from './background-location';
+import { startTracking, stopTracking, trackingNow } from './background-location';
+import { registerPush, unregisterPush } from '@/lib/push';
 import { OMAN_DIAL } from './auth-draft';
+import { reportFailure } from './monitoring';
 import { safeText } from './safe-text';
 import { supabase } from './supabase';
 
@@ -64,7 +66,14 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   // Deliberately one message for wrong-password AND unknown-email: telling the
   // caller which one it was confirms whether an account exists (SECURITY.md §3).
-  if (error) return { ok: false, message: t('error.signIn.failed') };
+  if (error) {
+    // A wrong password is the user's, not a problem; anything without a 4xx
+    // (no signal, auth down) is one, and is the kind nobody calls to report.
+    if (!(typeof error.status === 'number' && error.status >= 400 && error.status < 500)) {
+      reportFailure('sign_in', error);
+    }
+    return { ok: false, message: t('error.signIn.failed') };
+  }
   return { ok: true };
 }
 
@@ -88,6 +97,7 @@ export async function signUpWithEmail(
     if (raw.includes('password')) {
       return { ok: false, message: t('error.password.short') };
     }
+    reportFailure('sign_up', error);
     return { ok: false, message: t('error.generic') };
   }
 
@@ -270,13 +280,17 @@ export async function createProfile(input: {
     phone: input.phone ? safeText(input.phone) : null,
   });
 
-  if (error) return { ok: false, message: t('error.generic') };
+  if (error) {
+    reportFailure('create_profile', error);
+    return { ok: false, message: t('error.generic') };
+  }
   return { ok: true };
 }
 
 /** Register the driver's truck so matching can filter on type and capacity. */
 export async function createTruck(input: {
   truckType: string;
+  capacityKg: number;
   plate?: string | null;
 }): Promise<AuthResult> {
   const { data: sessionData } = await supabase.auth.getSession();
@@ -286,10 +300,14 @@ export async function createTruck(input: {
   const { error } = await supabase.from('trucks').insert({
     owner_id: userId,
     truck_type: input.truckType,
+    capacity_kg: input.capacityKg,
     plate: input.plate ? safeText(input.plate) : null,
   });
 
-  if (error) return { ok: false, message: t('error.generic') };
+  if (error) {
+    reportFailure('create_truck', error);
+    return { ok: false, message: t('error.generic') };
+  }
   return { ok: true };
 }
 
@@ -308,7 +326,26 @@ export async function finishSetup(input: {
   fullName: string;
   omaniMobile: string | null;
   truckType: string | null;
+  capacityKg?: number | null;
+  plate?: string | null;
 }): Promise<AuthResult> {
+  if (input.role === 'driver') {
+    if (!input.truckType || !input.capacityKg || !input.plate || !input.omaniMobile) {
+      return { ok: false, message: t('error.generic') };
+    }
+    const { error } = await supabase.rpc('complete_driver_signup', {
+      p_name: safeText(input.fullName),
+      p_phone: `${OMAN_DIAL}${input.omaniMobile}`,
+      p_truck_type: input.truckType,
+      p_capacity_kg: input.capacityKg,
+      p_plate: safeText(input.plate),
+    });
+    if (error) {
+      reportFailure('complete_driver_signup', error);
+      return { ok: false, message: t('error.generic') };
+    }
+    return { ok: true };
+  }
   const profile = await createProfile({
     role: input.role,
     fullName: input.fullName,
@@ -316,16 +353,44 @@ export async function finishSetup(input: {
   });
   if (!profile.ok) return profile;
 
-  if (input.role === 'driver' && input.truckType) {
-    return createTruck({ truckType: input.truckType });
-  }
   return { ok: true };
+}
+
+async function within<T>(operation: PromiseLike<T>, milliseconds: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Sign-out timed out')), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function signOut(): Promise<void> {
   // Before the session goes: a shared phone must never report a position under
-  // the account that just left. A failure to stop does not block signing out.
-  await stopTracking().catch(() => {});
-  // Global scope revokes server-side, not just locally (SECURITY.md §2).
-  await supabase.auth.signOut({ scope: 'global' });
+  // the account that just left. Bound a stalled native stop; global auth
+  // revocation is the final guard against future server-side location writes.
+  const resumeMode = trackingNow();
+  await within(stopTracking(), 4_000).catch(() => {});
+  try {
+    // The phone's push token belongs to this account. If the server has not
+    // confirmed revocation, keep the session and a retry path on the account UI.
+    const pushRevoked = await within(unregisterPush(), 4_000).catch(() => false);
+    if (!pushRevoked) throw new Error('Push token revocation failed');
+    // Global scope revokes server-side. A timeout/error must never be reported as
+    // successful logout because local-only sign-out leaves sessions valid.
+    const { error } = await within(supabase.auth.signOut({ scope: 'global' }), 12_000);
+    if (error) throw error;
+  } catch (e) {
+    // Still signed in, so put back what was taken away above: a driver on a trip
+    // must keep reporting, and must keep receiving offers. The tracking provider
+    // will not do it — nothing it watches changed. Neither call throws here.
+    if (resumeMode) startTracking(resumeMode).catch(() => {});
+    registerPush().catch(() => {});
+    throw e;
+  }
 }

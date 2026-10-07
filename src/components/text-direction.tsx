@@ -16,5 +16,5 @@ export { align };
 export function arabicIfNeeded<T extends { fontFamily: string; fontSize: number; lineHeight: number }>(
   style: T,
 ): T {
-  return getLanguage() === 'ar' ? arabicize(style) : style;
+  return getLanguage() !== 'en' ? arabicize(style) : style;
 }

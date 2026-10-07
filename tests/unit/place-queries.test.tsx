@@ -33,9 +33,10 @@ it('sends places to book_load by name', async () => {
   await result.current.mutateAsync({
     originCity: 1, destCity: 2, collectionDate: '2026-10-01', goods: 'x', weightKg: null,
     truckTypeCode: null, seenPriceBaisa: null, originPlace: place, destPlace: null,
+    requestId: 'R1',
   });
   expect(supabase.rpc).toHaveBeenCalledWith('book_load', expect.objectContaining({
-    p_origin_place: place, p_dest_place: null,
+    p_origin_place: place, p_dest_place: null, p_request_id: 'R1',
   }));
 });
 

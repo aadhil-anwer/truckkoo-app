@@ -12,6 +12,8 @@
 -- Exit code 0 = all assertions held.
 
 begin;
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+delete from private.app_settings where key = 'staff_email_domains';
 
 -- 'notice' so each `pass:` line is visible. Setting this to 'warning' hides the
 -- assertions and makes a green run indistinguishable from a run that did nothing.
@@ -113,7 +115,10 @@ create or replace function act_as(p_uid uuid)
 returns void language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', p_uid, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_uid, 'role', 'authenticated', 'aal', 'aal2',
+    'amr', json_build_array(json_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))
+  )::text, true);
 end $$;
 
 create or replace function act_as_reset() returns void language plpgsql as $$
@@ -1851,6 +1856,68 @@ select assert_equals((select count(*) from public.load_places), 0, 'shipper B re
 select act_as('33333333-3333-4333-8333-333333333333');  -- Driver A
 select assert_equals((select count(*) from public.load_places), 0,
   'a driver reads no place from the table — only through the driver functions');
+select act_as_reset();
+
+-- ─── verification documents and shipment cases (0050, 0052) ───────────────
+-- Both owned tables have no client table grant. Actor-scoped RPCs are the only
+-- path; another driver's ID or another shipper's case must return nothing.
+insert into public.driver_documents(driver_id, kind, object_path)
+values ('33333333-3333-4333-8333-333333333333', 'id_front',
+  '33333333-3333-4333-8333-333333333333/id_front/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg');
+insert into public.shipment_cases(load_id, reporter_id, kind, details)
+values ('aaaaaaaa-0000-4000-8000-000000000001',
+  '11111111-1111-4111-8111-111111111111', 'delay', 'The truck is late at the gate');
+
+select act_as('44444444-4444-4444-8444-444444444444');
+select assert_raises($$select * from public.driver_documents$$,
+  'another driver cannot read document metadata table');
+select assert_equals((select count(*) from public.driver_document_status()), 0,
+  'another driver sees no verification documents');
+select assert_raises($$select * from public.ops_driver_documents('33333333-3333-4333-8333-333333333333')$$,
+  'a driver cannot invoke the ops document review read');
+select act_as_reset();
+
+select act_as('33333333-3333-4333-8333-333333333333');
+select assert_equals((select count(*) from public.driver_document_status()), 1,
+  'driver sees only their own verification status');
+select assert_raises($$select * from public.shipment_cases$$,
+  'driver cannot read shipment case table');
+select act_as_reset();
+
+-- Shipper B was appointed a dispatcher earlier in this file (to prove the ops
+-- queue works for one). Undo that here: these checks are about B as a shipper.
+delete from private.ops_users where profile_id = '22222222-2222-4222-8222-222222222222';
+select act_as('22222222-2222-4222-8222-222222222222');
+select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-0000-4000-8000-000000000001')),
+  0, 'another shipper sees no case for the load');
+select assert_raises($$select public.request_load_cancellation(
+  'aaaaaaaa-0000-4000-8000-000000000001', 'Please cancel this load now')$$,
+  'another shipper cannot cancel the load');
+select assert_raises($$select * from public.ops_shipment_cases()$$,
+  'a shipper cannot read the ops case queue');
+select act_as_reset();
+
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_equals((select count(*) from public.my_shipment_cases('aaaaaaaa-0000-4000-8000-000000000001')),
+  1, 'reporting shipper sees their own case');
+select act_as_reset();
+
+-- 0062/0063: the case thread and strikes are never client-readable, by anyone.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_raises($$select * from private.case_events$$, 'a shipper cannot read any case thread');
+select assert_raises($$select * from private.incidents$$, 'nor any strike');
+select assert_raises($$select * from public.ops_support_queue()$$, 'nor the support queue');
+select assert_raises($$select * from private.user_messages$$, 'nor anyone''s messages');
+select act_as_reset();
+
+-- 0068: the commission a trip was accepted at is the margin; its shipper can
+-- read the trip row, so the rate lives where no client can, the driver included.
+select act_as('11111111-1111-4111-8111-111111111111');
+select assert_raises($$select * from private.trip_commission$$, 'a shipper cannot read the commission on a trip');
+select assert_raises($$select * from private.load_wait_terms$$, 'nor any load''s waiting terms directly');
+select assert_raises($$select * from private.trip_wait_waivers$$, 'nor who waived waiting');
+select assert_raises($$select * from private.trip_wait_holds$$, 'nor a held waiting charge');
+select assert_raises($$select * from private.trip_wait_arrivals$$, 'nor a staff check-in');
 select act_as_reset();
 
 do $$ begin raise notice 'ALL TENANT ISOLATION ASSERTIONS HELD'; end $$;

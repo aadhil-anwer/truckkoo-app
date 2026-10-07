@@ -11,6 +11,7 @@
  * one after the OS restarts the service — which is why `src/app/_layout.tsx`
  * imports this file for its side effect.
  */
+import { Linking } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
@@ -44,6 +45,9 @@ export async function sendNewest(locations: Location.LocationObject[]): Promise<
       p_lng: newest.coords.longitude,
       p_accuracy_m: newest.coords.accuracy ?? null,
       p_recorded_at: new Date(newest.timestamp).toISOString(),
+      // 0069: arrival at a pin is noticed server-side, and a truck doing 45 km/h
+      // past the gate has not arrived. Unknown is null — Android reports -1.
+      p_speed_mps: newest.coords.speed != null && newest.coords.speed >= 0 ? newest.coords.speed : null,
     });
   } catch {
     // No signal in the Hajar, or no session on a headless launch. The next
@@ -87,6 +91,11 @@ export async function startTracking(mode: TrackingMode): Promise<boolean> {
   return true;
 }
 
+/** The mode the OS task is running in, or null — so a failed sign-out can resume it. */
+export function trackingNow(): TrackingMode | null {
+  return runningMode;
+}
+
 export async function stopTracking(): Promise<void> {
   runningMode = null;
   if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)) {
@@ -101,10 +110,36 @@ export async function locationAccess(): Promise<LocationAccess> {
   return bg.granted ? 'always' : 'foreground';
 }
 
-/** Android order: while-using first, then all-the-time (Settings, on 11+). */
+/**
+ * Android order: while-using first, then all-the-time (Settings, on 11+).
+ *
+ * WHEN THE PHONE WILL NO LONGER ASK, SEND THE DRIVER TO SETTINGS. After two
+ * refusals, "Don't ask again", or a permission revoked in Settings and refused,
+ * the OS request returns "denied" at once and shows nothing. Calling it anyway
+ * made "Continue" and "Turn on" buttons that did nothing at all. So read first:
+ * a permission the phone has stopped offering is fixed in Settings, and the app
+ * re-reads it when the driver comes back (location-tracking's AppState refresh).
+ *
+ * Only a refusal that was ALREADY final opens Settings. One made just now, in
+ * the dialog, is the driver's answer — throwing them into Settings for it would
+ * be arguing with them.
+ */
 export async function requestLocationAccess(): Promise<LocationAccess> {
-  const fg = await Location.requestForegroundPermissionsAsync();
-  if (!fg.granted) return 'none';
+  const fgNow = await Location.getForegroundPermissionsAsync();
+  if (!fgNow.granted) {
+    if (fgNow.canAskAgain === false) {
+      await Linking.openSettings().catch(() => {});
+      return 'none';
+    }
+    const fg = await Location.requestForegroundPermissionsAsync();
+    if (!fg.granted) return 'none';
+  }
+  const bgNow = await Location.getBackgroundPermissionsAsync();
+  if (bgNow.granted) return 'always';
+  if (bgNow.canAskAgain === false) {
+    await Linking.openSettings().catch(() => {});
+    return 'foreground';
+  }
   const bg = await Location.requestBackgroundPermissionsAsync();
   return bg.granted ? 'always' : 'foreground';
 }

@@ -11,11 +11,9 @@
  * 2026-08-02; see OPEN_ISSUES.md.
  *
  * WHAT IT DOES. In `MainApplication.onCreate`, before `loadReactNative`, and only
- * on the first launch after install: if the phone's language is Arabic, set
- * `forceRTL(true)`. Arabic, not "any RTL language" — it must agree with
- * `initLanguage()`'s fallback in src/i18n, which picks Arabic for `ar` and
- * English for everything else, Urdu and Farsi included. Disagreeing would trade
- * this bug for a permanent one.
+ * on the first launch after install: if the phone's language is Arabic or
+ * Urdu, set `forceRTL(true)`. These are the two RTL locales `initLanguage()`
+ * chooses from a device language, so native and JS agree on launch one.
  *
  * After that first launch JS owns the flag again (`src/lib/language.ts` stays
  * the only JS caller of forceRTL). The marker is what stops this overriding an
@@ -39,7 +37,7 @@ const SEED = `
     // ${MARKER} — plugins/with-first-launch-direction.js explains why.
     getSharedPreferences("truckkoo.direction", MODE_PRIVATE).let { prefs ->
       if (!prefs.getBoolean("seeded", false)) {
-        if (java.util.Locale.getDefault().language == "ar") {
+        if (java.util.Locale.getDefault().language in listOf("ar", "ur")) {
           com.facebook.react.modules.i18nmanager.I18nUtil.instance.forceRTL(this, true)
         }
         prefs.edit().putBoolean("seeded", true).commit()

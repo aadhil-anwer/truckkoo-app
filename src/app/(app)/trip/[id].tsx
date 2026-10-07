@@ -33,7 +33,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -46,8 +46,11 @@ import { SectionLabel, Sheet, Skeleton, StatusPill } from '@/components/ui';
 import { CityPin, Corridor, MapCanvas, Scrim, TruckMarker, framingFor, useMapBand } from '@/map';
 import { align, localized, t, type StringKey } from '@/i18n';
 import { formatAge, formatWeight } from '@/lib/format';
-import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition } from '@/lib/queries';
+import { cityIndex, placeOf, useAdvanceTrip, useCities, useDriverTrip, useTripPosition, useTripWaiting } from '@/lib/queries';
+import { WaitingCard } from '@/components/trip/WaitingCard';
 import { directionsLink, safeText } from '@/lib/safe-text';
+import { reportFailure } from '@/lib/monitoring';
+import { looksBlank } from '@/lib/photo-check';
 import { supabase } from '@/lib/supabase';
 import { face } from '@/theme/faces';
 import {
@@ -71,9 +74,11 @@ export default function TripScreen() {
 
   const cities = useCities();
   const job = useDriverTrip(id);
+  const waiting = useTripWaiting(id, job.data?.status === 'assigned' || job.data?.status === 'in_transit');
   const advance = useAdvanceTrip();
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoSize, setPhotoSize] = useState({ width: 0, height: 0 });
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,7 +119,11 @@ export default function TripScreen() {
       mediaTypes: ['images'],
     });
 
-    if (!shot.canceled && shot.assets[0]) setPhotoUri(shot.assets[0].uri);
+    if (!shot.canceled && shot.assets[0]) {
+      const { uri, width, height } = shot.assets[0];
+      setPhotoUri(uri);
+      setPhotoSize({ width, height });
+    }
   }
 
   async function confirmCollected() {
@@ -134,21 +143,30 @@ export default function TripScreen() {
     }
 
     setUploading(true);
+    // Which half failed: the upload is reported here, advance_trip by the
+    // mutation cache — never both.
+    let uploaded = false;
     try {
       // The path's first segment is the trip id — the storage policies authorise
       // on exactly that, so it is not a naming convention, it is the check.
       const path = `${id}/${Date.now()}.jpg`;
       const bytes = await fetch(photoUri).then((r) => r.arrayBuffer());
+      if (looksBlank({ mime: 'image/jpeg', bytes: bytes.byteLength, ...photoSize })) {
+        setError(t('trip.deliver.blank'));
+        return;
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('pod')
         .upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
 
       if (uploadError) throw uploadError;
+      uploaded = true;
 
       await advance.mutateAsync({ tripId: id, to: 'delivered', photoPath: path });
       router.replace('/driver');
-    } catch {
+    } catch (e) {
+      if (!uploaded) reportFailure('upload_pod', e);
       setError(t('error.generic'));
     } finally {
       setUploading(false);
@@ -324,11 +342,25 @@ export default function TripScreen() {
             </Pressable>
           )}
 
+          {/* 0069: arriving is noticed from the phone's reports, so there is
+              nothing to tap — only the clock, once it runs. */}
+          <WaitingCard waiting={waiting.data} side="driver" tripId={id}
+            nextStop={done ? null : { stop: collected ? 'drop' : 'pickup', pinned: !!(collected ? dropPlace : pickupPlace) }} />
+
           {!!error && (
             <Text style={styles.error} accessibilityLiveRegion="polite">
               {error}
             </Text>
           )}
+
+          {/* 0065: the honest exit, before the cargo is aboard. After pickup it
+              is a problem to report, not a job to hand back. */}
+          {trip?.status === 'assigned' && (
+            <SecondaryButton label={t('support.release.action')}
+              onPress={() => router.push(`/release?tripId=${encodeURIComponent(id)}` as Href)} />
+          )}
+          <SecondaryButton label={t('drv.job.problem')}
+            onPress={() => router.push(`/case?tripId=${encodeURIComponent(id)}` as Href)} />
 
           {/* Stated while it is happening, and gone when it stops — which is
               also when the database stops accepting fixes. There is no toggle:

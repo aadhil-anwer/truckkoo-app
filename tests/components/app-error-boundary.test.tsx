@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 
 import { AppErrorBoundary } from '@/components/app-error-boundary';
@@ -21,6 +22,7 @@ describe('AppErrorBoundary', () => {
     const error = new Error('boom');
     await render(<AppErrorBoundary error={error} retry={jest.fn()} />);
     expect(Sentry.captureException).toHaveBeenCalledWith(error);
+    expect(SplashScreen.hideAsync).toHaveBeenCalled();
   });
 
   it('calls retry rather than requiring a real relaunch', async () => {

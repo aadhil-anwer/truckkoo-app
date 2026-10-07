@@ -28,6 +28,8 @@
 -- A 403 confirms the row exists (SECURITY.md §3).
 
 begin;
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+delete from private.app_settings where key = 'staff_email_domains';
 
 set local client_min_messages to notice;
 
@@ -172,7 +174,10 @@ create or replace function act_as(p_uid uuid)
 returns void language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', p_uid, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_uid, 'role', 'authenticated', 'aal', 'aal2',
+    'amr', json_build_array(json_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))
+  )::text, true);
 end $$;
 
 create or replace function act_as_anon()
@@ -1005,6 +1010,26 @@ select act_as_reset();
 select act_as('33333333-0000-4000-8000-00000000cccc');
 
 select assert_raises(
+  $$select public.ops_verify_driver('22222222-0000-4000-8000-00000000bbbb', true)$$,
+  'verification now requires reviewed documents and truck');
+select act_as_reset();
+
+insert into public.driver_documents(driver_id, kind, object_path, status) values
+  ('22222222-0000-4000-8000-00000000bbbb', 'id_front',
+   '22222222-0000-4000-8000-00000000bbbb/id_front/11111111-1111-4111-8111-111111111111.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'id_back',
+   '22222222-0000-4000-8000-00000000bbbb/id_back/22222222-2222-4222-8222-222222222222.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'mulkiya',
+   '22222222-0000-4000-8000-00000000bbbb/mulkiya/33333333-3333-4333-8333-333333333333.jpg', 'approved'),
+  ('22222222-0000-4000-8000-00000000bbbb', 'truck_photo',
+   '22222222-0000-4000-8000-00000000bbbb/truck_photo/44444444-4444-4444-8444-444444444444.jpg', 'approved')
+on conflict (driver_id, kind) do update set status = 'approved';
+update public.trucks set verified_at = now()
+where id = 'c0c0c0c0-0000-4000-8000-000000000001';
+
+select act_as('33333333-0000-4000-8000-00000000cccc');
+
+select assert_raises(
   $$select public.ops_verify_driver('11111111-0000-4000-8000-00000000aaaa', true)$$,
   'a shipper cannot be verified as a driver');
 -- Losing why someone was verified is not a thing a checkbox should do.
@@ -1272,7 +1297,7 @@ end $$;
 
 select assert_ops_only($$select * from public.ops_settings()$$, 'ops_settings');
 select assert_ops_only(
-  $$select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb, 'test')$$,
   'ops_set_setting');
 select assert_ops_only($$select * from public.ops_rate_cards()$$, 'ops_rate_cards');
 select assert_ops_only($$select * from public.ops_corridors()$$, 'ops_corridors');
@@ -1296,31 +1321,38 @@ select act_as_reset();
 
 -- ─── 9a. the settings whitelist ─────────────────────────────────────────────
 
+-- 0060: money and rules are the owner's. The suite's dispatcher becomes an
+-- owner (2FA fresh, as act_as sets it) for this section and is put back at the
+-- end of 9c; ops_money_system.sql proves a dispatcher is refused.
+update private.ops_users set level = 'owner' where profile_id = '33333333-0000-4000-8000-00000000cccc';
+select set_config('tests.registry_size', (select count(*) from private.ops_setting_spec())::text, true);
+
 select act_as('33333333-0000-4000-8000-00000000cccc');
 
-select assert_equals((select count(*) from public.ops_settings()), 5,
-  'ops_settings returns exactly the five whitelisted keys');
+select assert_equals((select count(*) from public.ops_settings()),
+  current_setting('tests.registry_size')::bigint,
+  'ops_settings returns exactly the registry''s keys');
 
 -- `app_settings` is where kill switches live. A generic key/value writer
 -- reachable from a browser turns one compromised session into arbitrary config.
 select assert_not_found(
-  $$select public.ops_set_setting('some_other_key', 'true'::jsonb)$$,
+  $$select public.ops_set_setting('some_other_key', 'true'::jsonb, 'suite')$$,
   'a key outside the whitelist is refused, and refused as "not found"');
 
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_enabled', '3'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_enabled', '3'::jsonb, 'suite')$$,
   'a boolean setting rejects a number');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', 'true'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', 'true'::jsonb, 'suite')$$,
   'a numeric setting rejects a boolean');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', '0'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '0'::jsonb, 'suite')$$,
   'and rejects a value below the range');
 select assert_raises(
-  $$select public.ops_set_setting('auto_dispatch_max_offers', '9999'::jsonb)$$,
+  $$select public.ops_set_setting('auto_dispatch_max_offers', '9999'::jsonb, 'suite')$$,
   'and above it');
 
-select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb);
+select public.ops_set_setting('auto_dispatch_enabled', 'false'::jsonb, 'suite');
 select act_as_reset();
 
 select assert_true(
@@ -1361,7 +1393,7 @@ select assert_equals(
   1, 'and auto-dispatch really is off, and says so in the log');
 
 select act_as('33333333-0000-4000-8000-00000000cccc');
-select public.ops_set_setting('auto_dispatch_enabled', 'true'::jsonb);
+select public.ops_set_setting('auto_dispatch_enabled', 'true'::jsonb, 'suite');
 select act_as_reset();
 
 -- ─── 9b. the rate card ──────────────────────────────────────────────────────
@@ -1512,6 +1544,9 @@ select assert_true(
 select act_as('11111111-0000-4000-8000-00000000aaaa');
 select assert_raises($$select public.ops_set_commission(5, 'helping myself')$$,
   'a shipper cannot set the commission');
+select act_as_reset();
+update private.ops_users set level = 'dispatcher' where profile_id = '33333333-0000-4000-8000-00000000cccc';
+select act_as('11111111-0000-4000-8000-00000000aaaa');
 select assert_raises($$select public.ops_commission()$$,
   'nor read it — it is not their business what a driver is paid');
 select act_as_reset();
@@ -1633,6 +1668,48 @@ select assert_true(
     where kind = 'test' order by id desc limit 1),
   'with a webhook set, the alert is queued to pg_net');
 
+-- ─── 10c. alerts by email (0048) ────────────────────────────────────────────
+
+delete from private.app_settings where key = 'alert_webhook_url';
+insert into private.app_settings (key, value)
+values ('alert_email_to', '"founder@example.com, ops@example.com"'::jsonb)
+on conflict (key) do update set value = excluded.value;
+select private.system_raise_alert('test_email', 'no key yet', '{}'::jsonb);
+select assert_true(
+  (select email_request_id is null from private.ops_alerts
+    where kind = 'test_email' order by id desc limit 1),
+  'an address without the Vault key sends nothing — and does not fail');
+
+select vault.create_secret('re_test_key', 'resend_api_key');
+select private.system_raise_alert('test_email',
+  E'2 loads waiting over 30 min\nf3f3f3f3 9a8b7c6d', '{}'::jsonb);
+select assert_true(
+  (select q.url = 'https://api.resend.com/emails'
+      and q.headers->>'Authorization' = 'Bearer re_test_key'
+      and b->'to' = '["founder@example.com", "ops@example.com"]'::jsonb
+      and b->>'subject' = '[Truckkoo] 2 loads waiting over 30 min'
+      and b->>'text' like '%f3f3f3f3%'
+      and b->>'from' like '%onboarding@resend.dev%'
+     from private.ops_alerts a
+     join net.http_request_queue q on q.id = a.email_request_id,
+          lateral (select convert_from(q.body, 'utf8')::jsonb as b) x
+    where a.kind = 'test_email' order by a.id desc limit 1),
+  'with an address and a key, the alert is emailed: every recipient, first line as subject');
+
+select assert_true(
+  not has_table_privilege('authenticated', 'vault.secrets', 'select')
+  and not has_table_privilege('anon', 'vault.secrets', 'select')
+  and not exists (select 1 from private.app_settings where value::text like '%re_test_key%'),
+  'the key lives only in Vault, which no client role reads');
+
+select assert_true(
+  (select not (h->'problems' ? 'no alert destination is set — alerts are recorded but not sent')
+     from (select private.system_health() as h) x),
+  'health counts email as somewhere for alerts to go');
+
+delete from private.app_settings where key = 'alert_email_to';
+delete from vault.secrets where name = 'resend_api_key';
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- 11. Migration 0035 — client errors, app config, outside health check
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1742,7 +1819,7 @@ select act_as_reset();
 
 select assert_true(
   (select (h->>'ok')::boolean = false
-      and h->'problems' ? 'alert_webhook_url is not set — alerts are recorded but not sent'
+      and h->'problems' ? 'no alert destination is set — alerts are recorded but not sent'
      from (select private.system_health() as h) x),
   'health is not ok while alerts have nowhere to go');
 

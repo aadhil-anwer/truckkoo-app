@@ -44,7 +44,11 @@ jest.mock('expo-web-browser', () => ({
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
   launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
+
+// jest-expo's automock returns undefined; the booking request id (0047) needs a real one.
+jest.mock('expo-crypto', () => ({ randomUUID: () => require('node:crypto').randomUUID() }));
 
 jest.mock('expo-font', () => ({ useFonts: () => [true, null], isLoaded: () => true }));
 jest.mock('expo-splash-screen', () => ({
@@ -143,6 +147,21 @@ jest.mock('expo-location', () => ({
   getCurrentPositionAsync: jest.fn(async () => null),
   getLastKnownPositionAsync: jest.fn(async () => null),
   reverseGeocodeAsync: jest.fn(async () => []),
+}));
+
+/* ─── expo-notifications (native, 0046) ──────────────────────────────────── */
+
+// Default: never asked. A test about push sets what it needs.
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4 },
+  setNotificationHandler: jest.fn(),
+  getPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'undetermined', canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'denied', canAskAgain: true })),
+  setNotificationChannelAsync: jest.fn(async () => null),
+  getExpoPushTokenAsync: jest.fn(async () => ({ type: 'expo', data: 'ExponentPushToken[testtokenaaaaaaaa]' })),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
 }));
 
 /* ─── react-native-maps (native; one screen uses it) ─────────────────────── */

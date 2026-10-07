@@ -9,6 +9,190 @@ an entry only when it is actually closed.
 
 ---
 
+## Pickups: distance, jobs inside one town, waiting (0068–0069, 2026-10-06)
+
+Launch is pickups, one town at a time, fixed prices, 0% commission. Built:
+price between the pins, same-town jobs (both pins, ≥300 m apart), waiting
+terms on the rate card, automatic arrival from the phone's reports, the
+shipper's "Driver isn't here", staff check-in / waive / release, a cap that
+opens a case. Bidding is hidden (`BIDDING` off), still built.
+
+- **Nothing here has run on a phone.** Automatic arrival depends on the OS
+  delivering background fixes every 30 s / 150 m while heading to a pickup.
+  `distanceInterval: 150` means a parked truck sends nothing more — fine, since
+  the first fix inside 300 m is the arrival — but a truck that reaches the gate
+  between fixes is noticed late. Measure on a cheap Android before launch.
+- **Fake-GPS apps are not blocked** (founder's choice, 2026-10-06). Android
+  marks mocked fixes; the app does not send that flag. The defence is the
+  shipper, who is pushed "your truck is here" while standing at the gate.
+- **An impossible jump** (25 km in 5 min to the pin) is not flagged. Possible
+  later from the last stored fix.
+- **A driver offline and with the app killed** sends no fixes and is never
+  checked in; staff check-in covers it.
+- **Pins set the price.** A shipper can pin short and phone the driver another
+  address. The driver sees both pins before accepting; there is no check that
+  delivery happened at the drop pin yet.
+- **The rate card is empty.** Fixed prices and waiting need the pickup band
+  loaded by hand in the console (Money) before launch.
+- **18 Arabic and 18 Urdu strings are drafts** (`wait.*`, `places.pin.need*`,
+  `places.pin.setPickup`, `places.pin.tooClose`), and the two location
+  disclosure strings (`loc.ask.body`, `drv.avail.why`) were rewritten in all
+  three languages to say location is also used while on a job. The store
+  listing's data-safety answers must say the same.
+- **The console** needs the waiting fields on the rate card form and the trip
+  page's waiting panel (check in / waive / release) — see `~/truckkoo-ops`.
+
+## Support desk (0062–0066, 2026-10-06)
+
+The support desk is built: cases with deadlines and a thread, strikes
+(suspected until a person confirms, appealable), detectors for no-shows,
+silent trucks and returning suspended accounts, playbooks, a driver's "Release
+this job", staff messages with push, and reports with photos. What is still
+open:
+
+- **Nothing here has been seen on a phone.** The app screens (release, my
+  record, appeal, my reports, messages, photo reports) are verified by Jest
+  only; the console by Vitest and a browser walk on a local stack. Done when a
+  driver and a shipper have each used them on a real Android phone.
+- **71 new Arabic strings and 71 Urdu strings are drafts** (support desk block
+  at the end of the `ar` and `ur` dictionaries), and the console's WhatsApp
+  message templates (`truckkoo-ops/src/lib/templates.ts`) are drafts too. Done
+  when a native reader has proofed them; `npm run preview:rtl` groups them
+  under "Support desk".
+- **Detector thresholds are guesses.** No-show at 14:00 on the last pickup day,
+  abandonment after 10 h of silence, returning accounts by phone or plate. They
+  are owner settings; tune them from real cases before trusting the board.
+- **Fixed on the way (0066), pre-existing since 0001:** trips had
+  `UNIQUE(load_id)`, so any cancelled trip — a staff cancel, a send-back, a
+  release — blocked every later accept of its load and the shipper waited for
+  ever. Now one LIVE trip per load. Any new code that reads a trip by load must
+  prefer the non-cancelled one.
+
+---
+
+## From the Load 24 teardown (2026-10-04)
+
+Load 24 (Nafith) runs two Oman apps: a trucker app and a cargo-owner app. Both
+were walked on a phone and the shipper APK was read offline. The screenshots
+and notes are in `~/load24-teardown/` (outside the repo). The test account was
+deleted afterwards.
+
+Their model is a two-sided load board. Shippers post "deals" or browse trucks,
+drivers browse deals, and the two sides bid and phone each other. Their
+markets are Oman and Egypt, with locations at governorate level. Each entry
+below is something they do that we lack, or a weakness of theirs that we only
+beat on paper so far.
+
+### Drivers wait with nothing to do after sign-up
+
+Their drivers upload documents and then find Deals, Offers and Availability
+locked behind "Your account is under review", with no time estimate. Our
+verification now collects ID front/back, mulkiya, truck photo, plate and maximum
+capacity during signup (0050). Driver home has a document/review card, and the
+account screen reopens the upload flow. Ops reviews documents before verifying
+the truck and driver. The migration enables the verified-driver dispatch gate.
+
+**Remaining:** physical-device upload/retry proof, human review of the copy,
+and deployment. No review-time promise has been invented. Blank or blurred
+photos require human rejection; automatic image-quality detection is deferred.
+
+### Urdu — complete draft copy, device proof pending, 2026-10-05
+
+The founder chose Urdu. Every English dictionary key now has Urdu draft copy,
+with persistence, profile storage, native first-launch RTL, font handling and
+an account selector. Placeholder coverage is checked and `preview:rtl` writes
+an Urdu proof sheet alongside Arabic.
+
+**Remaining:** native-reader proofreading and a fresh-install device check.
+City/truck proper names use English until an approved Urdu reference source exists.
+
+### "No commission" is their headline, and we say nothing
+
+Their first screen for drivers is "No commission – earn more!". Their own Terms
+say fees "are subject to change". Our bid fee is meant to be 0 at launch
+(`ops_set_bid_fee(0, …)`), but no screen or page says so.
+
+**Done when:** the fee rule is written in the app and on the website. It must
+not be a slogan that can be taken back, and it must match the configured fee.
+
+**In the app, 2026-10-07:** the driver's offer and trip hero say "No commission
+on this job. The whole price is yours." whenever that job's `owed` is 0. It is
+read from the job, not a setting, so it disappears by itself once commission is
+switched on. **Still open:** the website, and the end date of the 0% period
+(a founder decision) — nothing promises a date until one is chosen.
+
+### Shipment problem reports — implemented, deployment pending
+
+They have Report abuse on a truck (`TRUCK_ALREADY_REPORTED` guards repeats). We
+now have participant-scoped reports from load/trip screens (0052), with a guarded,
+audited ops queue in `~/truckkoo-ops`. Unassigned loads cancel immediately;
+assigned/in-transit cancellation requests go to dispatch without abandoning cargo.
+
+**Remaining:** clean database-suite validation and physical-device/ops workflow
+proof. Case resolution records what dispatch did; any trip/load state change uses
+the existing guarded ops action on the linked load.
+
+### WhatsApp OTP — dormant integration and screens
+
+The signed Supabase Auth hook, client transport and phone/code screens are
+implemented behind `WHATSAPP_AUTH = false`. Meta's number, credentials and
+approved authentication template are not available. Email/OAuth remains active.
+Account linking, the approved template shape and real delivery/device tests remain
+activation gates; see `docs/whatsapp-otp-activation.md`.
+
+### Validation of 0050–0053
+
+Mobile typecheck/lint pass, with two existing duplicate-import warnings. All 814 mobile
+assertions pass across 60 suites; Jest still retains an unidentified handle, including under
+`--detectOpenHandles`, so the final test command uses `--forceExit`. Ops typecheck,
+lint and 73 tests pass using Vitest's runner config loader with caching disabled.
+Arabic/Urdu proof generation and migration numbering pass. The final focused,
+rollback-only SQL suite passes verification, storage isolation, signup, reports,
+cancellation and bidding ops guards. Bidding visibility stays out of ops by the
+founder's decision; fixed-price actions are rejected server-side for bid loads.
+
+The full database command stops in the existing tenant test: `match_load` expects
+one matching leg but finds three in the shared demo database. That instance also
+contains newer staff-security changes from another checkout. No production
+deployment or device proof has occurred. Local schema was applied manually;
+migration history remains at 0049. Validate every suite on a clean isolated
+instance before deploying; do not reset the shared database or fake its history.
+
+### Our edges over them exist in code but not in what we say
+
+Load 24 tracks only by request: the shipper sends a tracking request (even by
+typing any trucker's phone number) and the driver must accept it. Their shipper
+app shows drivers' full names, prices and a Call button to anyone, without
+logging in. Support is Sun–Thu 9–6. They price nothing until drivers bid.
+Ours:
+- tracking is on for every in-transit trip (0032);
+- drivers are invisible to shippers until assigned;
+- support is "7 days a week";
+- the price is instant, but only once the rate card is loaded (issue 13).
+
+**Done when:** onboarding, the website and the driver pitch say these four
+things in plain words, and the rate card makes the instant price real.
+
+### Their mistakes, written down so we don't repeat them
+
+- **A 60-minute resend wait on the sign-up code**, with no "change number". When
+  WhatsApp codes land, keep the resend under a minute and offer an edit link.
+- **Blank document photos accepted.** Five solid-black images passed as a
+  licence, a mulkiya and a truck photo. Any upload we add needs a blank/blur check.
+  **Blank check added 2026-10-07** (`src/lib/photo-check.ts`): driver documents
+  and proof-of-delivery JPEGs under 0.008 bytes per pixel are refused with
+  "This photo looks empty". The threshold is reasoned, not measured on a phone —
+  confirm it on a device with a covered lens and a dim real photo. Blur stays a
+  reviewer's call.
+- **Permissions asked before any value is shown.** Notifications came on first
+  launch, location immediately after sign-up, both with generic wording. Theirs
+  is good in one place: nearby deals are blurred behind "Allow Location".
+- **Guests see an empty screen.** Neither of our apps has a guest view yet. If
+  we add one, it must show something real, such as a route price, never "come
+  back later".
+
+---
+
 ## Automatic dispatch (0036, 2026-09-27)
 
 Uber/Porter-style dispatch replaced the dispatcher as the first step: instant
@@ -18,12 +202,11 @@ before a person is alerted. Proven by `supabase/tests/dispatch.sql` (56
 assertions), the other three suites (updated), concurrency runs against two
 live sessions, and `tests/integration/auto-dispatch-screens.test.tsx`.
 
-**Before launch — `require_verified_driver` is still OFF.** Left off on the
+**Production status must be checked — `require_verified_driver` was OFF.** Left off on the
 founder's call (2026-09-27) so the app could be shared before drivers were
 vetted. While off, unverified drivers are offered loads — which contradicts the
-website's "100% verified drivers". Near launch: verify the real drivers in the
-ops console, then
-`update private.app_settings set value = 'true' where key = 'require_verified_driver';`
+website's "100% verified drivers". Migration 0050 now enables the flag. Before
+applying it, review the real driver/truck records in the ops console;
 (`nearby_drivers` and `accept_offer` both honour it; dispatch.sql tests both ways).
 
 **When 0036 reaches production:**
@@ -47,9 +230,8 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   `no_rate` and goes to a person; automatic dispatch cannot start until a
   dispatcher enters real rates in the ops console. Not a code fix — rates are
   never invented in a migration.
-- **A priced load waits on the shipper, who is not told.** `ops_set_price` moves
-  a load to `quoted`; dispatch starts only when the shipper accepts it in the
-  app, and nothing tells them a price arrived (no push, no WhatsApp).
+- **A priced load waits on the shipper** — who is now told by push (0046,
+  "Your price is ready") once 1.2.0 is installed. No WhatsApp message.
 - **Drivers are online by default (0038, founder's call 2026-09-28).** Every
   driver starts on and the 12-hour auto-off is disabled; switching off still
   works. Cost: offers reach drivers not looking at the app and lapse, and since
@@ -61,8 +243,7 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   (a native change — `eas update` cannot deliver it, and a 1.0.0 build must not
   receive 1.1.0 JS); the Google Play background-location declaration with a video
   of the disclosure screen; the device check below. Known gaps: iOS permission
-  text is English-only; after a hard "Don't allow" there is no in-app link to
-  Settings; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
+  text is English-only; no battery-optimisation exemption prompt, so Xiaomi/Samsung/Oppo may
   kill the task (ranking then falls back to the town after 45 min). Better
   options were set aside for now — Transistorsoft background-geolocation, on-demand
   location via silent push, Google road-distance APIs — the spec's §9 says when
@@ -104,20 +285,94 @@ card re-reads the switch every minute, so the 12-hour auto-off is visible.
   5. As a driver offered that load: the place, note and Call show; pass → reopen
      the offer → gone. Accept another → D7 "Directions to <place>" opens Google
      Maps at the gate.
-- **No push notifications (plan Phase E).** Drivers see a new offer only while
-  the app is open (offers poll every 15 s); a wave lasts 5 minutes. Needs a
-  Firebase project + FCM credentials in EAS and a new dev build. Until then,
-  waves reach only drivers looking at their phone.
+- **Push notifications are built (0046, app 1.2.0) and have never reached a
+  phone.** See *Push notifications* below for what has to happen first.
 - **Ops console not updated (Phase F).** It shows new `dispatch_log` modes
   (`nearby`, `mixed`) and the `exhausted` ending raw, and still has the stale
   "In phase 2 you will be able to send one" copy.
-- **A double tap can book twice.** `book_load`, like `post_load` before it, has
-  no idempotency key; the button disables while pending, but a retry after a
-  timeout on bad signal posts a second load. Fix: a client request id, unique
-  per shipper.
+- **A double tap can book twice — FIXED IN SOURCE 2026-10-04 (0047), not yet in
+  production.** `book_load` and `post_bid_load` take an optional request id; the
+  review screen makes one per visit and sends it on every tap, so a retry after a
+  timeout gets the first load back (dispatch.sql §12, bidding.sql §15). Order
+  matters: `npx supabase db push` **before** the JS ships — the new parameter
+  does not exist on 0046's functions, so the app would fail every booking. A
+  binary without the change sends no id and books as before. Still open: leaving
+  the review screen and coming back makes a new id, so a timeout followed by
+  Back → Book again can still post twice.
 - **The shipper is not told when a price changed under them.** `book_load` posts
   unaccepted and the load screen shows the new price to accept, but says nothing
   about it having moved.
+
+## Push notifications (0046, app 1.2.0, 2026-10-04)
+
+Founder's call: a driver hears about a new job and getting it; a shipper hears
+about a price arriving (a bid, prices closing, or a dispatcher's price), a
+driver assigned, pick-up and delivery. Asked right after sign-up, and once more
+if a permission that was on is switched off. Database triggers send through
+Expo's push service via pg_net — no service-role key, no Edge Function.
+Proven by `supabase/tests/push.sql` (22 assertions, bodies checked in both
+languages) and `tests/unit/push.test.ts` / `tests/integration/push-screens.test.tsx`.
+
+**Before it reaches anyone — all founder steps:**
+1. Firebase project → add the Android app `com.truckkoo.app` → download
+   `google-services.json` → `eas env:create --type file --name
+   GOOGLE_SERVICES_JSON` (preview + production).
+2. Firebase → Project settings → Service accounts → generate a key, then
+   `eas credentials` → Android → *FCM V1 service account key* → upload it.
+3. iOS: `eas credentials` creates the APNs key on the first iOS build.
+4. `npx supabase db push` (0045, 0046).
+5. **A new build, 1.2.0** — `expo-notifications` is native, so `eas update`
+   cannot deliver it, and 1.1.0 phones must not receive 1.2.0 JS (the
+   `runtimeVersion` policy already prevents that).
+
+**Device check (preview 1.2.0, one Android phone):**
+1. Fresh install, sign up → "Get a buzz…?" appears → Turn on → Android's dialog.
+2. As a shipper, book; as a driver on a second phone, see "New job" with the app
+   closed; tap it → the bid screen opens.
+3. Send a price → the shipper's phone buzzes "New price"; tap → the load.
+4. Accept → driver "You got the job"; pick up, deliver → shipper buzzes twice.
+5. Turn notifications off in Settings, reopen → the question appears once;
+   Turn on → Settings opens.
+6. Sign out → no further buzzes on that phone.
+
+**Open:**
+- **Dead tokens are never pruned.** Expo reports `DeviceNotRegistered` in its
+  response (in `net._http_response`); nothing reads it yet. Harmless at this
+  volume; a sweep belongs in a `system_*` job.
+- **Message copy is in SQL**, not `t()` — the server composes it. The Arabic
+  there is drafted, like the unproofed block, and needs the same reader.
+- **No quiet hours, no per-kind opt-out.** One switch: on or off.
+
+## Driver bidding (0045, 2026-10-04)
+
+Drivers name the price; the shipper chooses, or sets a limit and lets the
+server take the cheapest price within it. `docs/bidding-v1-design.md` is the
+decision record. Proven by `supabase/tests/bidding.sql` (60 assertions) and
+`tests/integration/bidding-screens.test.tsx`; the client's RPC parameters and
+returned columns were checked against the local database. Behind
+`BIDDING` in `src/lib/features.ts` — on.
+
+**Before it reaches shippers:**
+- `npx supabase db push` (0045), then set the fee from the console:
+  `ops_set_bid_fee(0, 'launch: no commission for six months')`. Until a fee is
+  set, posting refuses with "bid fee is not configured" and the booking review
+  says "We could not post that".
+- An `eas update` is enough — no native change. Publish only after the
+  migration and the fee are live.
+- **Nobody has walked it.** Not on a phone, not on web: post → invitation →
+  price → accept, end to end, is the device check.
+
+**Open:**
+- **Push lands with 0046 / app 1.2.0.** Until that build is installed,
+  invitations and prices appear only while the app is open (both poll every
+  15 s).
+- **The limit can be set only while booking.** `set_bid_target` exists and is
+  tested; the load screen has no control for it yet.
+- **Dispatcher actions are not bid-aware** (`ops_send_offer`, `ops_set_price`).
+  Harmless while no dispatcher acts.
+- **Ops console** shows bid loads with raw statuses and knows nothing of bids.
+- The question screens for an amount show a `1 / 1` step counter on the
+  driver's price screen — a one-question flow in the shared shell.
 
 ## Sentry (2026-09-26)
 
@@ -227,7 +482,13 @@ trips against a database without 0033 shows the history's retry state, not a
 crash. Push with `npx supabase db push` before handing out a build. The daily
 `drift.yml` check fails while this (or any migration) is unapplied.
 
-### The city list never retries after one failure
+### The city list never retries after one failure — FIXED IN SOURCE 2026-10-04
+
+Now: `useCities`/`useTruckTypes` refetch on foreground (`focusManager`), on
+pull-to-refresh on every tab and the load screen, and every 30 s while failed
+(`RETRY_WHILE_FAILED`, `tests/unit/reference-queries.test.tsx`). Still open: a
+screen shows "—" rather than a skeleton until the list arrives. Unverified on a
+device. The original report:
 
 `useCities` is `staleTime: Infinity`. If its one fetch fails — bad signal, or a
 database that was missing `lat`/`lng` as production was on 2026-09-26 — every
@@ -372,7 +633,7 @@ X1 and X2 shipped, `t()` gained typed placeholders, the Arabic dictionary was
 completed, and the audit tooling was built. No backend change — `npm run test:db`
 was run against a fresh `db reset` to confirm it.
 
-### 254 Arabic strings have never been read by someone who reads Arabic
+### 320 Arabic strings have never been read by someone who reads Arabic
 
 The dictionary went from 173 of 387 keys to all 387. They are not all of one
 kind, and the difference matters:
@@ -382,7 +643,7 @@ kind, and the difference matters:
   screen and a whole question screen.
 - **Assembled.** Where a P7 key merged older fragments, the Arabic is those same
   words in Arabic order — no new vocabulary.
-- **Drafted — 254 of them** (191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
+- **Drafted — 320 of them**, counted from the block itself on 2026-10-04 (the running total kept here had drifted to 254 against a real 289 before bidding; 191 at P7, plus 6 map labels and 14 dispatch strings, 2026-09-27, 11 driver-location strings, 2026-09-28, and `pos.secondsAgo` for live T4 and `drv.trip.directionsTo` for D7, 2026-09-28, and 30 `places.*` strings for shipper places, 2026-09-28, and 44 bidding strings, 2026-10-04, less 23 that left with `post-load.tsx`, and 10 for push notifications; `drv.avail.why` was also rewritten). Not from either source. They sit in one delimited
   `UNPROOFED DRAFTS` block at the end of the `ar` dictionary in
   `src/i18n/index.ts`, kept together so a reviewer reads one section rather than
   searching 387 lines.
@@ -463,14 +724,13 @@ as capable of inventing a position as a map marker is.
 **Done when:** it becomes a problem, at which point the fix is a batched
 `trip_positions_for(load_ids[])` rather than a client-side estimate.
 
-### `legacy.tsx` survives, for one screen
+### `legacy.tsx` survives, for one screen — RESOLVED 2026-10-04
 
-`grep -rl "components/legacy" src/app` returns `post-load.tsx` alone. The four
-auth screens came off it on 2026-09-26 (the P2 interim, below). `post-load.tsx` is
-still the target of "Send this route again" on the shipper home and T5.
-
-**Done when:** "send again" pre-fills the booking flow instead, and the file can
-be deleted.
+"Send this route again" now fills a fresh booking draft from the old load and
+opens the booking flow on the date (`draftFromLoad`, `startDraft`).
+`post-load.tsx`, `picker.tsx` and `legacy.tsx` are deleted, with 41 strings only
+they used, and `usePostLoad` / `useQuoteRoute`, which lost their only caller.
+`post_load` stays on the server for installed builds.
 
 ### P2 runs on email until WhatsApp codes land — INTERIM 2026-09-26
 
@@ -608,11 +868,11 @@ Tokens, fonts, primitives, icons and numerals are in and tested, but P0
 deliberately built none of the 32 designed screens. Every existing screen was
 carried over mechanically to the nearest new token, so the app currently looks
 **transitional**: right colours and type, old layouts. `src/components/legacy.tsx`
-holds the old vocabulary on new tokens until each phase replaces its screens.
+held the old vocabulary on new tokens until each phase replaced its screens; the
+last one went on 2026-10-04 and the file with it.
 
-**Done when:** P1–P7 are built. Nothing to fix here — this entry exists so a
-transitional screenshot is not mistaken for a bug, and so
-`grep -rl "components/legacy" src/app` is understood as a to-do list.
+**Done when:** every screen has been seen on a phone — the transition itself is
+complete.
 
 ### Three of the handoff's text colours were sub-AA, and the ramp had to change
 
@@ -1450,13 +1710,13 @@ the screen is not — see 8c.
 
 ## Deferred by decision
 
-### 6. Driver verification is built but not surfaced
+### 6. Driver verification — implemented locally, validation pending
 
-`profiles.verified_at` exists and `private.is_verified_driver()` gates on it,
-but there is no verification UI and the gate sits behind a flag. Deferred
-deliberately — the MVP proves matching first. Public copy already claims "100%
-verified drivers", so this cannot ship to real users unverified without either
-the flow or a change to the claim.
+Migration 0050 and the signup/upload/ops review surfaces implement this flow.
+Verification lives on `drivers.verified_at`; all four documents and a reviewed
+truck with plate/capacity are required for new verification. Existing verified
+records are grandfathered. See the Load 24 entries above for remaining validation
+and deployment gates.
 
 ### 7. Arabic copy is partial — HALF CLOSED 2026-08-01
 
@@ -1492,7 +1752,7 @@ the real numbers with a note. Never adjust them down to silence a regression.
 
 Not covered by the suite, and worth knowing before trusting it:
 
-- `post-load`, `post-leg`, `trip/[id]`, and all four auth screens have no tests.
+- `post-leg`, `trip/[id]`, and all four auth screens have no tests.
   Issue 18 was a driver-blocking bug in `sign-up.tsx` that no test could have
   caught; the hook underneath it is pinned now, the screen still is not.
 

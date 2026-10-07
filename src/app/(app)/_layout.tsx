@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 
 import { MapPlacesProvider } from '@/map';
 import { LocationTrackingProvider } from '@/lib/location-tracking';
+import { PushProvider } from '@/lib/push-provider';
 import { useCities } from '@/lib/queries';
 import { color } from '@/theme/tokens';
 
@@ -11,6 +12,7 @@ export default function AppLayout() {
   const { data: cities } = useCities();
   return (
     <LocationTrackingProvider>
+      <PushProvider>
       <MapPlacesProvider places={cities}>
         <Stack
           screenOptions={{
@@ -19,6 +21,7 @@ export default function AppLayout() {
           }}
         />
       </MapPlacesProvider>
+      </PushProvider>
     </LocationTrackingProvider>
   );
 }

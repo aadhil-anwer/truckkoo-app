@@ -1,0 +1,68 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+example
+
+# generated native folders
+/ios
+/android
+
+# secrets — never commit
+.env
+.env.local
+.env*.local
+
+# Stray documents that land in the project root. A `git add -A` swept a 17MB
+# personal PDF into a commit once; these patterns are what stops the next one.
+/*.pdf
+/*.zip
+
+# SDD scratch and generated map previews
+.superpowers/
+
+# Installers and archives downloaded into the repo by accident. A 133 MB Chrome
+# .deb was committed once and blocked every push until history was rewritten.
+*.deb
+
+# Browser-automation screenshots and logs (design audits).
+/.playwright-mcp/
+
+# Local agent configuration and instructions are not app build inputs.
+/.agents/
+/.codex/
+/AGENTS.md

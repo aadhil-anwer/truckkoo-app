@@ -8,10 +8,12 @@
  * so most of what follows asserts an absence.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { initLanguage } from '@/i18n';
 import * as language from '@/lib/language';
+
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
@@ -33,10 +35,14 @@ jest.mock('react-native-safe-area-context', () => {
 
 jest.mock('@/lib/session', () => ({ useSession: jest.fn() }));
 jest.mock('@/lib/auth', () => ({ signOut: jest.fn() }));
+const mockMessages = { current: [] as { id: string; read_at: string | null }[] };
+jest.mock('@/lib/queries', () => ({ useMyMessages: () => ({ data: mockMessages.current }) }));
 
 import AccountTab from '@/app/(app)/(tabs)/account';
+import * as pushContext from '@/lib/push-context';
 
 const { useSession } = jest.requireMock('@/lib/session');
+const { signOut: mockSignOut } = jest.requireMock('@/lib/auth');
 
 const session = (role: 'shipper' | 'driver') => ({
   profile: {
@@ -51,6 +57,23 @@ const session = (role: 'shipper' | 'driver') => ({
 beforeEach(() => initLanguage('en'));
 
 describe('X2 · account', () => {
+  it('shows a retryable error when global sign-out fails', async () => {
+    useSession.mockReturnValue(session('driver'));
+    mockSignOut.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
+    await render(<AccountTab />);
+    await fireEvent.press(screen.getByLabelText('Sign out'));
+    await waitFor(() => expect(screen.getByText('Could not sign out. Check your connection and try again.')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('Sign out'));
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts unread messages from Truckkoo in the row, not as a tab badge', async () => {
+    mockMessages.current = [{ id: 'm1', read_at: null }, { id: 'm2', read_at: null }, { id: 'm3', read_at: '2026-10-01' }];
+    await render(<AccountTab />);
+    expect(screen.getByLabelText('Messages from Truckkoo, 2 new')).toBeTruthy();
+    mockMessages.current = [];
+  });
+
   it('names the role in the second person', async () => {
     useSession.mockReturnValue(session('driver'));
     await render(<AccountTab />);
@@ -131,5 +154,37 @@ describe('X2 · account', () => {
     // Both options must still be their own reachable radios.
     expect(screen.getByRole('radio', { name: 'English' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'العربية' })).toBeTruthy();
+  });
+});
+
+describe('X2 · notifications', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const pushState = (access: 'granted' | 'denied') => {
+    const request = jest.fn(async () => 'granted' as const);
+    jest.spyOn(pushContext, 'usePush').mockReturnValue({
+      access,
+      settled: true,
+      request,
+      decline: jest.fn(),
+      settle: jest.fn(),
+    });
+    return request;
+  };
+
+  it('keeps a way back to notifications after "Not now"', async () => {
+    useSession.mockReturnValue(session('shipper'));
+    const request = pushState('denied');
+    await render(<AccountTab />);
+    fireEvent.press(screen.getByLabelText('Notifications, Off — tap to turn on'));
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('says they are on, and offers nothing to press, once they are', async () => {
+    useSession.mockReturnValue(session('driver'));
+    pushState('granted');
+    await render(<AccountTab />);
+    expect(screen.getByText('On')).toBeTruthy();
+    expect(screen.queryByLabelText(/Notifications, /)).toBeNull();
   });
 });

@@ -18,10 +18,12 @@ import {
   SALALAH,
   TRUCK,
   mockBookMutate,
+  mockPostBidMutate,
   mockBack,
   mockLocation,
   mockLocationAccess,
   mockPush,
+  mockReplace,
   mockSetAvailableMutate,
   ok,
   PENDING,
@@ -36,26 +38,27 @@ import LocationPermission from '@/app/(app)/location-permission';
 import { __resetLocationPrompt } from '@/lib/location-prompt';
 import { expiryLabel } from '@/components/driver/OfferCard';
 import { initLanguage } from '@/i18n';
+import * as features from '@/lib/features';
 import * as queries from '@/lib/queries';
 import { offerErrorMessage } from '@/lib/offer-errors';
 
-const mockDraft = {
-  current: {
-    originCityId: MUSCAT.id,
-    destinationCityId: SALALAH.id,
-    destinationCountry: 'OM',
-    collectionDate: '2026-09-28',
-    cargoDescription: 'Building materials',
-    truckPreference: 'auto',
-    weightKg: 8000,
-  } as Record<string, unknown>,
+const baseDraft = {
+  originCityId: MUSCAT.id,
+  destinationCityId: SALALAH.id,
+  destinationCountry: 'OM',
+  collectionDate: '2026-09-28',
+  cargoDescription: 'Building materials',
+  truckPreference: 'auto',
+  weightKg: 8000,
 };
+const mockDraft = { current: { ...baseDraft } as Record<string, unknown> };
+let mockDraftReady = true;
 
 jest.mock('@/lib/booking', () => {
   const actual = jest.requireActual('@/lib/booking');
   return {
     ...actual,
-    useBookingDraft: () => ({ draft: mockDraft.current, update: jest.fn(), ready: true }),
+    useBookingDraft: () => ({ draft: mockDraft.current, update: jest.fn(), ready: mockDraftReady }),
     clearDraft: jest.fn(async () => {}),
   };
 });
@@ -66,10 +69,46 @@ beforeEach(() => {
   initLanguage('en');
   resetQueries(queries as unknown as Record<string, unknown>);
   m('useTruckTypes').mockReturnValue(ok([TRUCK]));
-  mockDraft.current = { ...mockDraft.current, truckPreference: 'auto', weightKg: 8000 };
+  mockDraft.current = { ...baseDraft };
+  mockDraftReady = true;
+});
+
+describe('Review recovery', () => {
+  it('shows a visible loading shell while draft storage is pending', async () => {
+    mockDraftReady = false;
+    await render(<Review />);
+    expect(screen.getByText('Check this before we start')).toBeTruthy();
+  });
+
+  it('lets the shipper repair a missing route instead of settling on a blank screen', async () => {
+    mockDraft.current = { ...mockDraft.current, originCityId: null };
+    await render(<Review />);
+    await fireEvent.press(screen.getByLabelText('Continue booking'));
+    expect(mockReplace).toHaveBeenCalledWith('/book/origin');
+  });
+
+  it('offers a retry when the city list fails to load', async () => {
+    const refetch = jest.fn();
+    m('useCities').mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
+    await render(<Review />);
+    await fireEvent.press(screen.getByLabelText('Try again'));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('keeps a usable review visible when a background city refresh fails', async () => {
+    m('useCities').mockReturnValue({ ...ok([MUSCAT, SALALAH]), isError: true });
+    await render(<Review />);
+    expect(screen.getByLabelText('Muscat to Salalah')).toBeTruthy();
+    expect(screen.queryByLabelText('Try again')).toBeNull();
+  });
 });
 
 describe('Review — the price is the price', () => {
+  // The fixed-price path, which is what BIDDING off falls back to.
+  beforeEach(() => {
+    jest.replaceProperty(features, 'BIDDING', false);
+  });
+
   it('shows the exact price and books at it', async () => {
     await render(<Review />);
     expect(screen.getByText('YOUR PRICE')).toBeTruthy();
@@ -85,6 +124,51 @@ describe('Review — the price is the price', () => {
       truckTypeCode: null,
       seenPriceBaisa: 405698,
     });
+  });
+
+  it('says the waiting terms with the price, before booking (0069)', async () => {
+    m('useRoutePrice').mockReturnValue(ok({ price_baisa: 4400, currency: 'OMR', outcome: 'quoted', truck_type_code: 'pickup',
+      km: 7.5, wait_free_minutes: 20, wait_per_15min_baisa: 1000 }));
+    await render(<Review />);
+    expect(screen.getByText('First 20 min free, then 1.000 OMR per 15 min')).toBeTruthy();
+  });
+
+  it('asks the price between the pins when the shipper pinned both (0069)', async () => {
+    mockDraft.current = {
+      ...mockDraft.current,
+      originPlace: { lat: 23.68, lng: 58.15, placeName: 'Shop', note: '', contactName: '', contactPhone: '' },
+      destinationPlace: { lat: 23.66, lng: 58.2, placeName: 'Home', note: '', contactName: '', contactPhone: '' },
+    };
+    await render(<Review />);
+    expect(m('useRoutePrice')).toHaveBeenCalledWith(expect.objectContaining({
+      originPin: { lat: 23.68, lng: 58.15 }, destPin: { lat: 23.66, lng: 58.2 },
+    }));
+  });
+
+  it('sends the same request id on a retry, so a timed-out tap cannot book twice', async () => {
+    await render(<Review />);
+    const book = screen.getByLabelText(/^Book for 405\.698 OMR$/);
+    await fireEvent.press(book);
+    await fireEvent.press(book);
+    const [first, second] = mockBookMutate.mock.calls.map(([input]) => input.requestId);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second).toBe(first);
+  });
+
+  it('goes to the load without flashing "incomplete" as the draft is cleared', async () => {
+    const { clearDraft } = jest.requireMock('@/lib/booking') as { clearDraft: jest.Mock };
+    clearDraft.mockImplementationOnce(async () => {
+      // What the real clearDraft does: publish an empty draft at once.
+      mockDraft.current = { ...baseDraft, originCityId: null, destinationCityId: null, collectionDate: null, cargoDescription: '' };
+    });
+    mockBookMutate.mockImplementationOnce((_input, opts) => opts.onSuccess({ loadId: 'new-load' }));
+    await render(<Review />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText(/^Book for 405\.698 OMR$/));
+    });
+    expect(mockReplace).toHaveBeenCalledWith('/load/new-load');
+    expect(mockReplace.mock.invocationCallOrder[0]).toBeLessThan(clearDraft.mock.invocationCallOrder[0]);
+    expect(screen.queryByLabelText('Continue booking')).toBeNull();
   });
 
   it('names the truck let-us-choose was priced for, never its code', async () => {
@@ -147,6 +231,59 @@ describe('Review — the price is the price', () => {
     await render(<Review />);
     fireEvent.press(screen.getByLabelText('Find me a truck'));
     expect(mockBookMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Review — drivers name the price (0045)', () => {
+  beforeEach(() => {
+    jest.replaceProperty(features, 'BIDDING', true);
+  });
+
+  it('shows no rate-card price and says how the price is found', async () => {
+    await render(<Review />);
+    expect(screen.queryByText('YOUR PRICE')).toBeNull();
+    expect(screen.queryByText(/405\.698/)).toBeNull();
+    expect(screen.getByText('HOW IT IS PRICED')).toBeTruthy();
+  });
+
+  it('does not spend a rate-limited price lookup it will never show', async () => {
+    await render(<Review />);
+    expect(m('useRoutePrice')).toHaveBeenCalledWith(expect.objectContaining({ originCity: null }));
+  });
+
+  it('posts for bids with the target, and never a price of its own', async () => {
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: 120500 };
+    await render(<Review />);
+    expect(screen.getByText('120.500 OMR')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    expect(mockBookMutate).not.toHaveBeenCalled();
+    expect(mockPostBidMutate).toHaveBeenCalledTimes(1);
+    const [input] = mockPostBidMutate.mock.calls[0];
+    expect(input).toMatchObject({
+      originCity: MUSCAT.id,
+      destCity: SALALAH.id,
+      truckTypeCode: null,
+      targetTotalBaisa: 120500,
+    });
+    expect(input).not.toHaveProperty('seenPriceBaisa');
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: null };
+  });
+
+  it('says the shipper chooses when no target was given', async () => {
+    mockDraft.current = { ...mockDraft.current, targetTotalBaisa: null };
+    await render(<Review />);
+    expect(screen.getByText('You choose')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    expect(mockPostBidMutate.mock.calls[0][0]).toMatchObject({ targetTotalBaisa: null });
+  });
+
+  it('opens the load once posted, where the prices arrive', async () => {
+    mockPostBidMutate.mockImplementation((_input, opts) => opts.onSuccess({ loadId: 'new-load' }));
+    await render(<Review />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Ask drivers for prices'));
+    });
+    expect(mockReplace).toHaveBeenCalledWith('/load/new-load');
   });
 });
 

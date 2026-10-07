@@ -102,4 +102,28 @@ describe.each([
     await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
     expect(result.current.data).toBeUndefined();
   });
+
+  it('tries again by itself after a failed fetch, with no tap or refocus', async () => {
+    // A dead zone on first launch. Before this, "—" stayed on every city until
+    // the user pulled to refresh, backgrounded the app, or killed it.
+    jest.useFakeTimers();
+    try {
+      mockSession = { user: { id: 'u1' } };
+      const order = jest
+        .fn()
+        .mockResolvedValueOnce({ data: null, error: new Error('network') })
+        .mockResolvedValue({ data: [{ code: '10t' }], error: null });
+      (supabase.from as jest.Mock).mockReturnValue({ select: () => ({ order }) });
+
+      const { result } = await renderHook(() => hook(), { wrapper });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      await jest.advanceTimersByTimeAsync(30_000);
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toHaveLength(1);
+      expect(order).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

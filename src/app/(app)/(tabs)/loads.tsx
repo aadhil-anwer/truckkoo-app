@@ -36,7 +36,7 @@ import {
   Skeleton,
   StatusPill,
 } from '@/components/ui';
-import { align, directionArrow, localized, t, type StringKey } from '@/i18n';
+import { align, directionArrow, localized, t } from '@/i18n';
 import { formatDeadline, formatWindow } from '@/lib/format';
 import { formatMoney, type Currency } from '@/lib/money';
 import {
@@ -48,6 +48,7 @@ import {
   type Load,
   type LoadStatus,
 } from '@/lib/queries';
+import { loadStatusKey } from '@/lib/load-status';
 import { useAnnounceOnError } from '@/lib/use-announce-error';
 import {
   GUTTER_INK,
@@ -259,14 +260,12 @@ function MovingCard({
     <PressableSurface
       onPress={onPress}
       // The card carries the route, so the rail inside it does not repeat it.
-      accessibilityLabel={`${t('route.aria', { origin, destination })}. ${t(
-        `status.${load.status}` as StringKey,
-      )}`}
+      accessibilityLabel={`${t('route.aria', { origin, destination })}. ${t(loadStatusKey(load))}`}
     >
       <Card>
         <View style={styles.cardHead}>
           <StatusPill
-            label={t(`status.${load.status}` as StringKey)}
+            label={t(loadStatusKey(load))}
             tone={PILL_TONE[load.status]}
           />
           {eta ? (

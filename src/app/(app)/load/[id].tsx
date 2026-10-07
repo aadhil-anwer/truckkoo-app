@@ -19,6 +19,13 @@
  *   in_transit              → T4   ETA, progress, what is owed
  *   delivered / closed      → T5   the receipt, and the rating
  *
+ * A BID LOAD (0045, `pricing_mode = 'bid'`) replaces the first three: while
+ * bidding is open (`posted`/`matched`) the prices arrive as a choice with one
+ * pinned "Accept …"; once it closes (`quoted`) the server's proposal is the
+ * price. From `assigned` on it is the same screen as any other load. The branch
+ * follows the load, not the BIDDING flag, so a bid load is never stranded by
+ * turning the flag off.
+ *
  * THE MAP IS THE GROUND, as on home. The corridor is **dashed until a driver
  * actually has the load** — that distinction is load-bearing (DESIGN.md), and
  * drawing it solid at `quoted` would tell a shipper their truck was booked when
@@ -40,8 +47,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Alert, Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -70,8 +77,16 @@ import { formatAge, formatDeadline, formatWeight, formatWindow, reference } from
 import { useTick } from '@/lib/use-tick';
 import { formatMoney, type Currency } from '@/lib/money';
 import { safeText, whatsappLink } from '@/lib/safe-text';
+import { BidsOpen, BidsProposal, choosable } from '@/components/shipper/Bids';
+import { draftFromLoad, startDraft } from '@/lib/booking';
+import { useSession } from '@/lib/session';
 import {
   cityIndex,
+  useAcceptDriverBid,
+  useCloseBidding,
+  useExtendBidding,
+  useShipperBidStatus,
+  useShipperLoadBids,
   useAcceptQuote,
   useCities,
   useCurrentQuote,
@@ -84,6 +99,7 @@ import {
   useTripCounterpart,
   useTripPosition,
   useTripEvents,
+  useTripWaiting,
   useTripTruck,
   useTruckTypes,
   type City,
@@ -94,6 +110,7 @@ import {
   type TripCounterpart,
   type TripTruck,
 } from '@/lib/queries';
+import { WaitingCard } from '@/components/trip/WaitingCard';
 import {
   GUTTER_INK,
   MIN_TARGET,
@@ -113,11 +130,12 @@ const COMMITTED: Load['status'][] = ['assigned', 'in_transit', 'delivered', 'clo
 const MAP_HEIGHT = 420;
 
 export default function TrackLoad() {
+  const { session } = useSession();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { data: cities } = useCities();
+  const { data: cities, refetch: refetchCities } = useCities();
   const { data: truckTypes } = useTruckTypes();
   const loads = useMyLoads();
   const { data: trips } = useMyTrips();
@@ -135,16 +153,44 @@ export default function TrackLoad() {
   // the list IS the authorisation check — there is no id here that could reach
   // someone else's load, and a miss is "not found" rather than "forbidden".
   const load = (loads.data ?? []).find((l) => l.id === id);
-  const trip = (trips ?? []).find((tr) => tr.load_id === id);
+  // A released or sent-back trip stays on record (0066: one LIVE trip per load);
+  // the live one is the one that matters.
+  const trip = (trips ?? []).find((tr) => tr.load_id === id && tr.status !== 'cancelled')
+    ?? (trips ?? []).find((tr) => tr.load_id === id);
 
   // Every one of these no-ops until a trip exists, so T1 and T2 cost nothing.
   const counterpart = useTripCounterpart(trip?.id);
   const truck = useTripTruck(trip?.id);
   const events = useTripEvents(trip?.id);
+  // 0069: the waiting clock at the pickup and the drop-off, and what it adds.
+  const waiting = useTripWaiting(trip?.id, !!trip && (trip.status === 'assigned' || trip.status === 'in_transit'));
   const position = useTripPosition(trip?.id, { live: load?.status === 'in_transit' });
   const summary = useDriverSummary(trip?.driver_id);
   // The exact pickup and drop-off, when the shipper pinned them (0041).
   const places = useLoadPlaces(load?.id);
+
+  // Bid loads (0045). Read only while there is a price to choose; both poll.
+  const isBid = load?.pricing_mode === 'bid';
+  const biddingOpen = isBid && (load?.status === 'posted' || load?.status === 'matched');
+  const proposing = isBid && load?.status === 'quoted';
+  const bidLoadId = biddingOpen || proposing ? load?.id : undefined;
+  const bids = useShipperLoadBids(bidLoadId);
+  const bidStatus = useShipperBidStatus(bidLoadId);
+  const acceptBid = useAcceptDriverBid();
+  const closeBidding = useCloseBidding();
+  const extendBidding = useExtendBidding();
+  const [pickedBid, setPickedBid] = useState<string | null>(null);
+  const [bidError, setBidError] = useState<string | null>(null);
+  // Keep the price on screen while it ticks down.
+  useTick(30_000, biddingOpen);
+  const live = choosable(bids.data);
+  // The shipper's pick while it is still choosable; else the server's proposal;
+  // else the cheapest. Never a price that has gone.
+  const chosenBid =
+    live.find((b) => b.bid_id === pickedBid) ??
+    live.find((b) => b.bid_id === bidStatus.data?.selected_bid_id) ??
+    live[0] ??
+    null;
 
   const origin = load ? index.get(load.origin_city) : undefined;
   const dest = load ? index.get(load.dest_city) : undefined;
@@ -255,7 +301,11 @@ export default function TrackLoad() {
         refreshControl={
           <RefreshControl
             refreshing={loads.isRefetching}
-            onRefresh={loads.refetch}
+            onRefresh={() => {
+              loads.refetch();
+              // A failed city list renders "—" for both ends; this is a way back.
+              refetchCities();
+            }}
             tintColor={color.lightText}
           />
         }
@@ -276,9 +326,56 @@ export default function TrackLoad() {
           onLayout={(e) => setContentTop(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
         />
 
-        {(status === 'posted' || status === 'finding_truck') && <Waiting />}
-        {status === 'quoted' && <Priced load={load} />}
-        {(status === 'accepted' || status === 'matched') && <Accepted />}
+        {biddingOpen && (
+          <BidsOpen
+            deadline={load.bid_deadline ?? load.created_at}
+            bids={live}
+            status={bidStatus.data}
+            loading={bids.isPending}
+            chosen={chosenBid?.bid_id ?? null}
+            onChoose={setPickedBid}
+            names={truckName}
+          />
+        )}
+        {biddingOpen && (
+          <View style={styles.block}>
+            <SectionLabel>{t('bid.manage.title')}</SectionLabel>
+            <SecondaryButton
+              label={t('bid.manage.limit')}
+              onPress={() => router.push(`/bid/limit?loadId=${encodeURIComponent(load.id)}` as Href)}
+            />
+            <TertiaryButton
+              label={t('bid.manage.extend')}
+              onPress={() => {
+                if (!extendBidding.isPending) extendBidding.mutate(load.id, {
+                  onError: () => setBidError(t('bid.manage.unavailable')),
+                });
+              }}
+            />
+            <TertiaryButton
+              label={t('bid.manage.close')}
+              onPress={() => !closeBidding.isPending && Alert.alert(t('bid.manage.close'), t('bid.manage.closeExplain'), [
+                { text: t('common.back'), style: 'cancel' },
+                { text: t('bid.manage.closeConfirm'), onPress: () => closeBidding.mutate(load.id, {
+                  onError: () => setBidError(t('bid.manage.unavailable')),
+                }) },
+              ])}
+            />
+          </View>
+        )}
+        {proposing && (
+          <BidsProposal
+            bids={live}
+            chosen={chosenBid?.bid_id ?? null}
+            onChoose={setPickedBid}
+            names={truckName}
+          />
+        )}
+        {!!bidError && <Text style={styles.bidError}>{bidError}</Text>}
+        {!isBid && (status === 'posted' || status === 'finding_truck') && <Waiting />}
+        {isBid && status === 'finding_truck' && <Waiting />}
+        {!isBid && status === 'quoted' && <Priced load={load} />}
+        {!isBid && (status === 'accepted' || status === 'matched') && <Accepted />}
         {status === 'assigned' && (
           <Assigned driver={counterpart.data} truck={truck.data} summary={summary.data} names={truckName} />
         )}
@@ -329,12 +426,57 @@ export default function TrackLoad() {
           )}
         </View>
 
+        {trip && (
+          <View style={styles.block}>
+            <WaitingCard waiting={waiting.data} side="shipper" tripId={trip.id} onChanged={() => void waiting.refetch()} />
+          </View>
+        )}
+
+        {status !== 'cancelled' && (
+          <View style={styles.block}>
+            <SecondaryButton label={t('case.report')}
+              onPress={() => router.push(`/case?loadId=${encodeURIComponent(load.id)}` as Href)} />
+            {!delivered && <TertiaryButton label={t('case.cancel.action')}
+              onPress={() => router.push(`/case?loadId=${encodeURIComponent(load.id)}&cancel=1` as Href)} />}
+          </View>
+        )}
+
         {delivered && <Rating trip={trip} />}
         {delivered && <Proof events={events.data} />}
       </ScrollView>
 
       <View style={[styles.dock, { paddingBottom: insets.bottom + space.lg }]}>
-        {status === 'quoted' ? (
+        {(biddingOpen || proposing) && chosenBid ? (
+          <>
+            {/* The amount is in the label, as on T2: the thing agreed to is the
+                thing pressed. */}
+            <PrimaryButton
+              label={t('track.price.acceptNamed', {
+                amount: formatMoney(chosenBid.total_baisa, 'OMR', getLanguage()) ?? '',
+              })}
+              loading={acceptBid.isPending}
+              onPress={() => {
+                setBidError(null);
+                acceptBid.mutate(
+                  { loadId: load.id, bidId: chosenBid.bid_id },
+                  {
+                    // NULL: the price went stale after bidding closed and the
+                    // server proposed the next one. Say so; the list refreshes.
+                    onSuccess: (tripId) => {
+                      if (!tripId) setBidError(t('bid.gone'));
+                    },
+                    onError: (e: unknown) => {
+                      const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? '');
+                      setBidError(msg.includes('no longer available') ? t('bid.gone') : t('error.generic'));
+                    },
+                  },
+                );
+              }}
+            />
+            <Text style={styles.dockNote}>{t('track.price.pay')}</Text>
+            <TertiaryButton label={t('track.price.ask')} onPress={() => askHuman()} />
+          </>
+        ) : !isBid && status === 'quoted' ? (
           <AcceptBar load={load} onAsk={() => askHuman()} />
         ) : status === 'assigned' ? (
           <PrimaryButton
@@ -356,12 +498,11 @@ export default function TrackLoad() {
           <>
             <SecondaryButton
               label={t('track.again')}
-              onPress={() =>
-                router.push({
-                  pathname: '/post-load',
-                  params: { origin: String(load.origin_city), dest: String(load.dest_city) },
-                })
-              }
+              onPress={async () => {
+                // The booking flow, answers filled in, opening on the date.
+                await startDraft(draftFromLoad({ ...load, destCountry: dest.country }), session?.user.id ?? '');
+                router.push('/book/date');
+              }}
             />
             <TertiaryButton label={t('track.home')} onPress={() => router.replace('/customer')} />
           </>
@@ -879,6 +1020,8 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   placeLine: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start, marginTop: space.sm },
+
+  bidError: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
 
   // T2
   priceHero: { ...font.priceHero, color: color.lightText, textAlign: align.start },

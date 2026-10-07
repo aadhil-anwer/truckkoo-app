@@ -29,6 +29,7 @@ Layer 1 is the one that survives a careless refactor, which is why it exists.
 | `suspended_reason` | Shown to the suspended user by `private.require_active`, so a user who could edit it could rewrite the record of their own suspension. | Ops only |
 
 Client may write: `full_name`, `phone`, `language`.
+`language` now accepts `en`, `ar`, or `ur` (0051); it is still only a display preference.
 Client may read (own row only): everything above **except `suspended_by`**.
 
 > A column-level `revoke` does **not** cut a hole in a table-level `grant` —
@@ -60,6 +61,88 @@ Client may write: nothing. The row is created by ops.
 | `owner_id` | Ownership transfer = theft primitive | Nobody |
 
 Client may write: `truck_type`, `plate`, `capacity_kg` (on own rows).
+After ops verification, a trigger rejects edits and deletion until verification
+is removed. The declared capacity must fit the selected truck class (0050).
+
+## `driver_documents` (0050)
+
+Client table access: **none**. The driver submits a private Storage path through
+`submit_driver_document`; the definer derives `driver_id` from `auth.uid()` and
+checks that the object already exists under that driver's path. Drivers can read
+only their own review status through `driver_document_status`. `status`,
+`review_note`, `reviewed_by`, and `reviewed_at` are ops-only. Ops reviews are
+audited; signed URLs are short-lived and the bucket is private.
+
+## `shipment_cases` (0052)
+
+Client table access: **none**. `reporter_id`, `status`, `resolution`,
+`resolved_by`, and `resolved_at` are never accepted as client authority. The
+reporting RPC checks load or trip participation internally. `my_shipment_cases`
+returns only the reporter's own rows; `ops_shipment_cases` is the approved,
+guarded cross-tenant queue. Resolution is an audited ops write.
+
+0062 (support desk) adds `subject_id`, `priority`, `assignee_id`, `due_at`,
+`opened_by_staff`, `outcome`, and `reopened_at`. None is ever client authority:
+a trigger derives `priority`, `due_at`, and `subject_id` on insert, and only
+`require_ops()` definers (`ops_open_case`, `ops_case_*`) change the rest, each
+audited. `private.case_events` (the case thread) has no client grant at all and
+is read only through `ops_case()`.
+
+## `private.incidents` (0063) — strikes
+
+Client table access: **none**. `state`, `weight`, `source`, `decided_by`,
+`decided_at`, `reason` and `decision_reason` are never client authority: staff
+set them through `ops_incident_add/confirm/void` (audited), detectors only ever
+insert `suspected` rows, and `release_trip` records the driver's own release.
+A driver reads their decided strikes through `my_record()`, which never returns
+`reason` or `decision_reason` (they can quote a shipper). `appeal_incident`
+checks ownership inside.
+
+## `private.user_messages` (0065)
+
+Client table access: **none**. Staff send with `ops_message_user` (audited; on a
+case, only to someone on it). A user reads only their own through
+`my_messages()` and marks only their own read. The push says only that a
+message exists — the text never reaches a lock screen.
+
+## `private.trip_commission` (0068)
+
+Client table access: **none**, the driver included. A trigger records the
+commission in force when a trip is created (a driver accepting, or staff
+reassigning — a new trip on the new driver's terms); nothing else writes it.
+It is the margin, and a trip row is readable by its shipper, so it is not a
+column on `trips`. Read only through `private.trip_payout()`, which every
+driver-facing payout and the Eagle view margin go through.
+
+## Waiting (0069): `private.load_wait_terms`, `private.trip_wait_waivers`, `rate_cards.wait_*`
+
+Client table access: **none**. A load's waiting terms are copied from the rate
+card when it is priced (`issue_quote`); the shipper sees them through
+`quote_trip` and `trip_waiting`, which never return the driver's payout to a
+shipper. The waiting charge is computed only in `private.trip_wait` from trip
+events — the client sends no minutes and no amount. Arrival is automatic:
+`report_location` checks each fix against the next stop's pin
+(`private.auto_arrive`) and records only the event, at the server's time — no
+client call marks an arrival. Staff can check a driver in (`ops_mark_arrived`),
+waive a stop (`ops_waive_waiting`) or release a hold (`ops_release_wait_hold`),
+each audited. A shipper can hold a running stop at zero with
+`report_driver_absent`, which checks they own the trip and opens an urgent
+case. `private.trip_wait_holds` and `private.trip_wait_arrivals` have no client
+grant.
+The rate card's waiting columns follow the rest of the card: no client grant,
+edited through `ops_upsert_rate_card` by the owner.
+
+**Accepted risk:** pins come from the shipper's phone and now set the distance
+the price is measured on. The driver sees both pins before accepting, a pin must
+lie in the town it is booked in, and a same-town job needs the pins at least
+`same_city_min_m` apart.
+
+## Storage: `case-evidence` (0065)
+
+Private bucket. A user uploads only under their own folder; `report_problem`
+accepts only paths the caller uploaded. Staff read through the additive
+`"ops reads case evidence"` select policy (approved with the support-desk plan,
+like `"ops reads pod"`). No update or delete policy for anyone.
 
 ## `loads`
 
@@ -326,3 +409,42 @@ in an ops screen cannot widen what any other client sees.
 | every column | **none** | Written only by `book_load`, which derives the city from the point. |
 | `contact_name`, `contact_phone` | none | A third party's personal data (the person at the gate). Readable by the owning shipper; by a driver only through `driver_offers()` while pending and `driver_trip()` until delivery; by ops through `ops_load_places`. |
 | `lat`, `lng` | none | The shipper's premises. Same readers as above. |
+
+### Driver bidding (0045)
+
+`loads.pricing_mode`, `bid_deadline` and `selected_bid_id` have no client write
+grant (loads has none on UPDATE, and INSERT lists columns by name); they move
+only through the bid RPCs. They are readable wherever `loads` is — which is
+exactly why nothing else about an auction lives on `loads` or `trips`.
+
+`loads.price_baisa` stays **NULL until a bid is awarded**. Any driver with a
+live invitation can read the row, and a stored total next to the payouts they
+can see is the fee.
+
+| Field | Client write | Client read | Why |
+|---|---|---|---|
+| `private.bid_loads.fee_bps` | none | none | **The take rate.** Snapshotted at posting so a change mid-window cannot move a shown price. Set via `ops_set_bid_fee` (audited); `bid_fee_pct` is never seeded, so posting fails until someone sets it — 0 included. |
+| `private.bid_loads.target_total_baisa` | `post_bid_load`, `set_bid_target` (owner, window open) | the owning shipper, via `shipper_bid_status` | A driver who could read it bids to it. Applied only when the window closes. |
+| `private.bid_loads.awarded_payout_baisa` | none — `private.award_bid` | the winning driver, as `payout_baisa` in `driver_trip` | What the driver keeps. Total minus this is the fee; the shipper never reads it. |
+| `private.driver_bids.*` | `place_driver_bid` only (own live invitation) | shipper: totals via `shipper_load_bids`; invited drivers: `driver_load_bids` | See below. |
+
+**Drivers see competing bids, semi-anonymised** (founder's call, 2026-10-04,
+reversing the bidding doc's "invisible to other drivers"). `driver_load_bids`
+returns a bidder number, a truck type, the amount that driver keeps, and which
+row is yours — to a driver holding a live invitation on that load, while the
+window is open. Never a name, phone, town, rating or shipper total.
+
+Bid invitations do **not** carry the pickup/drop contact's name or phone
+(`driver_bid_invites`), unlike fixed-price offers (0041 P3): far more drivers
+are invited to an auction than to a wave. The winner gets them from
+`driver_trip`.
+
+### Push notifications (0046)
+
+| Table | Client write | Client read | Why |
+|---|---|---|---|
+| `private.push_tokens` | `register_push_token` (own, validated, rate-limited, newest five kept) / `unregister_push_token` (own) | none | A token addresses one phone. Readable, it would let anyone push to — or learn the devices of — any account. A shared phone moves to whoever signed in last. |
+| `private.push_log` | none | none | Who was told what, about which load. Also the throttle for price pushes. |
+
+Message bodies are composed server-side and name cities and amounts only: a
+lock screen is public, so cargo, names and phones never go in a push.

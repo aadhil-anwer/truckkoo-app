@@ -21,6 +21,8 @@
 -- simulated by moving `accepted_at` and `expires_at` backwards.
 
 begin;
+-- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
+delete from private.app_settings where key = 'staff_email_domains';
 
 set local client_min_messages to notice;
 
@@ -68,7 +70,10 @@ end $$;
 create or replace function act_as(p_uid uuid) returns void language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
-  perform set_config('request.jwt.claims', json_build_object('sub', p_uid, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_uid, 'role', 'authenticated', 'aal', 'aal2',
+    'amr', json_build_array(json_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))
+  )::text, true);
 end $$;
 
 create or replace function act_as_anon() returns void language plpgsql as $$
@@ -179,11 +184,11 @@ end $$;
 -- block the caller is a shipper, who rightly cannot call the private pricer.
 select server_price(8000) as p8000, server_price(8000) + 1 as p8000_stale \gset
 
--- 0036 leaves `require_verified_driver` OFF (switched on near launch). This
--- suite proves the behaviour the product promises, so it turns it on for itself;
--- section 9 checks what happens with it off.
-select assert_true(not private.setting_bool('require_verified_driver', true),
-  'the migration leaves require_verified_driver off until launch');
+-- 0036 left `require_verified_driver` OFF; 0050 switched it on (documents and
+-- review before work). This suite proves the behaviour the product promises with
+-- it on; section 9 checks what happens with it off.
+select assert_true(private.setting_bool('require_verified_driver', false),
+  'from 0050 the verified-driver gate is on');
 update private.app_settings set value = 'true'::jsonb where key = 'require_verified_driver';
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -624,27 +629,32 @@ select private.system_rescue_stranded();
 select assert_text(asked((select load_id from lonely), 'pending'), '',
   'a decline is final — the machine never asks again');
 
--- A dispatcher who has taken the load in hand is never second-guessed.
-update public.driver_availability set available = true, updated_at = now() + interval '3 hours'
- where driver_id = 'd0000000-0000-4000-8000-000000000001';  -- A Muscat, asked in section 6
-select act_as('a0000000-0000-4000-8000-000000000002');
-select public.ops_mark_finding_truck((select load_id from lonely));
-select act_as_reset();
-select private.system_rescue_stranded();
-select assert_text(asked((select load_id from lonely), 'pending'), '',
-  'once a dispatcher has marked it theirs, the machine leaves it alone');
-
--- The switches.
-delete from private.ops_audit
- where target_id = (select load_id::text from lonely) and action = 'ops_mark_finding_truck';
+-- The switches — before a dispatcher takes the load in hand: ops_audit is
+-- append-only (0054), so that cannot be undone afterwards.
 update private.app_settings set value = 'false'::jsonb where key = 'dispatch_rescue_enabled';
 select assert_equals(private.system_rescue_stranded(), 0, 'dispatch_rescue_enabled off: nothing');
 update private.app_settings set value = 'true'::jsonb where key = 'dispatch_rescue_enabled';
 update private.app_settings set value = 'false'::jsonb where key = 'auto_dispatch_enabled';
 select assert_equals(private.system_rescue_stranded(), 0, 'the auto-dispatch kill switch stops it too');
 update private.app_settings set value = 'true'::jsonb where key = 'auto_dispatch_enabled';
+-- A (asked in section 6, lapsed — not a no) switches on again.
+update public.driver_availability set available = true, updated_at = now() + interval '3 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';
 select assert_true(private.system_rescue_stranded() > 0,
   'and with both on, it resumes');
+
+-- A dispatcher who has taken the load in hand is never second-guessed.
+-- A lets that offer lapse and switches on again: the machine would ask again…
+update public.offers set expires_at = now() - interval '1 second'
+ where load_id = (select load_id from lonely) and status = 'pending';
+update public.driver_availability set available = true, updated_at = now() + interval '4 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';  -- A Muscat
+select act_as('a0000000-0000-4000-8000-000000000002');
+select public.ops_mark_finding_truck((select load_id from lonely));
+select act_as_reset();
+select private.system_rescue_stranded();
+select assert_text(asked((select load_id from lonely), 'pending'), '',
+  'once a dispatcher has marked it theirs, the machine leaves it alone');
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 12. Background location — the latest point, and only while it is wanted (0039)
@@ -835,5 +845,57 @@ select assert_text(
       and p.provolatile <> 'v'
       and p.prosrc ~* '(check_rate_limit|log_ops|log_system|raise_alert|\minsert\s+into\M|\mupdate\s+(public|private)\.|\mdelete\s+from\M)'),
   '', 'no STABLE or IMMUTABLE function writes (PostgREST would run it read-only)');
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. One tap books one load (0047)
+-- ════════════════════════════════════════════════════════════════════════════
+-- A retry after a timeout carries the same request id. A stale price keeps
+-- these loads at `quoted`, so nothing here dispatches.
+
+select act_as('a0000000-0000-4000-8000-000000000001');
+create temp table once_a on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+create temp table once_b on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+select act_as_reset();
+
+select assert_true((select load_id from once_a) = (select load_id from once_b),
+  'a retry with the same request id returns the first load');
+select assert_equals(
+  (select count(*) from public.loads where goods_description = 'Retried cargo'), 1,
+  'and posts nothing new');
+select assert_true((select price_matched from once_a) is not distinct from (select price_matched from once_b),
+  'the retry answers as the first call did');
+
+-- Another shipper sending the same id books their own load.
+select act_as('a0000000-0000-4000-8000-000000000002');
+create temp table once_other on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 8, current_date + 8,
+                               'Retried cargo', 8000, null, :p8000_stale, null, null,
+                               'f0000000-0000-4000-8000-000000000047');
+select act_as_reset();
+select assert_true((select load_id from once_other) <> (select load_id from once_a),
+  'a request id never reaches another shipper''s load');
+
+-- No id is the old behaviour: two calls, two loads.
+select act_as('a0000000-0000-4000-8000-000000000001');
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 9, current_date + 9,
+                               'Unkeyed cargo', 8000, null, :p8000_stale) \gset unkeyed1_
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 9, current_date + 9,
+                               'Unkeyed cargo', 8000, null, :p8000_stale) \gset unkeyed2_
+select act_as_reset();
+select assert_equals((select count(*) from public.loads where goods_description = 'Unkeyed cargo'), 2,
+  'without a request id, every call books, as installed binaries expect');
+
+select assert_true(not has_table_privilege('authenticated', 'private.load_requests', 'select')
+                   and not has_table_privilege('anon', 'private.load_requests', 'select'),
+  'no client can read the request ledger');
+select assert_true(not has_function_privilege('authenticated',
+  'private.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)', 'execute'),
+  'the unkeyed original is not callable by a client');
 
 rollback;

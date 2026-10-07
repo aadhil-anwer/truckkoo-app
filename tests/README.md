@@ -19,16 +19,20 @@ npm run verify        # typecheck + lint + test
 | `components/tab-bar.test.tsx` | Role-aware tab visibility. A custom `tabBar` cannot read expo-router's `href: null`, and the version that tried showed a shipper the driver's tabs. |
 | `integration/harness.tsx` | Not a suite — the shared mocks and fixtures for the two below. Import it **first**; its `jest.mock` calls run at require time. |
 | `integration/shipper-screens.test.tsx` | Home, the loads ledger, and the load detail against mocked data — including the no-dead-end promise and the price's three no-number outcomes. |
+| `integration/bidding-screens.test.tsx` | Bid loads (0045): a load taking prices never reads as "truck found", the shipper accepts one chosen total, drivers see competing prices as numbered drivers, and amounts typed on an Arabic keyboard arrive as baisa. |
+| `integration/push-screens.test.tsx` | Push (0046): asked once after sign-up, a tap opens its screen, "Not now" is an answer, and a driver gets one permission screen at a time. |
 | `integration/driver-screens.test.tsx` | The trip, the offers (accept race, silent-decline regression, the pay that must never render blank) and the declared routes. |
 | `security/env-guard.test.ts` | The service-role-key-in-the-client guard. |
 | `security/schema-invariants.test.ts` | Static assertions over the migration SQL, including that the pricing formula has no client-side twin. |
 
-The two SQL suites need the local stack (`npx supabase start`) and run together
+The eight SQL suites need the local stack (`npx supabase start`) and run together
 under `npm run test:db`:
 
 | Path | What it protects |
 |---|---|
 | `supabase/tests/tenant_isolation.sql` | Actor A cannot touch actor B's row, for every owned table. |
+| `supabase/tests/bidding.sql` | Bidding (0045): the fee, target and payout stay private; invitations are paced; drivers see competing bids semi-anonymised; the sweeps and a stale tap cannot strand or end an auction; the target awards; no bids reopens. |
+| `supabase/tests/push.sql` | Push (0046): tokens are private and per-owner, every event reaches the right person in their language, prices are throttled, an award never tells the winner "new job", and a failed push raises nothing. |
 | `supabase/tests/pricing.sql` | The §5 pricing edge cases, the authorization matrix for the quote RPCs, and that the rate card is unreachable from any client. |
 
 `pricing.sql` holds what would normally be unit tests. The pricing formula lives
@@ -65,8 +69,10 @@ to make a build pass.
   `OPEN_ISSUES.md` items 9 and 10.
 - **RTL layout.** `align` and `directionArrow` are tested; whether the horizontal
   pager lays out correctly in Arabic is not, and cannot be without a device.
-- **Storage policies.** The `pod` bucket's append-only behaviour is asserted
-  statically against the SQL, not exercised against real Storage.
+- **Storage service integration.** The `pod` bucket's append-only behaviour is
+  asserted statically against SQL. The verification suite exercises row access
+  to private `storage.objects`, but signed URL expiry and image upload still need
+  a device and the Storage service.
 - **Real rates.** `pricing.sql` loads one throwaway band inside a transaction it
   rolls back. Every assertion about a *computed* price is therefore against a rate
   this suite invented — which proves the arithmetic, and proves nothing about
