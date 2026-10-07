@@ -155,6 +155,74 @@ select assert_true((select km = private.road_km_between(23.68, 58.15, 23.59, 58.
                        and km <> private.route_km(city('Seeb'), city('Muscat')) from q2),
   'between towns, a quote with pins measures the pins, not the town centres');
 
+-- ── driving distance from Google (0073) ─────────────────────────────────────
+-- No key in this database, so the quotes above priced the straight line.
+select assert_true((select km = private.straight_road_km(23.68, 58.15, 23.66, 58.20) from q),
+  'with no Google key, the straight line × road factor prices, as before');
+select assert_true(not exists (select 1 from private.road_km_cache),
+  'and nothing was cached');
+
+-- Judging Google's answer. Straight line here is ~5.6 km raw.
+select assert_true(private.routes_km_from_response(200, '{"routes":[{"distanceMeters":8450}]}', 7.6) = 8.5,
+  'a sane answer is read in km, to one decimal');
+select assert_true(private.routes_km_from_response(403, '{"error":{}}', 7.6) is null,
+  'an error status is no answer');
+select assert_true(private.routes_km_from_response(200, 'not json', 7.6) is null,
+  'an unreadable body is no answer');
+select assert_true(private.routes_km_from_response(200, '{"routes":[]}', 7.6) is null,
+  'no route is no answer');
+select assert_true(private.routes_km_from_response(200, '{"routes":[{"distanceMeters":3000}]}', 7.6) is null,
+  'a road shorter than the straight line is distrusted');
+select assert_true(private.routes_km_from_response(200, '{"routes":[{"distanceMeters":40000}]}', 7.6) is null,
+  'a road more than 5x the straight line is distrusted');
+
+-- A key that Google refuses (or no network): null, logged, never raised.
+select vault.create_secret('not-a-real-key', 'google_routes_api_key');
+select assert_true(private.google_road_km(23.68, 58.15, 23.66, 58.20) is null,
+  'a refused or unreachable call gives no answer and does not raise');
+select assert_true(exists (select 1 from private.ops_audit where action = 'google_road_km_failed'),
+  'and the failure is logged');
+select assert_true(not exists (select 1 from private.ops_audit
+                                where action = 'google_road_km_failed' and after::text like '%not-a-real-key%'),
+  'and the log never carries the key');
+delete from vault.secrets where name = 'google_routes_api_key';
+
+-- A cached driving distance prices the preview and the booking alike.
+insert into private.road_km_cache (o_lat, o_lng, d_lat, d_lng, km) values (23.68, 58.15, 23.66, 58.20, 12.3);
+select assert_true(private.road_km_between(23.68001, 58.15002, 23.66, 58.20) = 12.3,
+  'road_km_between reads the cache, matching pins to ~11 m');
+select act_as_staff('6e000000-0000-4000-8000-0000000000a1', 'aal1', null);
+create temp table q3 on commit drop as
+  select * from public.quote_trip(city('Seeb'), city('Seeb'), 'pickup', 300, 23.68, 58.15, 23.66, 58.20);
+create temp table booked3 on commit drop as
+  select * from public.book_load(
+    p_origin_city => city('Seeb'), p_dest_city => city('Seeb'), p_pickup_from => current_date, p_pickup_to => current_date,
+    p_goods => 'a fridge', p_weight_kg => 100, p_truck_type_code => 'pickup',
+    p_seen_price_baisa => (select price_baisa from q3),
+    p_origin_place => '{"lat":23.68,"lng":58.15,"place_name":"Shop"}'::jsonb,
+    p_dest_place => '{"lat":23.66,"lng":58.20,"place_name":"Home"}'::jsonb,
+    p_request_id => gen_random_uuid());
+select act_as_reset();
+select assert_true((select km = 12.3 and price_baisa = 2000 + 300 * 13 from q3),
+  'the preview prices the driving distance');
+select assert_true((select price_matched from booked3),
+  'and the booking prices the same distance, so it is accepted');
+delete from private.road_km_cache;
+
+select assert_true(not has_table_privilege('authenticated', 'private.road_km_cache', 'select')
+               and not has_table_privilege('anon', 'private.road_km_cache', 'select')
+               and not has_function_privilege('authenticated',
+                     'private.fetch_road_km(double precision,double precision,double precision,double precision)', 'execute')
+               and not has_function_privilege('authenticated',
+                     'private.google_road_km(numeric,numeric,numeric,numeric)', 'execute'),
+  'no client reads the distance cache or can make the database call Google');
+select assert_true((select bool_and(coalesce(p.proconfig, '{}') @> array['search_path=""'])
+                      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'private'
+                       and p.proname in ('road_km_between', 'straight_road_km', 'routes_km_from_response',
+                                         'google_road_km', 'fetch_road_km', 'load_places_fetch_km')),
+  'every 0073 function pins search_path');
+
 -- ── arriving and waiting ─────────────────────────────────────────────────────
 insert into public.drivers (profile_id, verified_at) values ('6e000000-0000-4000-8000-0000000000d1', now())
 on conflict (profile_id) do update set verified_at = excluded.verified_at;
