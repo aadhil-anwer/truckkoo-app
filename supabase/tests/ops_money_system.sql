@@ -134,6 +134,42 @@ select act_as_staff('66000000-0000-4000-8000-0000000000f2', 'aal2', 1);
 select assert_true(public.ops_bid_fee() = 8, 'staff read the bid fee in force');
 select act_as_reset();
 
+-- ═══ 3c. one price for a truck type, every route (0071) ═══════════════════
+select act_as_staff('66000000-0000-4000-8000-0000000000f2', 'aal2', 1);
+select assert_not_found($$select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'launch', 150, 15, 500)$$,
+  'a dispatcher cannot set a price for every route');
+select act_as_staff('66000000-0000-4000-8000-0000000000f1', 'aal2', 20);
+select assert_raises($$select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'launch', 150, 15, 500)$$,
+  'stale owner: a price for every route needs step-up', 'step-up required');
+select act_as_staff('66000000-0000-4000-8000-0000000000f1', 'aal2', 1);
+select assert_raises($$select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, '', 150, 15, 500)$$,
+  'a price for every route needs a reason', '%reason%');
+select assert_raises($$select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'launch', 150, 15, null)$$,
+  'and the same validation as one band (waiting terms both or neither)', '%both%');
+create temp table bulk on commit drop as
+  select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'Launch pickup rate', 150, 15, 500) n;
+select act_as_reset();
+select assert_true(
+  (select n from bulk) = (select count(distinct corridor) ^ 2 from public.cities where corridor is not null),
+  'it writes every ordered corridor pair');
+select assert_true(
+  (select count(*) = (select n from bulk) from private.rate_cards
+    where truck_type_code = 'pickup' and base_baisa = 2000 and per_km_baisa = 150 and min_fare_baisa = 3000
+      and wait_free_minutes = 15 and wait_per_15min_baisa = 500),
+  'with the same terms on every route');
+select assert_true(
+  (select count(*) = (select n from bulk) from private.ops_audit
+    where action = 'ops_upsert_rate_card' and reason = 'Launch pickup rate'),
+  'each band is audited with the reason');
+select assert_true(
+  (select count(*) = 1 from private.ops_alerts
+    where kind = 'owner_money_change' and detail ->> 'action' = 'ops_set_rate_for_type'),
+  'and the owner is alerted once for the whole change');
+select assert_true(
+  not exists (select 1 from pg_constraint
+               where conrelid = 'public.quotes'::regclass and confrelid = 'private.rate_cards'::regclass),
+  'a band that priced a quote can be deleted: quotes keep its id without a foreign key');
+
 -- ═══ 4. settings: the registry ═════════════════════════════════════════════
 select act_as_staff('66000000-0000-4000-8000-0000000000f1', 'aal2', 1);
 select public.ops_set_setting('bid_window_minutes', '90'::jsonb, 'Longer auctions at launch');
@@ -190,8 +226,8 @@ create temp table al_all on commit drop as select * from public.ops_alert_log(fa
 create temp table au on commit drop as select * from public.ops_audit_find(array['ops_set_commission', 'ops_set_bid_fee'], null, null, 1, 1);
 create temp table jh on commit drop as select public.ops_job_health() j;
 select act_as_reset();
-select assert_true((select count(*) = 4 from al_open), 'open alerts exclude the acknowledged one');
-select assert_true((select count(*) = 2 and bool_and(total_count = 5) from al_all), 'all alerts page with a total');
+select assert_true((select count(*) = 5 from al_open), 'open alerts exclude the acknowledged one (§3 four, §3c one, settings one; one acknowledged)');
+select assert_true((select count(*) = 2 and bool_and(total_count = 6) from al_all), 'all alerts page with a total');
 select assert_true((select count(*) = 1 and bool_and(total_count = 2) and bool_and(action in ('ops_set_commission', 'ops_set_bid_fee')) from au),
   'audit search filters by action and pages');
 select assert_true((select j = private.system_health() from jh), 'job health is system_health, readable by a dispatcher');
@@ -206,11 +242,11 @@ select assert_true((select bool_and(p.prosecdef and p.proconfig @> array['search
                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                      where n.nspname = 'public' and p.proname in ('ops_set_commission', 'ops_set_bid_fee', 'ops_upsert_rate_card',
                        'ops_delete_rate_card', 'ops_set_setting', 'ops_settings', 'ops_find_staff_account', 'ops_alert_log',
-                       'ops_audit_find', 'ops_job_health', 'ops_bid_fee')),
+                       'ops_audit_find', 'ops_job_health', 'ops_bid_fee', 'ops_set_rate_for_type')),
   'every new or wrapped function is a pinned definer');
 select assert_true((select bool_and(p.provolatile = 'v') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                      where n.nspname = 'public' and p.proname in ('ops_set_commission', 'ops_set_bid_fee', 'ops_upsert_rate_card',
-                       'ops_delete_rate_card', 'ops_set_setting')),
+                       'ops_delete_rate_card', 'ops_set_setting', 'ops_set_rate_for_type')),
   'writers are volatile');
 select assert_true((select bool_and(not has_function_privilege('authenticated', p.oid, 'execute'))
                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
