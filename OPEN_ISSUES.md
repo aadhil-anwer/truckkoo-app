@@ -1486,6 +1486,18 @@ capability that does not exist.
 
 ## Pricing
 
+### Google driving distance (0073) — built, switched off until a key is in Vault
+
+A pickup with both pins is priced on Google's driving distance (Routes API,
+called from the database, cached by pin pair) instead of the straight line ×
+1.35. With no `google_routes_api_key` in Supabase Vault it is off and nothing
+changes. Proven locally: the cache prices the preview and the booking alike, a
+refused call (Google answered 400 to a fake key) falls back without raising,
+and bad answers are distrusted. **Not yet seen:** a successful answer from a
+real key. **Done when:** the key is in Vault, a real quote shows a cached
+`road_km_cache` row, and `google_road_km_failed` stays rare in `ops_audit`.
+Town-to-town distances (no pins) still use city centres.
+
 Added 2026-07-26 with `0010_pricing.sql`.
 
 ### 13. The rate card is empty, so every price is currently manual — HIGH
