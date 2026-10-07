@@ -379,6 +379,16 @@ insert into private.ops_users (profile_id, note) values ('<uuid>', 'founder');
 
 There is intentionally no UI and no API path for this.
 
+**Superseded in part by 0054 and 0070.** Since 0054 staff carry a `level`
+(`owner`/`dispatcher`) and are appointed from the console through
+`ops_appoint_staff`, which needs an owner with fresh 2FA. Since 0070 that
+owner must be **the founder**: one row in `private.founder` (no client grant,
+edited only by hand), currently `aadhilanwer@gmail.com`. The founder is the only
+appointer and remover of staff, cannot be demoted or removed through any RPC,
+and is the only account exempt from `staff_account_ok` (staff domain, never a
+customer). The exemption is pinned to the account id *and* its address, so
+changing the email on that account ends it. 2FA is not exempted.
+
 ### Dispatch functions read across tenants
 
 `ops_queue()`, `ops_candidates()`, `ops_send_offer()` and
