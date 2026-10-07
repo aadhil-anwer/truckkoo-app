@@ -146,8 +146,12 @@ select assert_raises($$select public.ops_set_rate_for_type('pickup', 2000, 0, 30
   'a price for every route needs a reason', '%reason%');
 select assert_raises($$select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'launch', 150, 15, null)$$,
   'and the same validation as one band (waiting terms both or neither)', '%both%');
+-- 0072: a correction right after a bulk save must go through — before 0072
+-- the first save spent 64 of the hour's 100 single-band allowance.
+select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'First try, typo in per km', 10000, 15, 500);
 create temp table bulk on commit drop as
   select public.ops_set_rate_for_type('pickup', 2000, 0, 3000, 'Launch pickup rate', 150, 15, 500) n;
+select assert_true(true, 'two bulk saves in a row both go through (one change each, not 64)');
 select act_as_reset();
 select assert_true(
   (select n from bulk) = (select count(distinct corridor) ^ 2 from public.cities where corridor is not null),
@@ -162,9 +166,9 @@ select assert_true(
     where action = 'ops_upsert_rate_card' and reason = 'Launch pickup rate'),
   'each band is audited with the reason');
 select assert_true(
-  (select count(*) = 1 from private.ops_alerts
+  (select count(*) = 2 from private.ops_alerts
     where kind = 'owner_money_change' and detail ->> 'action' = 'ops_set_rate_for_type'),
-  'and the owner is alerted once for the whole change');
+  'and the owner is alerted once per bulk save, not once per route');
 select assert_true(
   not exists (select 1 from pg_constraint
                where conrelid = 'public.quotes'::regclass and confrelid = 'private.rate_cards'::regclass),
@@ -226,8 +230,8 @@ create temp table al_all on commit drop as select * from public.ops_alert_log(fa
 create temp table au on commit drop as select * from public.ops_audit_find(array['ops_set_commission', 'ops_set_bid_fee'], null, null, 1, 1);
 create temp table jh on commit drop as select public.ops_job_health() j;
 select act_as_reset();
-select assert_true((select count(*) = 5 from al_open), 'open alerts exclude the acknowledged one (§3 four, §3c one, settings one; one acknowledged)');
-select assert_true((select count(*) = 2 and bool_and(total_count = 6) from al_all), 'all alerts page with a total');
+select assert_true((select count(*) = 6 from al_open), 'open alerts exclude the acknowledged one (§3 four, §3c two, settings one; one acknowledged)');
+select assert_true((select count(*) = 2 and bool_and(total_count = 7) from al_all), 'all alerts page with a total');
 select assert_true((select count(*) = 1 and bool_and(total_count = 2) and bool_and(action in ('ops_set_commission', 'ops_set_bid_fee')) from au),
   'audit search filters by action and pages');
 select assert_true((select j = private.system_health() from jh), 'job health is system_health, readable by a dispatcher');
