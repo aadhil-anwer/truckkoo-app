@@ -335,7 +335,9 @@ describe('pricing', () => {
   it('lets no rate reach the card except through the audited, reasoned RPC', () => {
     // The counterpart to the check above: now that a write path exists, it must
     // be the only one. Every `insert`/`update`/`delete` naming rate_cards must
-    // live inside ops_upsert_rate_card or ops_delete_rate_card.
+    // live inside ops_upsert_rate_card or ops_delete_rate_card — since 0060, in
+    // their private `_impl` bodies, which only those RPCs and the 0071 bulk
+    // setter call.
     //
     // Comments stripped: 0010 carries the by-hand INSERT template in a comment
     // block, deliberately, and that template is documentation rather than a
@@ -352,13 +354,16 @@ describe('pricing', () => {
     for (const w of writes) {
       const before = code.slice(0, w.index);
       const fnStart = Math.max(
-        before.lastIndexOf('function public.ops_upsert_rate_card'),
-        before.lastIndexOf('function public.ops_delete_rate_card'),
+        before.lastIndexOf('create or replace function public.ops_upsert_rate_card('),
+        before.lastIndexOf('create or replace function public.ops_delete_rate_card('),
+        before.lastIndexOf('create or replace function private.ops_upsert_rate_card_impl('),
+        before.lastIndexOf('create or replace function private.ops_delete_rate_card_impl('),
       );
       expect(fnStart).toBeGreaterThan(-1);
-      // …and no `$$;` between that function's start and this write, which would
-      // mean the write is actually outside it.
+      // …and no closing delimiter between that function's start and this write,
+      // which would mean the write is actually outside it. Both quotings occur.
       expect(before.indexOf('$$;', fnStart)).toBe(-1);
+      expect(before.indexOf('$function$;', fnStart)).toBe(-1);
     }
   });
 
