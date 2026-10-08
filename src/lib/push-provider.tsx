@@ -14,25 +14,28 @@ import { useRouter, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useAppOpen } from '@/lib/app-opens';
 import { PushCtx } from '@/lib/push-context';
 import { useSession } from '@/lib/session';
 import {
   type PushAccess,
+  declineJob,
   declinePush,
   hrefFor,
+  jobOfferId,
   pushStatus,
   registerPush,
   requestPush,
   shouldAskForPush,
 } from '@/lib/push';
 
-/** Module state: once per JS runtime, i.e. once per launch. */
-let prompted = false;
+/** Module state. Asked at most once per opening of the app (app-opens.ts). */
+let promptedOpen = 0;
 let coldStartHandled = false;
 
 /** For tests: a fresh launch. */
 export function __resetPushLaunch(): void {
-  prompted = false;
+  promptedOpen = 0;
   coldStartHandled = false;
 }
 
@@ -41,7 +44,13 @@ export function PushProvider({ children }: { children: ReactNode }) {
   const queries = useQueryClient();
   const { session, profile } = useSession();
   const [access, setAccess] = useState<PushAccess | null>(null);
-  const [settled, setSettled] = useState(false);
+  // Which opening the notification question is done for. Compared with the
+  // current one, so a new opening holds the location question back until this
+  // one is decided — one permission screen at a time, every time.
+  const open = useAppOpen();
+  const [settledFor, setSettledFor] = useState(0);
+  const settled = settledFor === open;
+  const setSettled = useCallback(() => setSettledFor(open), [open]);
   const signedIn = !!session && !!profile;
 
   // Push is only a hint. Refresh the actor-scoped data before showing a state
@@ -52,32 +61,35 @@ export function PushProvider({ children }: { children: ReactNode }) {
     }
   }, [queries]);
 
-  // Once per launch, once signed in: register, or decide whether to ask.
+  // Each opening, once signed in: register, or decide whether to ask.
   useEffect(() => {
     if (!signedIn) return;
     let live = true;
+    // Claimed before any await, so nothing that re-runs this in the same
+    // opening can ask a second time.
+    const first = promptedOpen !== open;
+    promptedOpen = open;
     (async () => {
       const now = await pushStatus().catch(() => ({ access: 'denied' as PushAccess, canAskAgain: false }));
       if (!live) return;
       setAccess(now.access);
       if (now.access === 'granted') {
         await registerPush();
-        if (live) setSettled(true);
+        if (live) setSettled();
         return;
       }
-      const ask = !prompted && (await shouldAskForPush().catch(() => false));
+      const ask = first && (await shouldAskForPush().catch(() => false));
       if (!live) return;
       if (ask) {
-        prompted = true;
         router.push('/notifications-permission');
       } else {
-        setSettled(true);
+        setSettled();
       }
     })();
     return () => {
       live = false;
     };
-  }, [signedIn, router]);
+  }, [signedIn, router, open, setSettled]);
 
   // Back from Settings is where a permission changes. Register when it is on.
   useEffect(() => {
@@ -103,15 +115,30 @@ export function PushProvider({ children }: { children: ReactNode }) {
       const href = hrefFor(data);
       if (href) router.push(href as Href);
     };
-    const received = Notifications.addNotificationReceivedListener(() => refreshWork());
-    const sub = Notifications.addNotificationResponseReceivedListener((r) =>
-      open(r.notification.request.content.data),
-    );
+    // Decline answers without opening anything (0074); Accept and a plain tap
+    // open the job card, where the driver confirms.
+    const respond = (r: Notifications.NotificationResponse) => {
+      const data = r.notification.request.content.data;
+      const offer = jobOfferId(data);
+      if (offer && r.actionIdentifier === 'decline') {
+        void declineJob(offer).then(refreshWork);
+        void Notifications.dismissNotificationAsync(r.notification.request.identifier).catch(() => {});
+        return;
+      }
+      open(data);
+    };
+    // A job arriving while the app is open goes straight to its card, full
+    // screen, like a ride request — there is a minute to answer.
+    const received = Notifications.addNotificationReceivedListener((n) => {
+      refreshWork();
+      if (jobOfferId(n.request.content.data)) open(n.request.content.data);
+    });
+    const sub = Notifications.addNotificationResponseReceivedListener(respond);
     if (!coldStartHandled) {
       coldStartHandled = true;
       Notifications.getLastNotificationResponseAsync()
         .then((r) => {
-          if (r) open(r.notification.request.content.data);
+          if (r) respond(r);
         })
         .catch(() => {});
     }
@@ -122,16 +149,16 @@ export function PushProvider({ children }: { children: ReactNode }) {
     const next = await requestPush().catch(() => 'denied' as PushAccess);
     setAccess(next);
     if (next === 'granted') await registerPush();
-    setSettled(true);
+    setSettled();
     return next;
-  }, []);
+  }, [setSettled]);
 
   const decline = useCallback(async () => {
     await declinePush().catch(() => {});
-    setSettled(true);
-  }, []);
+    setSettled();
+  }, [setSettled]);
 
-  const settle = useCallback(() => setSettled(true), []);
+  const settle = useCallback(() => setSettled(), [setSettled]);
 
   const value = useMemo(
     () => ({ access, settled, request, decline, settle }),

@@ -6,6 +6,9 @@
 -- pg_net only sends after commit, so nothing leaves this machine.
 
 begin;
+-- 0076: production asks only drivers with a live GPS fix; these fixtures place
+-- drivers by town, so the rule is off here (dispatch.sql §13 tests it on).
+update private.app_settings set value = 'false'::jsonb where key = 'dispatch_require_gps';
 
 set local client_min_messages to notice;
 
@@ -229,6 +232,23 @@ select assert_equals(pushes('a0000000-0000-4000-8000-0000000000c2', 'shipper_pri
   'a price set on a waiting load reaches the shipper');
 select assert_true(last_body('ExponentPushToken[shipperarabicccccc]') = '١٢٠٫٥٠٠ ر.ع. لـ مسقط ← نزوى',
   'an Arabic reader gets Arabic, with Arabic numerals and the arrow reading their way');
+
+-- ═══ 6b. a fixed-price job reads like a ride request (0074) ═════════════════
+insert into public.offers (load_id, driver_id, status, source, expires_at)
+values ('b0000000-0000-4000-8000-0000000000c9', 'd0000000-0000-4000-8000-000000000203', 'pending', 'auto',
+        now() + interval '60 seconds');
+set constraints all immediate; set constraints all deferred;
+select assert_true(
+  (select m->>'body' like 'Muscat → Nizwa · % km · 120.500 OMR' and m->>'categoryId' = 'job_offer'
+     from net.http_request_queue q, jsonb_array_elements(convert_from(q.body, 'utf8')::jsonb) m
+    where m->>'to' = 'ExponentPushToken[drv3bbbbbbbbbbbb]' order by q.id desc limit 1),
+  'a job push says route, km and what the driver keeps, and carries Accept / Decline');
+select assert_true(
+  (select coalesce(m->>'categoryId', '') = ''
+     from net.http_request_queue q, jsonb_array_elements(convert_from(q.body, 'utf8')::jsonb) m
+    where m->>'to' = 'ExponentPushToken[drv1bbbbbbbbbbbb]' and m->>'body' like 'Name your price%'
+    order by q.id desc limit 1),
+  'a bid invitation carries no Accept button — there is a price to name first');
 
 -- ═══ 7. the switch, and a push that cannot fail its cause ═════════════════
 

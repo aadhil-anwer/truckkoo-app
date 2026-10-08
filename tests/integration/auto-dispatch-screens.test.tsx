@@ -373,8 +373,8 @@ describe('Driver location — background GPS (0039)', () => {
 
   it.each([
     ['always', 'Location on · waiting for the first reading'],
-    ['foreground', 'Location only while the app is open'],
-    ['none', 'Location off · you get loads near your town'],
+    ['foreground', 'Location only while the app is open · you get jobs only while it is open'],
+    ['none', 'Location off · you get no jobs until you turn it on'],
   ] as const)('%s shows its line', async (access, line) => {
     mockLocationAccess.access = access;
     online();
@@ -407,7 +407,7 @@ describe('Driver location — background GPS (0039)', () => {
     mockLocationAccess.access = 'none';
     online({ available: false });
     await render(<DriverHome />);
-    expect(screen.queryByText('Location off · you get loads near your town')).toBeNull();
+    expect(screen.queryByText('Location off · you get no jobs until you turn it on')).toBeNull();
   });
 
   it('opens the disclosure — never the OS prompt directly — once per launch', async () => {

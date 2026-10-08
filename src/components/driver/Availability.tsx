@@ -71,7 +71,10 @@ export function AvailabilityCard({
         </Text>
       </View>
       <Text style={styles.help}>{t(available ? 'drv.avail.help' : 'drv.avail.why')}</Text>
-      {!!locationLine && <Text style={styles.help}>{locationLine}</Text>}
+      {/* 0076: no live location, no jobs — said as a problem, not a note. */}
+      {!!locationLine && (
+        <Text style={location === 'none' ? styles.warn : styles.help}>{locationLine}</Text>
+      )}
       {!!locationLine && location !== 'always' && (
         <SecondaryButton label={t('loc.card.turnOn')} onPress={onFixLocation} icon="pickup" />
       )}
@@ -100,4 +103,5 @@ const styles = StyleSheet.create({
     textAlign: align.start,
   },
   help: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start },
+  warn: { ...arabicIfNeeded(font.bodySmall), color: color.dangerLight, textAlign: align.start },
 });

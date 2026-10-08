@@ -1,5 +1,8 @@
 -- Support desk S2 — incidents, strikes and reliability (0063).
 begin;
+-- 0076: production asks only drivers with a live GPS fix; these fixtures place
+-- drivers by town, so the rule is off here (dispatch.sql §13 tests it on).
+update private.app_settings set value = 'false'::jsonb where key = 'dispatch_require_gps';
 delete from private.app_settings where key = 'staff_email_domains';
 create or replace function assert_true(p_actual boolean, p_what text)
 returns void language plpgsql as $$

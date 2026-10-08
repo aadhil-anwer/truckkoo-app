@@ -33,6 +33,15 @@ begin
   raise notice 'pass: %', p_what;
 end $$;
 
+create or replace function assert_true(p_actual boolean, p_what text)
+returns void language plpgsql as $$
+begin
+  if p_actual is distinct from true then
+    raise exception 'FAIL: % — expected true, got %', p_what, p_actual;
+  end if;
+  raise notice 'pass: %', p_what;
+end $$;
+
 create or replace function assert_raises(p_sql text, p_what text)
 returns void language plpgsql as $$
 begin
@@ -209,13 +218,27 @@ insert into public.offers (id, load_id, driver_id, status)
 values ('c2000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
         'c0000000-0000-4000-8000-00000000000d', 'pending');
 
+-- 0074 (founder, 2026-10-08): an open offer shows towns, km and fare — not the
+-- exact place or who is there. Those come with the job, in driver_trip (§9).
 select act_as('c0000000-0000-4000-8000-00000000000d');
-select assert_text(
-  (select pickup_contact_phone from public.driver_offer('c2000000-0000-4000-8000-000000000001')),
-  '+968 9000 0000', 'a pending offer carries the contact at the gate');
-select assert_text(
-  (select pickup_name from public.driver_offers() where offer_id = 'c2000000-0000-4000-8000-000000000001'),
-  'Ruwi warehouse', 'and the list carries the place name');
+select assert_true(
+  (select pickup_contact_phone is null and pickup_contact_name is null and pickup_lat is null
+          and pickup_name is null and pickup_note is null
+          and drop_contact_phone is null and drop_lat is null and drop_name is null
+     from public.driver_offer('c2000000-0000-4000-8000-000000000001')),
+  'a pending offer carries no pin, place name, note or contact — a driver who says no learns none of it');
+select assert_true(
+  (select trip_km > 0 from public.driver_offers() where offer_id = 'c2000000-0000-4000-8000-000000000001'),
+  'and it says how far the trip is');
+select act_as_reset();
+insert into public.driver_availability (driver_id, available, lat, lng, accuracy_m, located_at)
+values ('c0000000-0000-4000-8000-00000000000d', true, 23.60, 58.45, 20, now())
+on conflict (driver_id) do update set lat = excluded.lat, lng = excluded.lng,
+  accuracy_m = excluded.accuracy_m, located_at = excluded.located_at;
+select act_as('c0000000-0000-4000-8000-00000000000d');
+select assert_true(
+  (select to_pickup_km between 0 and 50 from public.driver_offer('c2000000-0000-4000-8000-000000000001')),
+  'and how far the pickup is from the driver''s own latest fix');
 select act_as_reset();
 
 -- An offer that lapsed unanswered is not a live offer: the contact goes with it.

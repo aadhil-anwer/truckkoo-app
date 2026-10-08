@@ -96,6 +96,10 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+  **An open offer shows towns, trip km, distance to the pickup and the fare —
+  never the pin, place name or contact** (0074, reversing 0041); those come
+  with the job, in `driver_trip()`. A driver who declines learns nothing about
+  where the shipper is.
   **A trip's payout uses the commission it was accepted at** (0068,
   `private.trip_commission`, read by `private.trip_payout()`); `payout_for()`
   is today's rate and is right only for an offer not yet accepted. Reading a
@@ -123,8 +127,10 @@ cities, and truck types.
   per driver in `driver_availability.lat/lng`, overwritten — never a trail — with
   no client grant for any role, the driver included. `report_location` stores it
   only while the driver is online (and sends it to an `in_transit` trip whatever
-  the switch says); switch-off and delivery erase it. `nearby_drivers` ranks by
-  it when under 45 min old and ≤1 km accurate, else by town.
+  the switch says); switch-off and delivery erase it. `nearby_drivers` asks
+  only drivers whose fix is under 45 min old and ≤1 km accurate, measured to the
+  pickup pin — no town fallback (0076, founder: "we shouldn't have a driver with
+  no location"); the range is 10 km in production.
   `src/lib/background-location.ts` is the **only** reporter, and
   `src/lib/location-tracking.tsx` decides when it runs.
 - **Arriving at a stop is noticed, never tapped** (0069). From acceptance to

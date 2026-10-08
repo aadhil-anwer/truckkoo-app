@@ -14,6 +14,7 @@ import { initLanguage } from '@/i18n';
 
 const mockRouter = { back: jest.fn(), push: jest.fn(), replace: jest.fn() };
 const mockRespond = { tripId: 'trip-1' as string | null, calls: [] as unknown[] };
+const mockOffer = { expires_at: '2026-09-29T06:53:49Z', trip_km: null as number | null, to_pickup_km: null as number | null };
 
 jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
@@ -39,7 +40,6 @@ jest.mock('@/lib/queries', () => ({
     isPending: false,
     data: {
       offer_id: 'offer-1',
-      expires_at: '2026-09-29T06:53:49Z',
       leg_id: null,
       origin_city: 1,
       dest_city: 36,
@@ -54,6 +54,7 @@ jest.mock('@/lib/queries', () => ({
       currency: 'OMR',
       detour_km: 0,
       free_after_kg: null,
+      ...mockOffer,
     },
   }),
   useRespondToOffer: () => ({
@@ -73,6 +74,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRespond.calls = [];
   mockRespond.tripId = 'trip-1';
+  Object.assign(mockOffer, { expires_at: '2026-09-29T06:53:49Z', trip_km: null, to_pickup_km: null });
 });
 
 describe('Offer detail', () => {
@@ -82,5 +84,23 @@ describe('Offer detail', () => {
     expect(mockRespond.calls).toEqual([{ offerId: 'offer-1', accept: true }]);
     // replace, not push: Back from the trip must not return to a spent offer.
     expect(mockRouter.replace).toHaveBeenCalledWith('/trip/trip-1');
+  });
+
+  it('reads like a ride request: trip km, distance to the pickup, and a minute to answer (0074)', async () => {
+    Object.assign(mockOffer, {
+      expires_at: new Date(Date.now() + 45_000).toISOString(), trip_km: 12.4, to_pickup_km: 6.6,
+    });
+    await render(<OfferDetail />);
+    expect(screen.getByText('12 km')).toBeTruthy();
+    expect(screen.getByText('7 km from you')).toBeTruthy();
+    expect(screen.getByText(/Answer within \d+ s/)).toBeTruthy();
+    // No pin before the job is taken — the screen says when it comes.
+    expect(screen.getByText(/exact pickup point and contact show once you accept/)).toBeTruthy();
+  });
+
+  it('counts down nothing for an offer a person sent with hours to answer', async () => {
+    Object.assign(mockOffer, { expires_at: new Date(Date.now() + 3 * 3_600_000).toISOString() });
+    await render(<OfferDetail />);
+    expect(screen.queryByText(/Answer within/)).toBeNull();
   });
 });

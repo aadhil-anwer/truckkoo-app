@@ -102,19 +102,18 @@ describe('when to ask', () => {
     await expect(shouldAskForPush()).resolves.toBe(true);
   });
 
-  it('does not ask again after "Not now"', async () => {
+  // Founder, 2026-10-08: while it is off, ask again. The provider limits it to
+  // once per opening of the app (push-screens.test.tsx), not this function.
+  it('still asks after "Not now" — off is off, and an off driver misses jobs', async () => {
     await declinePush();
-    await expect(shouldAskForPush()).resolves.toBe(false);
+    await expect(shouldAskForPush()).resolves.toBe(true);
   });
 
-  it('asks once more when a permission that was on has been switched off', async () => {
+  it('asks when a permission that was on has been switched off', async () => {
     N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
     await registerPush();
-    await requestPush();
     N.getPermissionsAsync.mockResolvedValue(perm(false, 'denied', false));
     await expect(shouldAskForPush()).resolves.toBe(true);
-    await declinePush();
-    await expect(shouldAskForPush()).resolves.toBe(false);
   });
 
   it('never asks while it is on', async () => {
@@ -141,5 +140,21 @@ describe('where a tap goes', () => {
     expect(hrefFor({ kind: 'something_else', load_id: id })).toBeNull();
     expect(hrefFor(null)).toBeNull();
     expect(hrefFor('shipper_load')).toBeNull();
+  });
+});
+
+describe('jobOfferId (0074)', () => {
+  const { jobOfferId } = require('@/lib/push') as typeof import('@/lib/push');
+  const id = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000001';
+  it('names the offer of a fixed-price job', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: id, bid: false })).toBe(id);
+  });
+  it('never a bid invitation, which has a price to name first', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: id, bid: true })).toBeNull();
+  });
+  it('never a malformed id or another kind', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: '../trip/1' })).toBeNull();
+    expect(jobOfferId({ kind: 'shipper_load', offer_id: id })).toBeNull();
+    expect(jobOfferId(null)).toBeNull();
   });
 });

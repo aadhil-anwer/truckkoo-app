@@ -26,6 +26,7 @@ import { initLanguage } from '@/i18n';
 import { __resetLocationPrompt } from '@/lib/location-prompt';
 import * as pushContext from '@/lib/push-context';
 import { PushProvider, __resetPushLaunch } from '@/lib/push-provider';
+import { __openAgain } from '@/lib/app-opens';
 import * as queries from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
@@ -71,6 +72,17 @@ describe('PushProvider', () => {
     expect(mockPush.mock.calls.filter((c) => c[0] === '/notifications-permission')).toHaveLength(1);
   });
 
+  it('asks again on the next opening while notifications are off — never twice in one', async () => {
+    await render(app);
+    await settle();
+    await render(app);
+    await settle();
+    expect(mockPush.mock.calls.filter((c) => c[0] === '/notifications-permission')).toHaveLength(1);
+    await act(async () => __openAgain());
+    await settle();
+    expect(mockPush.mock.calls.filter((c) => c[0] === '/notifications-permission')).toHaveLength(2);
+  });
+
   it('registers a phone that already allows it, and asks nothing', async () => {
     N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
     await render(app);
@@ -91,6 +103,52 @@ describe('PushProvider', () => {
     await render(app);
     await settle();
     expect(mockPush).toHaveBeenCalledWith('/load/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+  });
+
+  // 0074: a new job reads like a ride request.
+  const OFFER = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000001';
+  const job = (actionIdentifier: string) => ({
+    actionIdentifier,
+    notification: {
+      request: { identifier: 'n1', content: { data: { kind: 'driver_new_job', offer_id: OFFER, bid: false } } },
+    },
+  });
+
+  it('registers Accept and Decline for a job, with Accept opening the app', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    await render(app);
+    await settle();
+    expect(N.setNotificationCategoryAsync).toHaveBeenCalledWith('job_offer', [
+      expect.objectContaining({ identifier: 'accept', buttonTitle: 'Accept', options: { opensAppToForeground: true } }),
+      expect.objectContaining({ identifier: 'decline', buttonTitle: 'Decline' }),
+    ]);
+  });
+
+  it('Decline on the notification answers no, and opens nothing', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    N.getLastNotificationResponseAsync.mockResolvedValueOnce(job('decline') as never);
+    await render(app);
+    await settle();
+    expect(supabase.rpc).toHaveBeenCalledWith('respond_to_offer', { p_offer_id: OFFER, p_accept: false });
+    expect(mockPush).not.toHaveBeenCalledWith(`/offer/${OFFER}`);
+  });
+
+  it('Accept on the notification opens the job card — it never takes the job by itself', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    N.getLastNotificationResponseAsync.mockResolvedValueOnce(job('accept') as never);
+    await render(app);
+    await settle();
+    expect(mockPush).toHaveBeenCalledWith(`/offer/${OFFER}`);
+    expect(supabase.rpc).not.toHaveBeenCalledWith('respond_to_offer', expect.anything());
+  });
+
+  it('a job arriving while the app is open goes straight to its card', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    await render(app);
+    await settle();
+    const onReceived = N.addNotificationReceivedListener.mock.calls.at(-1)![0] as (n: unknown) => void;
+    await act(async () => onReceived(job('').notification));
+    expect(mockPush).toHaveBeenCalledWith(`/offer/${OFFER}`);
   });
 });
 
@@ -177,5 +235,25 @@ describe('DriverHome — one permission screen at a time', () => {
     pushState(true);
     await render(<DriverHome />);
     expect(mockPush).toHaveBeenCalledWith('/location-permission');
+  });
+
+  // Founder, 2026-10-08: off is asked about again — once each opening, never
+  // twice in one sitting. A driver with location off gets no jobs (0076).
+  it('asks about location again the next time the app is opened, while it is still off', async () => {
+    pushState(true);
+    const view = await render(<DriverHome />);
+    await view.rerender(<DriverHome />);
+    const asks = () => mockPush.mock.calls.filter((c) => c[0] === '/location-permission').length;
+    expect(asks()).toBe(1);
+    await act(async () => __openAgain());
+    expect(asks()).toBe(2);
+  });
+
+  it('does not ask once location is allowed all the time', async () => {
+    mockLocationAccess.access = 'always';
+    pushState(true);
+    await render(<DriverHome />);
+    await act(async () => __openAgain());
+    expect(mockPush).not.toHaveBeenCalledWith('/location-permission');
   });
 });

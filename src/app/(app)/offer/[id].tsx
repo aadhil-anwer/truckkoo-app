@@ -17,7 +17,7 @@
  * broken screen.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,6 +64,15 @@ export default function OfferDetail() {
   const offer = useDriverOffer(id);
   const respond = useRespondToOffer();
   const [error, setError] = useState<string | null>(null);
+  // The countdown's clock, ticking once a second while the offer is open
+  // (the otp-code pattern: time is state, never read during render).
+  const [now, setNow] = useState(() => Date.now());
+  const open = !!offer.data;
+  useEffect(() => {
+    if (!open) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [open]);
   // The map band is a fixed height across the full width, so it takes its size
   // from the window rather than from `onLayout`. One less frame where the
   // coastline is not there yet, and the geometry is assertable in a test.
@@ -141,6 +150,10 @@ export default function OfferDetail() {
   }
 
   const amount = formatMoney(data.payout_baisa, data.currency as Currency);
+  // A minute to answer (0074). Shown only inside the last ten minutes, so an
+  // ops-sent offer that lasts hours does not count down from 7,000.
+  const msLeft = Date.parse(data.expires_at) - now;
+  const secondsLeft = msLeft > 0 && msLeft <= 600_000 ? Math.ceil(msLeft / 1000) : null;
 
   return (
     <View style={styles.screen}>
@@ -192,13 +205,33 @@ export default function OfferDetail() {
               currency={data.currency}
             />
 
+            {secondsLeft != null && (
+              <Text style={styles.countdown} accessibilityLiveRegion="none">
+                {t('drv.offer.answerIn', { seconds: formatNumber(secondsLeft) })}
+              </Text>
+            )}
+
             <View style={styles.block}>
               {!!from && !!to && <RouteRail origin={localized(from)} destination={localized(to)} />}
               {pickupPlace && <DriverPlaceDetails label={t('book.dest.pickup')} place={pickupPlace} />}
               {dropPlace && <DriverPlaceDetails label={t('book.dest.deliver')} place={dropPlace} />}
+              {/* 0074: an open offer carries no pin or contact; the job does. */}
+              {!pickupPlace && <Text style={styles.capacity}>{t('drv.offer.exactAfter')}</Text>}
             </View>
 
             <View style={styles.facts}>
+              {data.trip_km != null && (
+                <Fact
+                  label={t('drv.offer.tripLabel')}
+                  value={t('drv.offer.tripKm', { km: formatNumber(Math.round(data.trip_km)) })}
+                />
+              )}
+              {data.to_pickup_km != null && (
+                <Fact
+                  label={t('drv.offer.toPickupLabel')}
+                  value={t('drv.offer.toPickup', { km: formatNumber(Math.round(data.to_pickup_km)) })}
+                />
+              )}
               {data.detour_km != null && (
                 <Fact
                   label={t('drv.offer.detourLabel')}
@@ -282,6 +315,7 @@ const styles = StyleSheet.create({
   factValue: { ...arabicIfNeeded(font.value), color: color.lightText, textAlign: align.start },
 
   capacity: { ...arabicIfNeeded(font.bodySmall), color: alpha.onInk.body, textAlign: align.start },
+  countdown: { ...arabicIfNeeded(font.value), color: color.lightText, textAlign: align.start, marginTop: space.sm },
   error: { ...arabicIfNeeded(font.body), color: color.dangerLight, textAlign: align.start },
 
   pass: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },

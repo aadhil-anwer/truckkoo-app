@@ -22,19 +22,64 @@ import { supabase } from '@/lib/supabase';
 
 export type PushAccess = 'granted' | 'denied' | 'undetermined';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const TOKEN_KEY = 'truckkoo.push.token';
 const ASKED_KEY = 'truckkoo.push.asked';
 const GRANTED_KEY = 'truckkoo.push.wasGranted';
 
-/** Show a notification even while the app is open — a new job is news either way. */
+/**
+ * Show a notification even while the app is open — a new job is news either way.
+ * A fixed-price job is the exception: the provider opens its card full screen
+ * (0074), so a banner on top of it would only cover the buttons. It still rings.
+ */
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (n) => {
+    const job = jobOfferId(n.request.content.data) !== null;
+    return {
+      shouldShowBanner: !job,
+      shouldShowList: !job,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    };
+  },
 });
+
+/**
+ * 0074: Accept and Decline on a new job. Accept opens the job card — it never
+ * takes a job from the lock screen, where a brushed thumb in a moving cab would
+ * commit a driver to 40 km. Decline answers without opening the app.
+ */
+export const JOB_OFFER_CATEGORY = 'job_offer';
+
+async function ensureCategories(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(JOB_OFFER_CATEGORY, [
+    { identifier: 'accept', buttonTitle: t('push.job.accept'), options: { opensAppToForeground: true } },
+    {
+      identifier: 'decline',
+      buttonTitle: t('push.job.decline'),
+      options: { opensAppToForeground: false, isDestructive: true },
+    },
+  ]);
+}
+
+/** The offer a fixed-price job notification is about, or null — never a bid invite. */
+export function jobOfferId(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  if (d.kind !== 'driver_new_job' || d.bid === true) return null;
+  return typeof d.offer_id === 'string' && UUID.test(d.offer_id) ? d.offer_id : null;
+}
+
+/** Decline from the notification. Never throws: an unanswered offer lapses on its own. */
+export async function declineJob(offerId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('respond_to_offer', { p_offer_id: offerId, p_accept: false });
+    return !error;
+  } catch {
+    return false;
+  }
+}
 
 export async function pushStatus(): Promise<{ access: PushAccess; canAskAgain: boolean }> {
   const p = await Notifications.getPermissionsAsync();
@@ -74,6 +119,7 @@ export async function registerPush(): Promise<string | null> {
     if (access !== 'granted') return null;
     await AsyncStorage.setItem(GRANTED_KEY, '1').catch(() => {});
     await ensureChannel();
+    await ensureCategories();
     const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
     const { data: token } = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
     const { error } = await supabase.rpc('register_push_token', {
@@ -107,21 +153,15 @@ async function markAsked(): Promise<void> {
 }
 
 /**
- * Whether to show the permission screen on this launch.
+ * Whether to show the permission screen on this opening of the app.
  *
- * Right after sign-up (never asked on this phone), and once when a permission
- * that WAS granted has been taken away in Settings — the case where silence
- * looks like the app is broken. A plain "Not now" is not asked about again on
- * every launch; the account screen keeps a way back.
+ * Whenever notifications are off (founder, 2026-10-08): a driver who misses the
+ * push misses the job, and a shipper misses "your truck is here". The provider
+ * asks at most once per opening, so "Not now" holds for the rest of that visit.
  */
 export async function shouldAskForPush(): Promise<boolean> {
   const { access } = await pushStatus();
-  if (access === 'granted') return false;
-  const [asked, wasGranted] = await Promise.all([
-    AsyncStorage.getItem(ASKED_KEY).catch(() => null),
-    AsyncStorage.getItem(GRANTED_KEY).catch(() => null),
-  ]);
-  return asked !== '1' || wasGranted === '1';
+  return access !== 'granted';
 }
 
 /** "Not now": stop treating a revoked permission as news. */
@@ -129,8 +169,6 @@ export async function declinePush(): Promise<void> {
   await markAsked();
   await AsyncStorage.removeItem(GRANTED_KEY).catch(() => {});
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Where a tapped notification goes. The data is the server's, but it is still

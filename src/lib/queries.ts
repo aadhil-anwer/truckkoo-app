@@ -793,14 +793,17 @@ export type DriverOffer = {
   drop_note: string | null;
   drop_contact_name: string | null;
   drop_contact_phone: string | null;
+  /** 0074: the trip's own km, pin to pin when both are set. */
+  trip_km: number | null;
+  /** 0074: from the driver's fresh fix (or town) to the pickup. Never their coordinates. */
+  to_pickup_km: number | null;
 };
 
 export function useDriverOffers() {
   return useQuery({
     queryKey: ['driver', 'offers'],
-    // Waves last five minutes. Until push notifications land, an offer has to
-    // appear while the driver is looking at this screen, not when they next
-    // pull to refresh — by then the wave has moved on.
+    // A driver has a minute to answer (0074). The push is the main signal; this
+    // is the fallback for a phone whose notifications are off.
     refetchInterval: 15_000,
     queryFn: async (): Promise<DriverOffer[]> => {
       const { data, error } = await supabase.rpc('driver_offers');
