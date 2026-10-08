@@ -298,8 +298,12 @@ update public.offers set expires_at = now() - interval '1 second'
 update public.loads set accepted_at = now() - interval '11 minutes' where id = (select load_id from booked);
 select private.system_dispatch_waves();
 
+select assert_text(asked((select load_id from booked), 'pending'), 'E Salalah',
+  'wave 3 reaches 1,500 km — and, by default (0076), not a driver with no known place');
+update private.app_settings set value = 'true'::jsonb where key = 'dispatch_ask_unlocated';
+select private.system_dispatch_waves();
 select assert_text(asked((select load_id from booked), 'pending'), 'E Salalah,F Nowhere',
-  'wave 3 reaches 1,500 km and drivers whose town is unknown');
+  'with dispatch_ask_unlocated on, drivers whose town is unknown are asked in the last stage');
 select assert_text(
   (select status::text from public.offers o join public.profiles p on p.id = o.driver_id
     where o.load_id = (select load_id from booked) and p.full_name = 'D Sohar'), 'expired',
@@ -974,5 +978,39 @@ update public.driver_availability set available = true, updated_at = now() + int
  where driver_id = 'd0000000-0000-4000-8000-000000000003';
 select assert_text(asked((select load_id from late), 'pending'), 'B Seeb,C Nizwa',
   'and the next driver to come online takes it');
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 13. "Max 10 km" means of the pickup pin (0076)
+-- ════════════════════════════════════════════════════════════════════════════
+update public.offers set status = 'expired' where status = 'pending';
+update public.driver_availability set available = false;
+update private.app_settings set value = '10'::jsonb
+ where key in ('dispatch_radius_km_1', 'dispatch_radius_km_2', 'dispatch_radius_km_3');
+
+create temp table pinned on commit drop as
+with l as (
+  insert into public.loads (shipper_id, origin_city, dest_city, pickup_from, pickup_to,
+                            goods_description, weight_kg, status, price_baisa, accepted_at)
+  values ('a0000000-0000-4000-8000-000000000001', city('Muscat'), city('Dubai'),
+          current_date + 7, current_date + 7, 'Pinned cargo', 8000, 'accepted', 130000, now())
+  returning id
+)
+select id as load_id from l;
+insert into public.load_places (load_id, kind, lat, lng)
+select load_id, 'pickup', 23.5880, 58.4100 from pinned;                 -- Ruwi
+
+-- A: ~5 km from the pin. B: ~14 km away, still in Muscat. Both fresh GPS.
+update public.driver_availability
+   set available = true, lat = 23.6150, lng = 58.4500, accuracy_m = 10, located_at = now(),
+       city_id = city('Muscat')
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';
+update public.driver_availability
+   set available = true, lat = 23.5900, lng = 58.2700, accuracy_m = 10, located_at = now(),
+       city_id = city('Muscat')
+ where driver_id = 'd0000000-0000-4000-8000-000000000002';
+select private.next_wave((select load_id from pinned));
+
+select assert_text(asked((select load_id from pinned), 'pending'), 'A Muscat',
+  'within 10 km of the pickup pin is asked; 14 km away in the same town is not');
 
 rollback;
