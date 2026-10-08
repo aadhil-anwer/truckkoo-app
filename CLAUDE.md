@@ -127,8 +127,10 @@ cities, and truck types.
   per driver in `driver_availability.lat/lng`, overwritten — never a trail — with
   no client grant for any role, the driver included. `report_location` stores it
   only while the driver is online (and sends it to an `in_transit` trip whatever
-  the switch says); switch-off and delivery erase it. `nearby_drivers` ranks by
-  it when under 45 min old and ≤1 km accurate, else by town.
+  the switch says); switch-off and delivery erase it. `nearby_drivers` asks
+  only drivers whose fix is under 45 min old and ≤1 km accurate, measured to the
+  pickup pin — no town fallback (0076, founder: "we shouldn't have a driver with
+  no location"); the range is 10 km in production.
   `src/lib/background-location.ts` is the **only** reporter, and
   `src/lib/location-tracking.tsx` decides when it runs.
 - **Arriving at a stop is noticed, never tapped** (0069). From acceptance to

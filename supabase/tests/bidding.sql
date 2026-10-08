@@ -4,6 +4,9 @@
 -- moving deadlines and wave stamps into the past as the superuser.
 
 begin;
+-- 0076: production asks only drivers with a live GPS fix; these fixtures place
+-- drivers by town, so the rule is off here (dispatch.sql §13 tests it on).
+update private.app_settings set value = 'false'::jsonb where key = 'dispatch_require_gps';
 -- 0054's staff-domain rule is proven in ops_v2.sql; these fixtures use test domains.
 delete from private.app_settings where key = 'staff_email_domains';
 

@@ -190,6 +190,9 @@ select server_price(8000) as p8000, server_price(8000) + 1 as p8000_stale \gset
 select assert_true(private.setting_bool('require_verified_driver', false),
   'from 0050 the verified-driver gate is on');
 update private.app_settings set value = 'true'::jsonb where key = 'require_verified_driver';
+-- 0076: production asks only drivers with a live GPS fix. This suite was written
+-- placing drivers by town, so it runs with that rule off; §13 runs it on.
+update private.app_settings set value = 'false'::jsonb where key = 'dispatch_require_gps';
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- 1. Book = accept
@@ -298,12 +301,8 @@ update public.offers set expires_at = now() - interval '1 second'
 update public.loads set accepted_at = now() - interval '11 minutes' where id = (select load_id from booked);
 select private.system_dispatch_waves();
 
-select assert_text(asked((select load_id from booked), 'pending'), 'E Salalah',
-  'wave 3 reaches 1,500 km — and, by default (0076), not a driver with no known place');
-update private.app_settings set value = 'true'::jsonb where key = 'dispatch_ask_unlocated';
-select private.system_dispatch_waves();
 select assert_text(asked((select load_id from booked), 'pending'), 'E Salalah,F Nowhere',
-  'with dispatch_ask_unlocated on, drivers whose town is unknown are asked in the last stage');
+  'wave 3 reaches 1,500 km and drivers whose town is unknown');
 select assert_text(
   (select status::text from public.offers o join public.profiles p on p.id = o.driver_id
     where o.load_id = (select load_id from booked) and p.full_name = 'D Sohar'), 'expired',
@@ -986,6 +985,7 @@ update public.offers set status = 'expired' where status = 'pending';
 update public.driver_availability set available = false;
 update private.app_settings set value = '10'::jsonb
  where key in ('dispatch_radius_km_1', 'dispatch_radius_km_2', 'dispatch_radius_km_3');
+update private.app_settings set value = 'true'::jsonb where key = 'dispatch_require_gps';
 
 create temp table pinned on commit drop as
 with l as (
@@ -1012,5 +1012,14 @@ select private.next_wave((select load_id from pinned));
 
 select assert_text(asked((select load_id from pinned), 'pending'), 'A Muscat',
   'within 10 km of the pickup pin is asked; 14 km away in the same town is not');
+
+-- C is in Muscat too, but their last fix is two hours old: no live fix, no job.
+update public.driver_availability
+   set available = true, lat = 23.5890, lng = 58.4110, accuracy_m = 10,
+       located_at = now() - interval '2 hours', city_id = city('Muscat')
+ where driver_id = 'd0000000-0000-4000-8000-000000000003';
+select private.next_wave((select load_id from pinned));
+select assert_text(asked((select load_id from pinned), 'pending'), 'A Muscat',
+  'a driver with no live GPS fix is not asked, even beside the pin and in the right town');
 
 rollback;

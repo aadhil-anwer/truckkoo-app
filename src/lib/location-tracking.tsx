@@ -5,8 +5,8 @@
  * Tracked while ONLINE or ON A JOB (heading to the pickup or carrying the load),
  * never otherwise, never a shipper.
  * With "Allow all the time" the OS task does it; with while-using only, one fix
- * on opening the app and every five minutes it stays open; with nothing, the
- * server ranks by town. Mounted once, in the (app) layout.
+ * on opening the app and every five minutes it stays open; with nothing, no
+ * jobs are offered (0076: no live fix, no job). Mounted once, in the (app) layout.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';

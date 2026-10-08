@@ -1,20 +1,26 @@
--- 0076 · "Max distance should be 10 km" (founder, 2026-10-08).
+-- 0076 · Jobs go only to drivers we can place, within range of the pickup pin.
 --
--- The ranges are settings (dispatch_radius_km_1..3, set to 10 in production
--- through the settings table, as a console change would be — not here, so test
--- databases keep their own). This migration makes a range mean what it says:
---   * distance is measured to the pickup PIN when the shipper set one — before
---     it was to the pickup town's centre, so "10 km" in Muscat meant anywhere
---     within 10 km of a point in a governorate 50 km across;
---   * a driver with no fresh GPS and no town was asked in the last stage and
---     after the alert whatever the distance; now only with the new console
---     switch `dispatch_ask_unlocated` on (off by default).
--- The same pin-first distance is what the driver's offer card shows (0074).
+-- Founder, 2026-10-08: "max distance should be 10 km" and "we shouldn't have a
+-- driver with no location". Before this:
+--   * distance was measured to the pickup TOWN's centre, so a range meant little
+--     inside a town — Muscat is ~50 km across;
+--   * a driver with no recent GPS was placed at their town's centre, and one
+--     with no town at all was asked in the last stage whatever the distance.
+-- Now:
+--   * distance is from the driver's live fix (dispatch_location_fresh_minutes,
+--     45) to the pickup pin when there is one, else to the pickup town;
+--   * no live fix, no job. `dispatch_require_gps` (on) is the rule; it is not in
+--     the console registry on purpose — it is a product rule, not a dial. Only
+--     the older test suites, which place drivers by town, switch it off.
+--   * Declared trips (the leg tier, candidates_for) are untouched: a declared
+--     trip says where the driver WILL be, which is the point of it.
+-- The ranges themselves (dispatch_radius_km_1..3) are settings: 10 km in
+-- production, set through the settings table, not here.
 
-insert into private.app_settings (key, value) values ('dispatch_ask_unlocated', 'false'::jsonb)
+insert into private.app_settings (key, value) values ('dispatch_require_gps', 'true'::jsonb)
 on conflict (key) do nothing;
 
--- 0075's body; distance and the unlocated rule changed.
+-- 0075's body; distance and the no-location rule changed.
 create or replace function private.nearby_drivers(
   p_load_id uuid, p_radius_km numeric, p_include_unlocated boolean, p_limit integer
 )
@@ -52,15 +58,14 @@ as $$
             and coalesce(da.accuracy_m, 0) <= 1000) as fresh
   ) fr
   left join lateral (
-    -- 0076: to the pickup PIN when there is one — "within 10 km" has to mean
-    -- of the job, not of a town centre in a governorate 50 km across.
+    -- 0076: from a live fix to the pickup PIN when there is one; without a live
+    -- fix, no distance at all (unless dispatch_require_gps is off, which only
+    -- the older test suites do).
     select case
       when fr.fresh and l.pick_lat is not null
         then private.straight_road_km(da.lat, da.lng, l.pick_lat, l.pick_lng)
       when fr.fresh then private.point_km(da.lat::numeric, da.lng::numeric, l.origin_city)
-      when da.city_id is not null and l.pick_lat is not null
-        then (select private.straight_road_km(c.lat, c.lng, l.pick_lat, l.pick_lng)
-                from public.cities c where c.id = da.city_id)
+      when private.setting_bool('dispatch_require_gps', true) then null
       when da.city_id is not null then private.route_km(da.city_id, l.origin_city)
     end as v
   ) km on true
@@ -96,9 +101,7 @@ as $$
     )
     and (
       (km.v is not null and km.v <= p_radius_km)
-      -- 0076: a driver with no known place cannot be shown to be within range,
-      -- so they are asked only when the owner allows it.
-      or (km.v is null and p_include_unlocated and private.setting_bool('dispatch_ask_unlocated', false))
+      or (km.v is null and p_include_unlocated and not private.setting_bool('dispatch_require_gps', true))
     )
   -- 0063: drivers with strikes in the last 30 days are asked after the rest,
   -- when the owner's switch is on. Still asked — never excluded.
@@ -109,7 +112,7 @@ as $$
   limit p_limit;
 $$;
 
--- 0075's registry, with the new switch.
+-- 0075's registry; the GPS freshness description changed to say what it does now.
 create or replace function private.ops_setting_spec()
  RETURNS TABLE(key text, value_type text, label text, description text, min_value integer, max_value integer)
  LANGUAGE sql
@@ -147,10 +150,8 @@ AS $function$
      'How far drivers are asked during the second stage.', 1, 2000),
     ('dispatch_radius_km_3', 'integer', 'Range in stage 3 and after (km)',
      'How far drivers are asked during the third stage, and after the alert.', 1, 3000),
-    ('dispatch_ask_unlocated', 'boolean', 'Ask drivers with no known location',
-     'When on, drivers with no recent GPS and no town are asked in the last stage and after the alert, however far away they may be. Off keeps every ask within the ranges above.', null, null),
     ('dispatch_location_fresh_minutes', 'integer', 'GPS counts as fresh for (minutes)',
-     'A driver''s last GPS point older than this is ignored and their town is used instead.', 5, 240),
+     'A driver is offered work only with a GPS point newer than this. Older, and they are not asked until their phone reports again.', 5, 240),
     ('dispatch_rescue_enabled', 'boolean', 'Keep looking after the alert',
      'When on, a job nobody took keeps being offered — to drivers who come online, and to anyone due a second ask — until its collection date, unless a dispatcher takes it in hand.', null, null),
     ('drivers_online_by_default', 'boolean', 'Drivers online unless they switch off',
