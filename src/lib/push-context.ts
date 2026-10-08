@@ -8,11 +8,11 @@ import type { PushAccess } from '@/lib/push';
 
 type Ctx = {
   access: PushAccess | null;
-  /** The notification question is done for this launch. */
+  /** The notification question is done for this opening of the app. */
   settled: boolean;
   request: () => Promise<PushAccess>;
   decline: () => Promise<void>;
-  /** The screen closed without an answer (back gesture): done for this launch. */
+  /** The screen closed without an answer (back gesture): done for this opening. */
   settle: () => void;
 };
 

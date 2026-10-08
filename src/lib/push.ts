@@ -153,21 +153,15 @@ async function markAsked(): Promise<void> {
 }
 
 /**
- * Whether to show the permission screen on this launch.
+ * Whether to show the permission screen on this opening of the app.
  *
- * Right after sign-up (never asked on this phone), and once when a permission
- * that WAS granted has been taken away in Settings — the case where silence
- * looks like the app is broken. A plain "Not now" is not asked about again on
- * every launch; the account screen keeps a way back.
+ * Whenever notifications are off (founder, 2026-10-08): a driver who misses the
+ * push misses the job, and a shipper misses "your truck is here". The provider
+ * asks at most once per opening, so "Not now" holds for the rest of that visit.
  */
 export async function shouldAskForPush(): Promise<boolean> {
   const { access } = await pushStatus();
-  if (access === 'granted') return false;
-  const [asked, wasGranted] = await Promise.all([
-    AsyncStorage.getItem(ASKED_KEY).catch(() => null),
-    AsyncStorage.getItem(GRANTED_KEY).catch(() => null),
-  ]);
-  return asked !== '1' || wasGranted === '1';
+  return access !== 'granted';
 }
 
 /** "Not now": stop treating a revoked permission as news. */

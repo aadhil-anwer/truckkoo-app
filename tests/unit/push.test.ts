@@ -102,19 +102,18 @@ describe('when to ask', () => {
     await expect(shouldAskForPush()).resolves.toBe(true);
   });
 
-  it('does not ask again after "Not now"', async () => {
+  // Founder, 2026-10-08: while it is off, ask again. The provider limits it to
+  // once per opening of the app (push-screens.test.tsx), not this function.
+  it('still asks after "Not now" — off is off, and an off driver misses jobs', async () => {
     await declinePush();
-    await expect(shouldAskForPush()).resolves.toBe(false);
+    await expect(shouldAskForPush()).resolves.toBe(true);
   });
 
-  it('asks once more when a permission that was on has been switched off', async () => {
+  it('asks when a permission that was on has been switched off', async () => {
     N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
     await registerPush();
-    await requestPush();
     N.getPermissionsAsync.mockResolvedValue(perm(false, 'denied', false));
     await expect(shouldAskForPush()).resolves.toBe(true);
-    await declinePush();
-    await expect(shouldAskForPush()).resolves.toBe(false);
   });
 
   it('never asks while it is on', async () => {

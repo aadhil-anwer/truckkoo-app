@@ -52,6 +52,7 @@ import { currentFix } from '@/lib/background-location';
 import { formatAge } from '@/lib/format';
 import { useLocationAccess } from '@/lib/location-tracking';
 import { usePush } from '@/lib/push-context';
+import { useAppOpen } from '@/lib/app-opens';
 import { claimLocationPrompt } from '@/lib/location-prompt';
 import { formatMoney } from '@/lib/money';
 import { DECLARED_TRIPS } from '@/lib/features';
@@ -96,9 +97,11 @@ export default function DriverHome() {
   const setAvailable = useSetAvailable();
   const location = useLocationAccess();
   const push = usePush();
+  const open = useAppOpen();
 
-  // Online without "Allow all the time": explain, once per launch, then let the
-  // disclosure screen ask. Never the OS prompt straight from here.
+  // Online without "Allow all the time": explain, once each time the app is
+  // opened, then let the disclosure screen ask. Never the OS prompt straight
+  // from here. Without it a driver gets no jobs (0076).
   useEffect(() => {
     if (
       // One permission screen at a time: the notification question first.
@@ -106,11 +109,11 @@ export default function DriverHome() {
       availability.data?.available &&
       location.access !== null &&
       location.access !== 'always' &&
-      claimLocationPrompt()
+      claimLocationPrompt(open)
     ) {
       router.push('/location-permission');
     }
-  }, [push.settled, availability.data?.available, location.access, router]);
+  }, [push.settled, availability.data?.available, location.access, router, open]);
   const [error, setError] = useState<string | null>(null);
 
   const index = useMemo(() => cityIndex(cities.data), [cities.data]);
