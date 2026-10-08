@@ -143,3 +143,19 @@ describe('where a tap goes', () => {
     expect(hrefFor('shipper_load')).toBeNull();
   });
 });
+
+describe('jobOfferId (0074)', () => {
+  const { jobOfferId } = require('@/lib/push') as typeof import('@/lib/push');
+  const id = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000001';
+  it('names the offer of a fixed-price job', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: id, bid: false })).toBe(id);
+  });
+  it('never a bid invitation, which has a price to name first', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: id, bid: true })).toBeNull();
+  });
+  it('never a malformed id or another kind', () => {
+    expect(jobOfferId({ kind: 'driver_new_job', offer_id: '../trip/1' })).toBeNull();
+    expect(jobOfferId({ kind: 'shipper_load', offer_id: id })).toBeNull();
+    expect(jobOfferId(null)).toBeNull();
+  });
+});

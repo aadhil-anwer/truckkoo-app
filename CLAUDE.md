@@ -96,6 +96,10 @@ cities, and truck types.
   payout in TypeScript**, for the same reason there is no `src/lib/pricing.ts`.
   A driver seeing the margin on *their own* load is deliberate: they collect the
   price in cash and remit the difference.
+  **An open offer shows towns, trip km, distance to the pickup and the fare —
+  never the pin, place name or contact** (0074, reversing 0041); those come
+  with the job, in `driver_trip()`. A driver who declines learns nothing about
+  where the shipper is.
   **A trip's payout uses the commission it was accepted at** (0068,
   `private.trip_commission`, read by `private.trip_payout()`); `payout_for()`
   is today's rate and is right only for an offer not yet accepted. Reading a

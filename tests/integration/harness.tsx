@@ -300,6 +300,8 @@ export function driverOffer(over: Partial<DriverOffer> = {}): DriverOffer {
     drop_note: null,
     drop_contact_name: null,
     drop_contact_phone: null,
+    trip_km: 164,
+    to_pickup_km: 7,
     ...over,
   };
 }

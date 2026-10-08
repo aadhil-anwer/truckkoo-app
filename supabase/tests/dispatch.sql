@@ -235,9 +235,9 @@ select assert_text(
 select assert_text(asked((select load_id from booked)), 'A Muscat,B Seeb,C Nizwa',
   'wave 1 asks the three nearest online, verified, fitting drivers');
 select assert_true(
-  (select bool_and(o.expires_at <= now() + interval '5 minutes' and o.source = 'auto')
+  (select bool_and(o.expires_at <= now() + interval '61 seconds' and o.source = 'auto')
      from public.offers o where o.load_id = (select load_id from booked)),
-  'wave offers live five minutes, not the old 48 hours');
+  'a driver has a minute to answer a wave offer (0074), not the old 48 hours');
 select assert_equals(
   (select count(*) from public.offers o join public.profiles p on p.id = o.driver_id
     where o.load_id = (select load_id from booked) and p.full_name like 'X %'), 0,
@@ -584,9 +584,9 @@ select private.system_rescue_stranded();
 select assert_text(asked((select load_id from lonely), 'pending'), 'B Seeb',
   'a driver who comes online after the waves ended is asked');
 select assert_true(
-  (select bool_and(expires_at <= now() + interval '5 minutes' and source = 'auto')
+  (select bool_and(expires_at <= now() + interval '61 seconds' and source = 'auto')
      from public.offers where load_id = (select load_id from lonely) and status = 'pending'),
-  'for as long as a wave offer lives');
+  'for a minute, like a wave offer (0074)');
 select assert_text(
   (select mode from private.dispatch_log
     where load_id = (select load_id from lonely) and mode = 'rescue'),

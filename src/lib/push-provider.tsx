@@ -18,8 +18,10 @@ import { PushCtx } from '@/lib/push-context';
 import { useSession } from '@/lib/session';
 import {
   type PushAccess,
+  declineJob,
   declinePush,
   hrefFor,
+  jobOfferId,
   pushStatus,
   registerPush,
   requestPush,
@@ -103,15 +105,30 @@ export function PushProvider({ children }: { children: ReactNode }) {
       const href = hrefFor(data);
       if (href) router.push(href as Href);
     };
-    const received = Notifications.addNotificationReceivedListener(() => refreshWork());
-    const sub = Notifications.addNotificationResponseReceivedListener((r) =>
-      open(r.notification.request.content.data),
-    );
+    // Decline answers without opening anything (0074); Accept and a plain tap
+    // open the job card, where the driver confirms.
+    const respond = (r: Notifications.NotificationResponse) => {
+      const data = r.notification.request.content.data;
+      const offer = jobOfferId(data);
+      if (offer && r.actionIdentifier === 'decline') {
+        void declineJob(offer).then(refreshWork);
+        void Notifications.dismissNotificationAsync(r.notification.request.identifier).catch(() => {});
+        return;
+      }
+      open(data);
+    };
+    // A job arriving while the app is open goes straight to its card, full
+    // screen, like a ride request — there is a minute to answer.
+    const received = Notifications.addNotificationReceivedListener((n) => {
+      refreshWork();
+      if (jobOfferId(n.request.content.data)) open(n.request.content.data);
+    });
+    const sub = Notifications.addNotificationResponseReceivedListener(respond);
     if (!coldStartHandled) {
       coldStartHandled = true;
       Notifications.getLastNotificationResponseAsync()
         .then((r) => {
-          if (r) open(r.notification.request.content.data);
+          if (r) respond(r);
         })
         .catch(() => {});
     }

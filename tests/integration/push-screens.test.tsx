@@ -92,6 +92,52 @@ describe('PushProvider', () => {
     await settle();
     expect(mockPush).toHaveBeenCalledWith('/load/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
   });
+
+  // 0074: a new job reads like a ride request.
+  const OFFER = 'aaaaaaaa-bbbb-4ccc-8ddd-000000000001';
+  const job = (actionIdentifier: string) => ({
+    actionIdentifier,
+    notification: {
+      request: { identifier: 'n1', content: { data: { kind: 'driver_new_job', offer_id: OFFER, bid: false } } },
+    },
+  });
+
+  it('registers Accept and Decline for a job, with Accept opening the app', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    await render(app);
+    await settle();
+    expect(N.setNotificationCategoryAsync).toHaveBeenCalledWith('job_offer', [
+      expect.objectContaining({ identifier: 'accept', buttonTitle: 'Accept', options: { opensAppToForeground: true } }),
+      expect.objectContaining({ identifier: 'decline', buttonTitle: 'Decline' }),
+    ]);
+  });
+
+  it('Decline on the notification answers no, and opens nothing', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    N.getLastNotificationResponseAsync.mockResolvedValueOnce(job('decline') as never);
+    await render(app);
+    await settle();
+    expect(supabase.rpc).toHaveBeenCalledWith('respond_to_offer', { p_offer_id: OFFER, p_accept: false });
+    expect(mockPush).not.toHaveBeenCalledWith(`/offer/${OFFER}`);
+  });
+
+  it('Accept on the notification opens the job card — it never takes the job by itself', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    N.getLastNotificationResponseAsync.mockResolvedValueOnce(job('accept') as never);
+    await render(app);
+    await settle();
+    expect(mockPush).toHaveBeenCalledWith(`/offer/${OFFER}`);
+    expect(supabase.rpc).not.toHaveBeenCalledWith('respond_to_offer', expect.anything());
+  });
+
+  it('a job arriving while the app is open goes straight to its card', async () => {
+    N.getPermissionsAsync.mockResolvedValue(perm(true, 'granted'));
+    await render(app);
+    await settle();
+    const onReceived = N.addNotificationReceivedListener.mock.calls.at(-1)![0] as (n: unknown) => void;
+    await act(async () => onReceived(job('').notification));
+    expect(mockPush).toHaveBeenCalledWith(`/offer/${OFFER}`);
+  });
 });
 
 describe('NotificationsPermission', () => {

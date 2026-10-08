@@ -193,6 +193,24 @@ things in plain words, and the rate card makes the instant price real.
 
 ---
 
+## New jobs as ride requests (0074, 2026-10-08)
+
+A fixed-price job now reaches a driver like a ride request: the push reads
+"Seeb → Muscat · 12 km · 8.500 OMR" with Accept / Decline, the card opens full
+screen if the app is open, and a driver has 60 seconds (`offer_answer_seconds`)
+before the next driver is asked. Before accepting, a driver sees towns, trip km,
+distance to the pickup and the fare — **not** the pin, place name or contact,
+which 0041 used to show on every open offer.
+
+**Unverified on a device:**
+- the Accept / Decline buttons themselves (iOS registers the category at
+  launch; an app built before this JS only shows a plain notification);
+- Decline from a phone where the app was killed: Android delivers that action
+  on the next launch, so until then the offer simply lapses after a minute;
+- whether 60 seconds is long enough for a driver who is driving.
+`offer_answer_seconds` is not yet in the console's settings registry; change it
+by SQL until it is.
+
 ## Automatic dispatch (0036, 2026-09-27)
 
 Uber/Porter-style dispatch replaced the dispatcher as the first step: instant
