@@ -568,35 +568,39 @@ select assert_text(asked((select load_id from unvetted), 'pending'), 'X Unverifi
 
 update private.app_settings set value = 'true'::jsonb where key = 'require_verified_driver';
 update public.driver_availability set available = false;
+-- 0075: drivers switched on in §9 were asked about `lonely` the moment they came
+-- online. now() is fixed inside this transaction, so lapse those offers by hand.
+update public.offers set status = 'expired'
+ where load_id = (select load_id from lonely) and status = 'pending';
 
 -- A load whose collection date has passed is not worth waking anyone for.
 update public.loads set pickup_from = current_date - 2, pickup_to = current_date - 1
  where id = (select load_id from switched);
 
-select assert_equals(private.system_rescue_stranded(), 0,
+select assert_equals(private.system_dispatch_waves(), 0,
   'nobody online: nothing is sent, and nothing pretends it was');
 
--- B Seeb switches on, an hour after the search ended.
+-- B Seeb switches on, an hour after the search ended. 0075: nothing else runs —
+-- switching on is what asks them.
 update public.driver_availability set available = true, updated_at = now() + interval '1 hour'
  where driver_id = 'd0000000-0000-4000-8000-000000000002';
-select private.system_rescue_stranded();
 
 select assert_text(asked((select load_id from lonely), 'pending'), 'B Seeb',
-  'a driver who comes online after the waves ended is asked');
+  'a driver who comes online after the waves ended is asked — the moment they switch on');
 select assert_true(
   (select bool_and(expires_at <= now() + interval '61 seconds' and source = 'auto')
      from public.offers where load_id = (select load_id from lonely) and status = 'pending'),
   'for a minute, like a wave offer (0074)');
 select assert_text(
   (select mode from private.dispatch_log
-    where load_id = (select load_id from lonely) and mode = 'rescue'),
+    where load_id = (select load_id from lonely) and mode = 'rescue' limit 1),
   'rescue', 'the dispatch log says why');
 select assert_text(asked((select load_id from switched), 'pending'), '',
   'a load whose collection date has passed is not offered');
 select assert_text(asked((select load_id from manual), 'pending'), 'C Nizwa',
   'a load a dispatcher has an offer out on is left to them');
 
-select private.system_rescue_stranded();
+select private.system_dispatch_waves();
 select assert_equals(
   (select count(*) from public.offers where load_id = (select load_id from lonely) and status = 'pending'), 1,
   'while the offer is out, nothing more is sent');
@@ -606,14 +610,35 @@ update public.offers set expires_at = now() - interval '1 second'
  where load_id = (select load_id from lonely) and status = 'pending';
 update public.driver_availability set updated_at = now() - interval '1 hour'
  where driver_id = 'd0000000-0000-4000-8000-000000000002';
-select private.system_rescue_stranded();
+select private.system_dispatch_waves();
 select assert_text(asked((select load_id from lonely), 'pending'), '',
-  'a driver who let an offer lapse and never switched again is not asked again');
+  'a driver whose offer lapsed a moment ago sits out the next round');
+
+-- 0075: after sitting out one round (one answer window), asked once more.
+-- (Switching on asked B about every searching load; clear those so B's three
+-- live-offer places are free and this checks only the re-ask rule.)
+update public.offers set status = 'expired'
+ where driver_id = 'd0000000-0000-4000-8000-000000000002' and status = 'pending'
+   and load_id <> (select load_id from lonely);
+update public.offers set expires_at = now() - interval '61 seconds'
+ where load_id = (select load_id from lonely) and driver_id = 'd0000000-0000-4000-8000-000000000002';
+select private.system_dispatch_waves();
+select assert_text(asked((select load_id from lonely), 'pending'), 'B Seeb',
+  'a driver who did not answer is asked once more, after skipping a round');
+select assert_true(
+  (select r.reasks = 1 from private.offer_reasks r join public.offers o on o.id = r.offer_id
+    where o.load_id = (select load_id from lonely) and o.driver_id = 'd0000000-0000-4000-8000-000000000002'),
+  'and the second ask is counted');
+update public.offers set expires_at = now() - interval '61 seconds'
+ where load_id = (select load_id from lonely) and driver_id = 'd0000000-0000-4000-8000-000000000002';
+select private.system_dispatch_waves();
+select assert_text(asked((select load_id from lonely), 'pending'), '',
+  'and not a third time: dispatch_max_reasks is 1');
 
 -- B goes off and comes back: they were not there, which is not a no.
 update public.driver_availability set updated_at = now() + interval '2 hours'
  where driver_id = 'd0000000-0000-4000-8000-000000000002';
-select private.system_rescue_stranded();
+select private.system_dispatch_waves();
 select assert_text(asked((select load_id from lonely), 'pending'), 'B Seeb',
   'a driver who missed an offer and switched on again is asked again');
 
@@ -625,23 +650,23 @@ select public.respond_to_offer(
 select act_as_reset();
 update public.driver_availability set updated_at = now() + interval '3 hours'
  where driver_id = 'd0000000-0000-4000-8000-000000000002';
-select private.system_rescue_stranded();
+select private.system_dispatch_waves();
 select assert_text(asked((select load_id from lonely), 'pending'), '',
   'a decline is final — the machine never asks again');
 
 -- The switches — before a dispatcher takes the load in hand: ops_audit is
 -- append-only (0054), so that cannot be undone afterwards.
 update private.app_settings set value = 'false'::jsonb where key = 'dispatch_rescue_enabled';
-select assert_equals(private.system_rescue_stranded(), 0, 'dispatch_rescue_enabled off: nothing');
+select assert_equals(private.system_dispatch_waves(), 0, 'dispatch_rescue_enabled off: nothing');
 update private.app_settings set value = 'true'::jsonb where key = 'dispatch_rescue_enabled';
 update private.app_settings set value = 'false'::jsonb where key = 'auto_dispatch_enabled';
-select assert_equals(private.system_rescue_stranded(), 0, 'the auto-dispatch kill switch stops it too');
+select assert_equals(private.system_dispatch_waves(), 0, 'the auto-dispatch kill switch stops it too');
 update private.app_settings set value = 'true'::jsonb where key = 'auto_dispatch_enabled';
 -- A (asked in section 6, lapsed — not a no) switches on again.
 update public.driver_availability set available = true, updated_at = now() + interval '3 hours'
  where driver_id = 'd0000000-0000-4000-8000-000000000001';
-select assert_true(private.system_rescue_stranded() > 0,
-  'and with both on, it resumes');
+select assert_text(asked((select load_id from lonely), 'pending'), 'A Muscat',
+  'and with both on, it resumes — the driver who switched on is asked at once');
 
 -- A dispatcher who has taken the load in hand is never second-guessed.
 -- A lets that offer lapse and switches on again: the machine would ask again…
@@ -652,7 +677,7 @@ update public.driver_availability set available = true, updated_at = now() + int
 select act_as('a0000000-0000-4000-8000-000000000002');
 select public.ops_mark_finding_truck((select load_id from lonely));
 select act_as_reset();
-select private.system_rescue_stranded();
+select private.system_dispatch_waves();
 select assert_text(asked((select load_id from lonely), 'pending'), '',
   'once a dispatcher has marked it theirs, the machine leaves it alone');
 
@@ -830,8 +855,14 @@ select assert_equals(
 
 select assert_equals(
   (select count(*) from cron.job
-    where jobname in ('dispatch-waves', 'expire-availability', 'dispatch-rescue')), 3,
+    where jobname in ('dispatch-waves', 'expire-availability')), 2,
   'every dispatch job is scheduled');
+select assert_equals(
+  (select count(*) from cron.job where jobname = 'dispatch-rescue'), 0,
+  'and the rescue job is gone — the one loop keeps looking after the alert (0075)');
+select assert_true(
+  (select schedule = '20 seconds' from cron.job where jobname = 'dispatch-waves'),
+  'the search tick runs every 20 seconds, so a free place is refilled within a round');
 
 -- The class of bug 0037 fixed, over EVERY function, called or not. PostgREST
 -- runs a STABLE or IMMUTABLE function in a READ ONLY transaction, so one that
@@ -897,5 +928,51 @@ select assert_true(not has_table_privilege('authenticated', 'private.load_reques
 select assert_true(not has_function_privilege('authenticated',
   'private.book_load(bigint, bigint, date, date, text, integer, text, bigint, jsonb, jsonb)', 'execute'),
   'the unkeyed original is not callable by a client');
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. Rolling (0075): a driver who switches on mid-stage is asked at once
+-- ════════════════════════════════════════════════════════════════════════════
+-- Before 0075 nothing was asked while any offer of the wave was still open, so
+-- a driver switching on beside the pickup waited for the whole wave to lapse.
+
+-- Earlier sections' loads are still searching; take them out (collection date
+-- passed) so each switch-on below is about this load alone, not the per-driver
+-- cap of three open offers.
+update public.loads set pickup_from = current_date - 2, pickup_to = current_date - 1
+ where status in ('accepted', 'matched', 'finding_truck');
+update public.offers set status = 'expired' where status = 'pending';
+update public.driver_availability set available = false;
+update public.driver_availability set available = true, updated_at = now() + interval '5 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000001';           -- A Muscat only
+
+select act_as('a0000000-0000-4000-8000-000000000001');
+create temp table late on commit drop as
+select * from public.book_load(city('Muscat'), city('Dubai'), current_date + 6, current_date + 6,
+                               'Rolling cargo', 8000, null, :p8000);
+select act_as_reset();
+select assert_text(asked((select load_id from late), 'pending'), 'A Muscat',
+  'one driver online: one of the three places is filled');
+
+-- B switches on while A's offer is still open.
+update public.driver_availability set available = true, updated_at = now() + interval '5 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000002';
+select assert_text(asked((select load_id from late), 'pending'), 'A Muscat,B Seeb',
+  'a driver who switches on mid-stage is asked at once, alongside the open offer');
+
+-- A declines: the place is refilled at once, by whoever is next — here nobody,
+-- and B's offer is untouched.
+select act_as('d0000000-0000-4000-8000-000000000001');
+select public.respond_to_offer(
+  (select id from public.offers where load_id = (select load_id from late)
+     and driver_id = 'd0000000-0000-4000-8000-000000000001'), false);
+select act_as_reset();
+select assert_text(asked((select load_id from late), 'pending'), 'B Seeb',
+  'a decline frees a place without disturbing the others');
+
+-- C switches on: the free place goes to them.
+update public.driver_availability set available = true, updated_at = now() + interval '5 hours'
+ where driver_id = 'd0000000-0000-4000-8000-000000000003';
+select assert_text(asked((select load_id from late), 'pending'), 'B Seeb,C Nizwa',
+  'and the next driver to come online takes it');
 
 rollback;

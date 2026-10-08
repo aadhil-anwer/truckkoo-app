@@ -194,8 +194,11 @@ select act_as_reset();
 select assert_true((select value = '90'::jsonb from private.app_settings where key = 'bid_window_minutes'), 'the setting changed');
 select assert_true((select value = '150'::jsonb from private.app_settings where key = 'dispatch_radius_km_1'),
   'and the refused radius left the old one in place');
-select assert_true((select label = 'Drivers asked per wave' from sets where key = 'auto_dispatch_max_offers'),
-  'max offers is described as what it is since 0036: the wave size');
+select assert_true((select label = 'Drivers asked at once' from sets where key = 'auto_dispatch_max_offers'),
+  'max offers is described as what it is since 0075: how many drivers hold the job at once');
+select assert_true((select count(*) = 3 from sets
+                     where key in ('offer_answer_seconds', 'dispatch_max_reasks', 'dispatch_reask_skip_rounds')),
+  'the answer window and the re-ask rule are editable from the console (0075)');
 select assert_true(exists (select 1 from information_schema.routines r
                             join information_schema.parameters pa on pa.specific_name = r.specific_name
                            where r.routine_schema = 'public' and r.routine_name = 'ops_rate_cards'

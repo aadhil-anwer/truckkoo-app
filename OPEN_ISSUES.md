@@ -208,8 +208,17 @@ which 0041 used to show on every open offer.
 - Decline from a phone where the app was killed: Android delivers that action
   on the next launch, so until then the offer simply lapses after a minute;
 - whether 60 seconds is long enough for a driver who is driving.
-`offer_answer_seconds` is not yet in the console's settings registry; change it
-by SQL until it is.
+
+**Rolling dispatch (0075):** waves are gone as a unit. The nearest three hold
+an open offer at once and a free place is refilled immediately — on a decline,
+on the 20-second tick, and the moment a driver switches on or first reports a
+fresh position (a trigger on `driver_availability`). A driver who let an offer
+lapse sits out one round and is asked once more; a decline is final. The
+rescue job is folded into the same loop and unscheduled. Every knob is in the
+console's System page. Fixed on the way: a reopened offer kept its first
+`created_at`, so after one switch-on 0037's re-ask rule re-pinged a lapsed
+driver after every lapse. **Unverified:** load on the trigger when many drivers
+report at once (it asks about at most 10 searching loads per switch-on).
 
 ## Automatic dispatch (0036, 2026-09-27)
 
